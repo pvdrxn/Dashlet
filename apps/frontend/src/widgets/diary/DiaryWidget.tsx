@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { memo, useState, useCallback, useMemo } from 'react';
 
 interface DiaryConfig {
   entries?: Record<string, string>;
@@ -21,7 +21,7 @@ function snippet(text: string, query: string, maxLen = 60): string {
   return s;
 }
 
-export function DiaryWidget({ config, onConfigChange }: DiaryWidgetProps) {
+export const DiaryWidget = memo(function DiaryWidget({ config, onConfigChange }: DiaryWidgetProps) {
   const { entries = {} } = config as DiaryConfig;
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
@@ -127,4 +127,5 @@ export function DiaryWidget({ config, onConfigChange }: DiaryWidgetProps) {
       />
     </div>
   );
-}
+});
+

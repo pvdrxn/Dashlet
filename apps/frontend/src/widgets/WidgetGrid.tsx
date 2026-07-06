@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { WidgetFrame } from './WidgetFrame';
@@ -87,29 +87,29 @@ export function WidgetGrid({ onAddWidget }: WidgetGridProps) {
 
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-      <div className="relative min-h-[600px] w-full">
-        {widgets.map((widget) => {
-          const def = getWidget(widget.type);
-          if (!def) return null;
+      <Suspense fallback={<div className="text-gray-500 text-sm">Loading widgets...</div>}>
+        <div className="relative min-h-[600px] w-full">
+          {widgets.map((widget) => {
+            const def = getWidget(widget.type);
+            if (!def) return null;
 
-          return (
-            <WidgetFrame
-              key={widget.id}
-              id={widget.id}
-              position={widget.position}
-              zIndex={widget.zIndex}
-              minSize={def.minSize}
-              onResize={handleResize}
-              onDelete={handleDelete}
-            >
-              <def.component
+            return (
+              <WidgetFrame
+                key={widget.id}
+                id={widget.id}
+                position={widget.position}
+                zIndex={widget.zIndex}
+                minSize={def.minSize}
                 config={widget.config}
-                onConfigChange={(config) => handleConfigChange(widget.id, config)}
+                component={def.component}
+                onResize={handleResize}
+                onDelete={handleDelete}
+                onConfigChange={handleConfigChange}
               />
-            </WidgetFrame>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      </Suspense>
     </DndContext>
   );
 }

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect } from 'react';
+import { memo, useCallback, useRef, useEffect } from 'react';
 
 function playAlarm() {
   try {
@@ -48,7 +48,7 @@ function formatTime(seconds: number) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-export function PomodoroWidget({ config, onConfigChange }: PomodoroWidgetProps) {
+export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigChange }: PomodoroWidgetProps) {
   const c = config as PomodoroConfig;
   const { workMinutes = 25, restMinutes = 5, state = 'idle', remainingSeconds = workMinutes * 60, cycleCount = 0 } = c;
 
@@ -166,4 +166,4 @@ export function PomodoroWidget({ config, onConfigChange }: PomodoroWidgetProps) 
       </div>
     </div>
   );
-}
+});

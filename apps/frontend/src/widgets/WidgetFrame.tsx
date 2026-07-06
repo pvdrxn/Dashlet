@@ -1,4 +1,4 @@
-import { useState, useCallback, type ReactNode } from 'react';
+import { memo, useState, useCallback, Suspense, type ComponentType } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 
 interface WidgetFrameProps {
@@ -6,12 +6,14 @@ interface WidgetFrameProps {
   position: { x: number; y: number; w: number; h: number };
   zIndex: number;
   minSize: { w: number; h: number };
-  children: ReactNode;
+  config: Record<string, unknown>;
+  component: ComponentType<{ config: Record<string, unknown>; onConfigChange: (config: Record<string, unknown>) => void }>;
   onResize: (id: string, w: number, h: number) => void;
   onDelete: (id: string) => void;
+  onConfigChange: (id: string, config: Record<string, unknown>) => void;
 }
 
-export function WidgetFrame({ id, position, zIndex, minSize, children, onResize, onDelete }: WidgetFrameProps) {
+export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, minSize, config, component: WidgetComponent, onResize, onDelete, onConfigChange }: WidgetFrameProps) {
   const [size, setSize] = useState({ w: position.w, h: position.h });
   const [isResizing, setIsResizing] = useState(false);
 
@@ -54,8 +56,13 @@ export function WidgetFrame({ id, position, zIndex, minSize, children, onResize,
     document.addEventListener('mouseup', handleMouseUp);
   }, [id, size, onResize, minSize]);
 
+  const handleConfigChangeWrapped = useCallback(
+    (newConfig: Record<string, unknown>) => onConfigChange(id, newConfig),
+    [id, onConfigChange]
+  );
+
   return (
-    <div ref={frameRef => frameRef} style={style} className="group rounded-lg border border-gray-700 bg-gray-800 shadow-lg">
+    <div style={style} className="group rounded-lg border border-gray-700 bg-gray-800 shadow-lg">
       <div
         ref={setNodeRef}
         {...listeners}
@@ -79,7 +86,9 @@ export function WidgetFrame({ id, position, zIndex, minSize, children, onResize,
       </div>
 
       <div className="overflow-hidden p-3" style={{ height: 'calc(100% - 32px)' }}>
-        {children}
+        <Suspense fallback={<div className="text-xs text-gray-500">Loading...</div>}>
+          <WidgetComponent config={config} onConfigChange={handleConfigChangeWrapped} />
+        </Suspense>
       </div>
 
       <button
@@ -99,4 +108,4 @@ export function WidgetFrame({ id, position, zIndex, minSize, children, onResize,
       />
     </div>
   );
-}
+});

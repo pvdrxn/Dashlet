@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { memo, useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -88,7 +88,7 @@ function getMonthGrid(): { date: string; day: number; empty: boolean }[][] {
   return rows;
 }
 
-function SortableHabit({
+const SortableHabit = memo(function SortableHabit({
   habit,
   toggleToday,
   editHabit,
@@ -208,9 +208,9 @@ function SortableHabit({
       ))}
     </div>
   );
-}
+});
 
-export function HabitTrackerWidget({ config, onConfigChange }: HabitTrackerWidgetProps) {
+export const HabitTrackerWidget = memo(function HabitTrackerWidget({ config, onConfigChange }: HabitTrackerWidgetProps) {
   const { habits = [] } = config as HabitTrackerConfig;
   const [newName, setNewName] = useState('');
 
@@ -311,4 +311,4 @@ export function HabitTrackerWidget({ config, onConfigChange }: HabitTrackerWidge
       </form>
     </div>
   );
-}
+});

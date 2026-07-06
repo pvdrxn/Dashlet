@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { memo, useState, useCallback, useRef } from 'react';
 
 interface NotesConfig {
   title?: string;
@@ -11,7 +11,7 @@ interface NotesWidgetProps {
   onConfigChange: (config: Record<string, unknown>) => void;
 }
 
-export function NotesWidget({ config, onConfigChange }: NotesWidgetProps) {
+export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }: NotesWidgetProps) {
   const { title = 'Notes', content = '', lastModified } = config as NotesConfig;
   const [localTitle, setLocalTitle] = useState(title);
   const [localContent, setLocalContent] = useState(content);
@@ -71,4 +71,4 @@ export function NotesWidget({ config, onConfigChange }: NotesWidgetProps) {
       />
     </div>
   );
-}
+});

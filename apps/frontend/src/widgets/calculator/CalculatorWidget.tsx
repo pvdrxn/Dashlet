@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { memo, useState, useCallback } from 'react';
 
 interface CalculatorConfig {
   history?: string[];
@@ -20,7 +20,7 @@ const btn = (label: string, onClick: () => void, variant = 'bg-gray-700 hover:bg
   </button>
 );
 
-export function CalculatorWidget({ config, onConfigChange }: CalculatorWidgetProps) {
+export const CalculatorWidget = memo(function CalculatorWidget({ config, onConfigChange }: CalculatorWidgetProps) {
   const { history = [], lastResult = '' } = config as CalculatorConfig;
   const [display, setDisplay] = useState(lastResult);
   const [prevValue, setPrevValue] = useState('');
@@ -125,7 +125,7 @@ export function CalculatorWidget({ config, onConfigChange }: CalculatorWidgetPro
       )}
     </div>
   );
-}
+});
 
 function compute(a: string, b: string, op: string): string {
   const x = Number(a);

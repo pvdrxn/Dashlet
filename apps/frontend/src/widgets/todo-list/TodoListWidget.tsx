@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { memo, useState, useCallback, useRef, useEffect } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -33,7 +33,7 @@ interface TodoListWidgetProps {
 let nextId = 1;
 function genId() { return `todo-${nextId++}`; }
 
-function SortableItem({
+const SortableItem = memo(function SortableItem({
   item,
   toggleItem,
   removeItem,
@@ -103,9 +103,9 @@ function SortableItem({
       </button>
     </div>
   );
-}
+});
 
-export function TodoListWidget({ config, onConfigChange }: TodoListWidgetProps) {
+export const TodoListWidget = memo(function TodoListWidget({ config, onConfigChange }: TodoListWidgetProps) {
   const { title = 'Todo List', items = [] } = config as TodoListConfig;
   const [newText, setNewText] = useState('');
 
@@ -204,4 +204,4 @@ export function TodoListWidget({ config, onConfigChange }: TodoListWidgetProps) 
       </form>
     </div>
   );
-}
+});

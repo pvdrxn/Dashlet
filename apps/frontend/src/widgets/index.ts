@@ -1,10 +1,12 @@
+import { lazy } from 'react';
 import { registerWidget } from './registry';
-import { TodoListWidget } from './todo-list/TodoListWidget';
-import { PomodoroWidget } from './pomodoro/PomodoroWidget';
-import { NotesWidget } from './notes/NotesWidget';
-import { CalculatorWidget } from './calculator/CalculatorWidget';
-import { HabitTrackerWidget } from './habit-tracker/HabitTrackerWidget';
-import { DiaryWidget } from './diary/DiaryWidget';
+
+const TodoListWidget = lazy(() => import('./todo-list/TodoListWidget').then(m => ({ default: m.TodoListWidget })));
+const PomodoroWidget = lazy(() => import('./pomodoro/PomodoroWidget').then(m => ({ default: m.PomodoroWidget })));
+const NotesWidget = lazy(() => import('./notes/NotesWidget').then(m => ({ default: m.NotesWidget })));
+const CalculatorWidget = lazy(() => import('./calculator/CalculatorWidget').then(m => ({ default: m.CalculatorWidget })));
+const HabitTrackerWidget = lazy(() => import('./habit-tracker/HabitTrackerWidget').then(m => ({ default: m.HabitTrackerWidget })));
+const DiaryWidget = lazy(() => import('./diary/DiaryWidget').then(m => ({ default: m.DiaryWidget })));
 
 registerWidget('todo-list', {
   component: TodoListWidget,
