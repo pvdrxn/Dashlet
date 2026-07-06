@@ -1,0 +1,19 @@
+{
+  "name": "widget-master",
+  "private": true,
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
+    "doctor": "npx react-doctor@latest"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0",
+    "prettier": "^3.5.0"
+  },
+  "packageManager": "pnpm@10.6.0",
+  "engines": {
+    "node": ">=18"
+  }
+}

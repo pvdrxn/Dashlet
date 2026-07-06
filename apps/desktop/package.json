@@ -1,0 +1,38 @@
+{
+  "name": "dashlet-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "build:resources": "node build.js",
+    "dist:exe": "npx electron-builder --win portable",
+    "dist": "node build.js && npx electron-builder --win portable"
+  },
+  "build": {
+    "appId": "com.dashlet.app",
+    "productName": "Dashlet",
+    "directories": {
+      "output": "../../dist-electron"
+    },
+    "files": [
+      "main.js",
+      "preload.js"
+    ],
+    "extraResources": [
+      {
+        "from": "./resources",
+        "to": "resources",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {},
+    "nsis": null,
+    "portable": {
+      "artifactName": "Dashlet-${version}-${arch}.exe"
+    }
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^26.0.0"
+  }
+}
