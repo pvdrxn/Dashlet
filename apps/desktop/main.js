@@ -21,7 +21,7 @@ function getFrontendPath() {
   if (isDev) {
     return `http://localhost:${BACKEND_PORT}`;
   }
-  return `http://localhost:${BACKEND_PORT}`;
+  return path.join(process.resourcesPath, 'resources', 'backend', 'public', 'index.html');
 }
 
 function waitForServer(url, maxRetries = 60) {
@@ -119,13 +119,10 @@ function createWindow() {
 }
 
 app.on('ready', async () => {
-  try {
-    await startBackend();
-    createWindow();
-  } catch (err) {
-    console.error('Failed to start:', err);
-    app.quit();
-  }
+  createWindow();
+  startBackend().catch((err) => {
+    console.error('Failed to start backend:', err);
+  });
 });
 
 app.on('window-all-closed', () => {

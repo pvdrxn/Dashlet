@@ -1,6 +1,8 @@
 import type { WidgetData, Position } from '../widgets/types';
 
-const BASE = '/api/v1/widgets';
+const BASE = import.meta.env.PROD
+  ? 'http://localhost:3001/api/v1/widgets'
+  : '/api/v1/widgets';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {

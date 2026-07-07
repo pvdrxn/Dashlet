@@ -15,13 +15,26 @@ export function WidgetGrid({ onAddWidget }: WidgetGridProps) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.fetchWidgets().then((data) => {
-      setWidgets(data);
-      setLoading(false);
-    }).catch((err) => {
-      console.error('Failed to load widgets:', err);
-      setLoading(false);
-    });
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout>;
+
+    async function load() {
+      while (!cancelled) {
+        try {
+          const data = await api.fetchWidgets();
+          if (!cancelled) {
+            setWidgets(data);
+            setLoading(false);
+          }
+          return;
+        } catch {
+          await new Promise(resolve => { retryTimer = setTimeout(resolve, 1000); });
+        }
+      }
+    }
+
+    load();
+    return () => { cancelled = true; clearTimeout(retryTimer); };
   }, []);
 
   const handleResize = useCallback((id: string, w: number, h: number) => {
