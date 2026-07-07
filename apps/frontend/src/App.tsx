@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { Suspense, useCallback, useState } from 'react';
 import { WidgetGrid } from './widgets';
 import { Toolbar } from './components/Toolbar';
 import { createWidget } from './api/widgets';
@@ -18,7 +18,9 @@ function App() {
     <main className="min-h-screen bg-gray-900">
       <Toolbar onAddWidget={handleAddWidget} />
       <div className="p-4">
-        <WidgetGrid key={refreshKey} onAddWidget={() => handleAddWidget('todo-list')} />
+        <Suspense fallback={<div className="flex items-center justify-center py-20 text-gray-400">Loading widgets...</div>}>
+          <WidgetGrid key={refreshKey} onAddWidget={() => handleAddWidget('todo-list')} />
+        </Suspense>
       </div>
     </main>
   );

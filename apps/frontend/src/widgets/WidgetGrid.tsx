@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { use, useState, useCallback, Suspense } from 'react';
 import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { WidgetFrame } from './WidgetFrame';
@@ -6,36 +6,19 @@ import { getWidget } from './registry';
 import type { WidgetData } from './types';
 import * as api from '../api/widgets';
 
+function fetchWithRetry(): Promise<WidgetData[]> {
+  return api.fetchWidgets().catch(() =>
+    new Promise<void>((resolve) => setTimeout(resolve, 1000)).then(fetchWithRetry)
+  );
+}
+
 interface WidgetGridProps {
   onAddWidget: () => void;
 }
 
 export function WidgetGrid({ onAddWidget }: WidgetGridProps) {
-  const [widgets, setWidgets] = useState<WidgetData[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    let retryTimer: ReturnType<typeof setTimeout>;
-
-    async function load() {
-      while (!cancelled) {
-        try {
-          const data = await api.fetchWidgets();
-          if (!cancelled) {
-            setWidgets(data);
-            setLoading(false);
-          }
-          return;
-        } catch {
-          await new Promise(resolve => { retryTimer = setTimeout(resolve, 1000); });
-        }
-      }
-    }
-
-    load();
-    return () => { cancelled = true; clearTimeout(retryTimer); };
-  }, []);
+  const [fetchPromise] = useState(() => fetchWithRetry());
+  const widgets = use(fetchPromise);
 
   const handleResize = useCallback((id: string, w: number, h: number) => {
     setWidgets((prev) => {
@@ -74,14 +57,6 @@ export function WidgetGrid({ onAddWidget }: WidgetGridProps) {
       return prev.map((w) => (w.id === widgetId ? { ...w, position: newPos } : w));
     });
   }, []);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20 text-gray-400">
-        Loading widgets...
-      </div>
-    );
-  }
 
   if (widgets.length === 0) {
     return (
