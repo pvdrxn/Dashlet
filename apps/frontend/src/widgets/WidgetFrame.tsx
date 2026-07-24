@@ -1,5 +1,16 @@
-import { memo, useState, useCallback, Suspense, type ComponentType } from 'react';
+import { memo, useState, useCallback, useRef, Suspense, type ComponentType } from 'react';
 import { useDraggable } from '@dnd-kit/core';
+
+const CELL_W = 260;
+const CELL_H = 180;
+
+function snapUpW(v: number): number {
+  return Math.ceil(v / CELL_W) * CELL_W;
+}
+
+function snapUpH(v: number): number {
+  return Math.ceil(v / CELL_H) * CELL_H;
+}
 
 interface WidgetFrameProps {
   id: string;
@@ -11,11 +22,13 @@ interface WidgetFrameProps {
   onResize: (id: string, w: number, h: number) => void;
   onDelete: (id: string) => void;
   onConfigChange: (id: string, config: Record<string, unknown>) => void;
+  gridMode: boolean;
 }
 
-export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, minSize, config, component: WidgetComponent, onResize, onDelete, onConfigChange }: WidgetFrameProps) {
+export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, minSize, config, component: WidgetComponent, onResize, onDelete, onConfigChange, gridMode }: WidgetFrameProps) {
   const [size, setSize] = useState({ w: position.w, h: position.h });
   const [isResizing, setIsResizing] = useState(false);
+  const resizeStateRef = useRef({ w: position.w, h: position.h });
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `widget-${id}`,
@@ -42,19 +55,26 @@ export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, min
     const startH = size.h;
 
     const handleMouseMove = (me: MouseEvent) => {
-      setSize({ w: Math.max(minSize.w, startW + me.clientX - startX), h: Math.max(minSize.h, startH + me.clientY - startY) });
+      let newW = Math.max(minSize.w, startW + me.clientX - startX);
+      let newH = Math.max(minSize.h, startH + me.clientY - startY);
+      if (gridMode) {
+        newW = snapUpW(newW);
+        newH = snapUpH(newH);
+      }
+      resizeStateRef.current = { w: newW, h: newH };
+      setSize({ w: newW, h: newH });
     };
 
     const handleMouseUp = () => {
       setIsResizing(false);
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
-      onResize(id, size.w, size.h);
+      onResize(id, resizeStateRef.current.w, resizeStateRef.current.h);
     };
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, [id, size, onResize, minSize]);
+  }, [id, size, onResize, minSize, gridMode]);
 
   const handleConfigChangeWrapped = useCallback(
     (newConfig: Record<string, unknown>) => onConfigChange(id, newConfig),
@@ -62,7 +82,7 @@ export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, min
   );
 
   return (
-    <div style={style} className="group rounded-lg border border-gray-700 bg-gray-800 shadow-lg">
+    <div style={style} className={`group rounded-lg border bg-gray-800 shadow-lg ${gridMode ? 'border-blue-500/30' : 'border-gray-700'}`}>
       <div
         ref={setNodeRef}
         {...listeners}

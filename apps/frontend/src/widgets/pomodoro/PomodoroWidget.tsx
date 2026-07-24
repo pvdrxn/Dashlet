@@ -1,31 +1,49 @@
 import { memo, useCallback, useRef, useEffect } from 'react';
 
+let audioCtx: AudioContext | null = null;
+
 function playAlarm() {
   try {
-    const ctx = new AudioContext();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
+    if (!audioCtx) {
+      audioCtx = new AudioContext();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
     osc.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(audioCtx.destination);
     osc.frequency.value = 880;
     osc.type = 'sine';
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.5);
+    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+    osc.start(audioCtx.currentTime);
+    osc.stop(audioCtx.currentTime + 0.5);
 
-    const osc2 = ctx.createOscillator();
-    const gain2 = ctx.createGain();
+    const osc2 = audioCtx.createOscillator();
+    const gain2 = audioCtx.createGain();
     osc2.connect(gain2);
-    gain2.connect(ctx.destination);
+    gain2.connect(audioCtx.destination);
     osc2.frequency.value = 1100;
     osc2.type = 'sine';
-    gain2.gain.setValueAtTime(0.3, ctx.currentTime + 0.6);
-    gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 1.1);
-    osc2.start(ctx.currentTime + 0.6);
-    osc2.stop(ctx.currentTime + 1.1);
+    gain2.gain.setValueAtTime(0.3, audioCtx.currentTime + 0.6);
+    gain2.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1.1);
+    osc2.start(audioCtx.currentTime + 0.6);
+    osc2.stop(audioCtx.currentTime + 1.1);
   } catch {
     // audio not supported
+  }
+
+  try {
+    if (Notification.permission === 'granted') {
+      new Notification('Pomodoro', { body: 'Timer finished!' });
+    } else if (Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  } catch {
+    // notifications not supported
   }
 }
 
@@ -35,6 +53,7 @@ interface PomodoroConfig {
   state: 'idle' | 'running' | 'paused' | 'break';
   remainingSeconds: number;
   cycleCount: number;
+  phase: 'work' | 'break';
 }
 
 interface PomodoroWidgetProps {
@@ -50,72 +69,92 @@ function formatTime(seconds: number) {
 
 export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigChange }: PomodoroWidgetProps) {
   const c = config as PomodoroConfig;
-  const { workMinutes = 25, restMinutes = 5, state = 'idle', remainingSeconds = workMinutes * 60, cycleCount = 0 } = c;
+  const { workMinutes = 25, restMinutes = 5, state = 'idle', remainingSeconds = workMinutes * 60, cycleCount = 0, phase = 'work' } = c;
 
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startTimeRef = useRef(0);
   const configRef = useRef(config);
   const remainingRef = useRef(remainingSeconds);
   const onConfigChangeRef = useRef(onConfigChange);
+  const workerRef = useRef<Worker | null>(null);
+  const isRunningRef = useRef(state === 'running');
 
   configRef.current = config;
   remainingRef.current = remainingSeconds;
   onConfigChangeRef.current = onConfigChange;
+  isRunningRef.current = state === 'running';
 
-  const clearTimer = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
+  useEffect(() => {
+    const blob = new Blob([
+      `let i = null; onmessage = function(e) {
+        if (e.data.t === 'start' && !i) { i = setInterval(() => postMessage('t'), 1000); }
+        if (e.data.t === 'stop' && i) { clearInterval(i); i = null; }
+      };`,
+    ], { type: 'application/javascript' });
+    const w = new Worker(URL.createObjectURL(blob));
+    w.onmessage = () => {
+      if (!isRunningRef.current) return;
+      const curCfg = configRef.current as PomodoroConfig;
+      const totalSecs = curCfg.phase === 'break' ? curCfg.restMinutes * 60 : curCfg.workMinutes * 60;
+      const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
+      const newRemaining = Math.max(0, totalSecs - elapsed);
+
+      if (newRemaining <= 0) {
+        w.postMessage({ t: 'stop' });
+        playAlarm();
+        if (curCfg.phase === 'work') {
+          onConfigChangeRef.current({
+            ...curCfg,
+            state: 'break',
+            phase: 'break',
+            remainingSeconds: curCfg.restMinutes * 60,
+            cycleCount: curCfg.cycleCount + 1,
+          });
+        } else {
+          onConfigChangeRef.current({
+            ...curCfg,
+            state: 'idle',
+            phase: 'work',
+            remainingSeconds: curCfg.workMinutes * 60,
+          });
+        }
+        return;
+      }
+
+      remainingRef.current = newRemaining;
+      onConfigChangeRef.current({ ...curCfg, remainingSeconds: newRemaining });
+    };
+    workerRef.current = w;
+    return () => w.terminate();
   }, []);
-
-  const tick = useCallback(() => {
-    const curCfg = configRef.current as PomodoroConfig;
-    const curRemaining = remainingRef.current;
-
-    if (curRemaining <= 1) {
-      clearTimer();
-      playAlarm();
-      const isWork = curCfg.state === 'running';
-      onConfigChangeRef.current({
-        ...curCfg,
-        state: isWork ? 'break' : 'idle',
-        remainingSeconds: isWork ? curCfg.restMinutes * 60 : curCfg.workMinutes * 60,
-        cycleCount: isWork ? curCfg.cycleCount + 1 : curCfg.cycleCount,
-      });
-      return;
-    }
-
-    remainingRef.current = curRemaining - 1;
-    onConfigChangeRef.current({ ...curCfg, remainingSeconds: curRemaining - 1 });
-  }, [clearTimer]);
 
   useEffect(() => {
     if (state === 'running') {
-      intervalRef.current = setInterval(tick, 1000);
+      const totalSecs = phase === 'break' ? restMinutes * 60 : workMinutes * 60;
+      const alreadyElapsed = totalSecs - remainingSeconds;
+      startTimeRef.current = Date.now() - alreadyElapsed * 1000;
+      workerRef.current?.postMessage({ t: 'start' });
+    } else {
+      workerRef.current?.postMessage({ t: 'stop' });
     }
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [state, tick]);
+  }, [state, workMinutes, restMinutes, phase]);
 
   const start = useCallback(() => {
-    const init = state === 'idle' || state === 'break' ? workMinutes * 60 : remainingSeconds;
+    const isBreakStart = state === 'break';
+    const totalSecs = isBreakStart ? restMinutes * 60 : workMinutes * 60;
+    const init = state === 'paused' ? remainingSeconds : totalSecs;
     remainingRef.current = init;
-    onConfigChange({ ...config, state: 'running', remainingSeconds: init });
-  }, [state, remainingSeconds, workMinutes, config, onConfigChange]);
+    onConfigChange({ ...config, state: 'running', remainingSeconds: init, phase: isBreakStart ? 'break' : 'work' });
+  }, [state, remainingSeconds, workMinutes, restMinutes, config, onConfigChange]);
 
   const pause = useCallback(() => {
-    clearTimer();
+    workerRef.current?.postMessage({ t: 'stop' });
     onConfigChange({ ...config, state: 'paused' });
-  }, [config, onConfigChange, clearTimer]);
+  }, [config, onConfigChange]);
 
   const reset = useCallback(() => {
-    clearTimer();
-    onConfigChange({ ...config, state: 'idle', remainingSeconds: workMinutes * 60 });
-  }, [workMinutes, config, onConfigChange, clearTimer]);
+    workerRef.current?.postMessage({ t: 'stop' });
+    onConfigChange({ ...config, state: 'idle', phase: 'work', remainingSeconds: workMinutes * 60 });
+  }, [workMinutes, config, onConfigChange]);
 
   const isRunning = state === 'running';
   const totalSeconds = state === 'break' ? restMinutes * 60 : workMinutes * 60;
@@ -139,28 +178,29 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
         {isRunning ? (
           <button type="button" onClick={pause} className="rounded bg-yellow-500 px-4 py-1 text-sm text-white hover:bg-yellow-600">Pause</button>
         ) : (
-          <button type="button" onClick={start} disabled={state === 'break'}
+          <button type="button" onClick={start}
             className="rounded bg-blue-500 px-4 py-1 text-sm text-white hover:bg-blue-600 disabled:opacity-50">Start</button>
         )}
         <button type="button" onClick={reset} className="rounded bg-gray-600 px-4 py-1 text-sm text-gray-300 hover:bg-gray-500">Reset</button>
       </div>
 
-      <div className="text-xs text-gray-500">
-        {state === 'break' ? `Break (${restMinutes}min)` : state === 'running' ? 'Focus' : state === 'paused' ? 'Paused' : 'Ready'}
-        {cycleCount > 0 && ` \u00b7 ${cycleCount} cycles`}
-      </div>
+      {cycleCount > 0 && (
+        <div className="text-xs text-gray-500">
+          {cycleCount} cycles
+        </div>
+      )}
 
       <div className="flex gap-2 text-xs">
         <label className="flex items-center gap-1 text-gray-400">
           Work
           <input type="number" min={1} max={60} value={workMinutes}
-            onChange={(e) => { clearTimer(); onConfigChange({ ...config, workMinutes: Number(e.target.value), remainingSeconds: Number(e.target.value) * 60, state: 'idle' }); }}
+            onChange={(e) => { workerRef.current?.postMessage({ t: 'stop' }); onConfigChange({ ...config, workMinutes: Number(e.target.value), remainingSeconds: Number(e.target.value) * 60, state: 'idle', phase: 'work' }); }}
             className="w-12 rounded border border-gray-600 bg-gray-700 px-1 py-0.5 text-center text-gray-200" disabled={isRunning} />
         </label>
         <label className="flex items-center gap-1 text-gray-400">
           Rest
           <input type="number" min={1} max={30} value={restMinutes}
-            onChange={(e) => onConfigChange({ ...config, restMinutes: Number(e.target.value) })}
+            onChange={(e) => { const v = Number(e.target.value); onConfigChange({ ...config, restMinutes: v, ...(state === 'break' ? { remainingSeconds: v * 60 } : {}) }); }}
             className="w-12 rounded border border-gray-600 bg-gray-700 px-1 py-0.5 text-center text-gray-200" disabled={isRunning} />
         </label>
       </div>

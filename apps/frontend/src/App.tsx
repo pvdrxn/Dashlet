@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { WidgetGrid } from './widgets';
 import { Toolbar } from './components/Toolbar';
 import { createWidget } from './api/widgets';
@@ -6,6 +6,7 @@ import { getWidget } from './widgets/registry';
 
 function App() {
   const [refreshKey, setRefreshKey] = useState(0);
+  const [gridMode, setGridMode] = useState(false);
 
   const handleAddWidget = useCallback(async (type: string) => {
     const def = getWidget(type);
@@ -14,13 +15,15 @@ function App() {
     setRefreshKey((k) => k + 1);
   }, []);
 
+  const handleToggleGridMode = useCallback(() => {
+    setGridMode((prev) => !prev);
+  }, []);
+
   return (
     <main className="min-h-screen bg-gray-900">
-      <Toolbar onAddWidget={handleAddWidget} />
+      <Toolbar onAddWidget={handleAddWidget} gridMode={gridMode} onToggleGridMode={handleToggleGridMode} />
       <div className="p-4">
-        <Suspense fallback={<div className="flex items-center justify-center py-20 text-gray-400">Loading widgets...</div>}>
-          <WidgetGrid key={refreshKey} onAddWidget={() => handleAddWidget('todo-list')} />
-        </Suspense>
+        <WidgetGrid key={refreshKey} gridMode={gridMode} onAddWidget={() => handleAddWidget('todo-list')} />
       </div>
     </main>
   );

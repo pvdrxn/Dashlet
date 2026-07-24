@@ -2,9 +2,11 @@ import { getAllWidgets } from '../widgets/registry';
 
 interface ToolbarProps {
   onAddWidget: (type: string) => void;
+  gridMode: boolean;
+  onToggleGridMode: () => void;
 }
 
-export function Toolbar({ onAddWidget }: ToolbarProps) {
+export function Toolbar({ onAddWidget, gridMode, onToggleGridMode }: ToolbarProps) {
   const availableWidgets = getAllWidgets();
 
   return (
@@ -20,6 +22,16 @@ export function Toolbar({ onAddWidget }: ToolbarProps) {
           {def.icon} {def.label}
         </button>
       ))}
+      <div className="ml-auto flex items-center gap-2">
+        <span className="text-xs text-gray-500">Snap Grid</span>
+        <button
+          type="button"
+          onClick={onToggleGridMode}
+          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${gridMode ? 'bg-blue-500' : 'bg-gray-600'}`}
+        >
+          <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${gridMode ? 'translate-x-4' : 'translate-x-0.5'}`} />
+        </button>
+      </div>
     </div>
   );
 }

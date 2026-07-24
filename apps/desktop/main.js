@@ -6,6 +6,7 @@ const http = require('http');
 
 let backendProcess = null;
 let mainWindow = null;
+let frontendServer = null;
 
 const isDev = !app.isPackaged;
 const BACKEND_PORT = 3001;
@@ -17,20 +18,11 @@ function getBackendPath() {
   return path.join(process.resourcesPath, 'resources', 'backend', 'dist', 'main.js');
 }
 
-function getFrontendPath() {
-  if (isDev) {
-    return `http://localhost:${BACKEND_PORT}`;
-  }
-  return path.join(process.resourcesPath, 'resources', 'backend', 'public', 'index.html');
-}
-
 function waitForServer(url, maxRetries = 60) {
   return new Promise((resolve, reject) => {
     let retries = 0;
     const check = () => {
-      http.get(url, (res) => {
-        resolve();
-      }).on('error', () => {
+      http.get(url, () => resolve()).on('error', () => {
         retries++;
         if (retries >= maxRetries) {
           reject(new Error('Server did not start in time'));
@@ -71,10 +63,7 @@ async function startBackend() {
     DATABASE_URL: `file:${dbPath}`,
   };
 
-  backendProcess = fork(backendPath, [], {
-    env,
-    stdio: 'pipe',
-  });
+  backendProcess = fork(backendPath, [], { env, stdio: 'pipe' });
 
   backendProcess.stdout?.on('data', (data) => {
     console.log(`[backend] ${data.toString().trim()}`);
@@ -92,7 +81,50 @@ async function startBackend() {
   await waitForServer(`http://localhost:${BACKEND_PORT}/api/v1/widgets`);
 }
 
-function createWindow() {
+function getPublicPath() {
+  if (isDev) return '';
+  return path.join(process.resourcesPath, 'resources', 'backend', 'public');
+}
+
+function startFrontendServer(publicPath) {
+  return new Promise((resolve, reject) => {
+    const mimeTypes = {
+      '.html': 'text/html',
+      '.js': 'application/javascript',
+      '.css': 'text/css',
+      '.svg': 'image/svg+xml',
+      '.png': 'image/png',
+      '.json': 'application/json',
+      '.woff': 'font/woff',
+      '.woff2': 'font/woff2',
+    };
+
+    frontendServer = http.createServer((req, res) => {
+      let url = req.url === '/' ? '/index.html' : req.url.split('?')[0];
+      let filePath = path.join(publicPath, url);
+      if (!filePath.startsWith(publicPath)) {
+        res.writeHead(403);
+        return res.end('Forbidden');
+      }
+      fs.readFile(filePath, (err, data) => {
+        if (err) {
+          return fs.readFile(path.join(publicPath, 'index.html'), (e2, d2) => {
+            res.writeHead(e2 ? 404 : 200, { 'Content-Type': 'text/html' });
+            res.end(e2 ? 'Not found' : d2);
+          });
+        }
+        const ext = path.extname(filePath);
+        res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
+        res.end(data);
+      });
+    });
+
+    frontendServer.listen(0, () => resolve(frontendServer.address().port));
+    frontendServer.on('error', reject);
+  });
+}
+
+async function createWindow(frontendUrl) {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 860,
@@ -107,11 +139,12 @@ function createWindow() {
     menu: null,
   });
 
-  mainWindow.loadURL(getFrontendPath());
+  mainWindow.loadURL(frontendUrl);
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
   });
+
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -119,7 +152,13 @@ function createWindow() {
 }
 
 app.on('ready', async () => {
-  createWindow();
+  if (!isDev) {
+    const publicPath = getPublicPath();
+    const port = await startFrontendServer(publicPath);
+    createWindow(`http://localhost:${port}`);
+  } else {
+    createWindow(`http://localhost:${BACKEND_PORT}`);
+  }
   startBackend().catch((err) => {
     console.error('Failed to start backend:', err);
   });
@@ -132,6 +171,10 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => {
+  if (frontendServer) {
+    frontendServer.close();
+    frontendServer = null;
+  }
   if (backendProcess) {
     backendProcess.kill();
     backendProcess = null;
@@ -140,6 +183,13 @@ app.on('will-quit', () => {
 
 app.on('activate', () => {
   if (mainWindow === null) {
-    createWindow();
+    if (!isDev) {
+      const publicPath = getPublicPath();
+      startFrontendServer(publicPath).then((port) => {
+        createWindow(`http://localhost:${port}`);
+      });
+    } else {
+      createWindow(`http://localhost:${BACKEND_PORT}`);
+    }
   }
 });
