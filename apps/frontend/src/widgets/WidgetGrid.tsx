@@ -5,56 +5,7 @@ import { WidgetFrame } from './WidgetFrame';
 import { getWidget } from './registry';
 import type { WidgetData } from './types';
 import * as api from '../api/widgets';
-
-const CELL_W = 260;
-const CELL_H = 180;
-
-function snapX(value: number): number {
-  return Math.round(value / CELL_W) * CELL_W;
-}
-
-function snapY(value: number): number {
-  return Math.round(value / CELL_H) * CELL_H;
-}
-
-function snapW(value: number): number {
-  return Math.max(Math.round(value / CELL_W) * CELL_W, CELL_W);
-}
-
-function snapH(value: number): number {
-  return Math.max(Math.round(value / CELL_H) * CELL_H, CELL_H);
-}
-
-function hasCollision(
-  id: string, x: number, y: number, w: number, h: number,
-  widgets: WidgetData[],
-): boolean {
-  return widgets.some((wgt) =>
-    wgt.id !== id &&
-    x < wgt.position.x + wgt.position.w &&
-    x + w > wgt.position.x &&
-    y < wgt.position.y + wgt.position.h &&
-    y + h > wgt.position.y,
-  );
-}
-
-function findFreeGridSlot(widgets: WidgetData[], defW: number, defH: number): { x: number; y: number } {
-  const cols = Math.ceil(defW / CELL_W);
-  const rows = Math.ceil(defH / CELL_H);
-  const gridW = cols * CELL_W;
-  const gridH = rows * CELL_H;
-
-  for (let cy = 0; cy < 40; cy++) {
-    for (let cx = 0; cx < 40; cx++) {
-      const x = cx * CELL_W;
-      const y = cy * CELL_H;
-      if (!hasCollision('', x, y, gridW, gridH, widgets)) {
-        return { x, y };
-      }
-    }
-  }
-  return { x: 0, y: 0 };
-}
+import { CELL_W, CELL_H, snapX, snapY, snapW, snapH, hasCollision, findFreeGridSlot } from './grid-utils';
 
 function loadCache(): WidgetData[] {
   try {
@@ -98,6 +49,10 @@ export function WidgetGrid({ onAddWidget, gridMode }: WidgetGridProps) {
   }, []);
 
   useEffect(() => {
+    saveCache(widgets);
+  }, [widgets]);
+
+  useEffect(() => {
     if (!gridMode) return;
     setWidgets((prev) => {
       const snapped = prev.map((w) => ({
@@ -139,8 +94,8 @@ export function WidgetGrid({ onAddWidget, gridMode }: WidgetGridProps) {
   }, [gridMode]);
 
   const handleDelete = useCallback((id: string) => {
-    setWidgets((prev) => prev.filter((w) => w.id !== id));
     api.deleteWidget(id);
+    setWidgets((prev) => prev.filter((w) => w.id !== id));
   }, []);
 
   const handleConfigChange = useCallback((id: string, config: Record<string, unknown>) => {

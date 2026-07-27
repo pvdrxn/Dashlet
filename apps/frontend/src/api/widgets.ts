@@ -20,10 +20,10 @@ export async function fetchWidgets(): Promise<WidgetData[]> {
   return request<WidgetData[]>(BASE);
 }
 
-export async function createWidget(type: string, config?: Record<string, unknown>): Promise<WidgetData> {
+export async function createWidget(type: string, config?: Record<string, unknown>, position?: Position): Promise<WidgetData> {
   return request<WidgetData>(BASE, {
     method: 'POST',
-    body: JSON.stringify({ type, config }),
+    body: JSON.stringify({ type, config, position }),
   });
 }
 

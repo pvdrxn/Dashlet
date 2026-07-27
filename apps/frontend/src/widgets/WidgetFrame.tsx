@@ -1,16 +1,6 @@
 import { memo, useState, useCallback, useRef, Suspense, type ComponentType } from 'react';
 import { useDraggable } from '@dnd-kit/core';
-
-const CELL_W = 260;
-const CELL_H = 180;
-
-function snapUpW(v: number): number {
-  return Math.ceil(v / CELL_W) * CELL_W;
-}
-
-function snapUpH(v: number): number {
-  return Math.ceil(v / CELL_H) * CELL_H;
-}
+import { snapUpW, snapUpH } from './grid-utils';
 
 interface WidgetFrameProps {
   id: string;
