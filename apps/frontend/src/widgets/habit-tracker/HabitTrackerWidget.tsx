@@ -181,11 +181,13 @@ const SortableHabit = memo(function SortableHabit({
           {expanded ? '\u25B2' : '\u25BC'}
         </button>
       </div>
-      {(expanded ? monthGrid : [monthGrid.find((row) => row.some((c) => !c.empty && c.date === today)) ?? monthGrid[0]]).map((row, ri) => (
-        <div key={ri} className="flex items-center gap-1 pl-8 mt-0.5">
+      {(expanded ? monthGrid : [monthGrid.find((row) => row.some((c) => !c.empty && c.date === today)) ?? monthGrid[0]]).map((row, ri) => {
+        const rowIndex = expanded ? ri : monthGrid.indexOf(row);
+        return (
+        <div key={rowIndex} className="flex items-center gap-1 pl-8 mt-0.5">
           {row.map((cell) =>
             cell.empty ? (
-              <div key={`e${ri}${cell.day}`} className="w-5 h-5" />
+              <div key={`e${rowIndex}${cell.day}`} className="w-5 h-5" />
             ) : (
               <div
                 key={cell.date}
@@ -205,7 +207,8 @@ const SortableHabit = memo(function SortableHabit({
             )
           )}
         </div>
-      ))}
+      );
+    })}
     </div>
   );
 });

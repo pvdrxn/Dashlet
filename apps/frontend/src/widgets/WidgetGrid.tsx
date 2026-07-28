@@ -52,6 +52,13 @@ export function WidgetGrid({ onAddWidget, gridMode }: WidgetGridProps) {
     saveCache(widgets);
   }, [widgets]);
 
+  const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight });
+  useEffect(() => {
+    const onResize = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   useEffect(() => {
     if (!gridMode) return;
     setWidgets((prev) => {
@@ -156,8 +163,8 @@ export function WidgetGrid({ onAddWidget, gridMode }: WidgetGridProps) {
           {gridMode && widgets.length > 0 && (() => {
             const maxX = widgets.reduce((m, w) => Math.max(m, w.position.x + w.position.w), 0);
             const maxY = widgets.reduce((m, w) => Math.max(m, w.position.y + w.position.h), 0);
-            const gridW = maxX + CELL_W * 2;
-            const gridH = maxY + CELL_H * 2;
+            const gridW = Math.max(maxX + CELL_W * 2, viewport.w);
+            const gridH = Math.max(maxY + CELL_H * 2, viewport.h);
             return (
               <div
                 className="pointer-events-none absolute left-0 top-0"
