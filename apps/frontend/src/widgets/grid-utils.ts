@@ -61,5 +61,9 @@ export function findFreeGridSlot(widgets: WidgetData[], defW: number, defH: numb
       }
     }
   }
-  return { x: 0, y: 0 };
+  let y = 0;
+  while (hasCollision('', 0, y, gridW, gridH, widgets)) {
+    y += CELL_H;
+  }
+  return { x: 0, y };
 }

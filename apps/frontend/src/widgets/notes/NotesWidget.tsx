@@ -48,6 +48,7 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
       {modifiedDate && <span className="shrink-0 text-xs text-gray-500">Saved {modifiedDate}</span>}
       <textarea
         value={localContent}
+        spellCheck={false}
         onChange={handleContentChange}
         placeholder="Write your notes here..."
         className="flex-1 resize-none rounded border border-gray-600 bg-gray-700 p-2 text-sm text-gray-200 outline-none focus:border-blue-400 placeholder-gray-500"

@@ -109,6 +109,7 @@ const SortableItem = memo(function SortableItem({
         <input
           ref={editInputRef}
           value={editText}
+          spellCheck={false}
           onChange={(e) => setEditText(e.target.value)}
           onBlur={() => {
             if (editText.trim() !== item.text) {
@@ -248,6 +249,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
       >
         <input
           value={newText}
+          spellCheck={false}
           onChange={(e) => setNewText(e.target.value)}
           placeholder="Add a task..."
           className="flex-1 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-200 outline-none focus:border-blue-400 placeholder-gray-500"

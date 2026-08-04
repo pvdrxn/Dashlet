@@ -76,6 +76,7 @@ export const DiaryWidget = memo(function DiaryWidget({ config, onConfigChange }:
         <input
           type="text"
           value={page}
+          spellCheck={false}
           onChange={(e) => {
             const newPage = parseInt(e.target.value) || 1;
             if (newPage !== page && newPage > 0) setPage(newPage);

@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { WidgetFrame } from './WidgetFrame';
 import { getWidget } from './registry';
 import type { WidgetData } from './types';
 import * as api from '../api/widgets';
-import { CELL_W, CELL_H, snapX, snapY, snapW, snapH, hasCollision, findFreeGridSlot } from './grid-utils';
+import { CELL_W, CELL_H, snapX, snapY, snapW, snapH, snapUpW, snapUpH, hasCollision, findFreeGridSlot } from './grid-utils';
 
 function loadCache(): WidgetData[] {
   try {
@@ -21,13 +21,30 @@ function saveCache(data: WidgetData[]) {
 }
 
 interface WidgetGridProps {
-  onAddWidget: () => void;
   gridMode: boolean;
+  onAddWidgetRef: React.MutableRefObject<((type: string) => void) | null>;
 }
 
-export function WidgetGrid({ onAddWidget, gridMode }: WidgetGridProps) {
+export function WidgetGrid({ gridMode, onAddWidgetRef }: WidgetGridProps) {
   const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache());
   const [loaded, setLoaded] = useState(false);
+
+  const handleAddWidget = useCallback(async (type: string) => {
+    const def = getWidget(type);
+    if (!def) return;
+    const snappedW = snapUpW(def.minSize.w);
+    const snappedH = snapUpH(def.minSize.h);
+    const slot = findFreeGridSlot(widgets, snappedW, snappedH);
+    const position = { x: slot.x, y: slot.y, w: snappedW, h: snappedH };
+    await api.createWidget(type, def.defaultConfig, position);
+    const data = await api.fetchWidgets();
+    setWidgets(data);
+    saveCache(data);
+  }, [widgets]);
+
+  useEffect(() => {
+    onAddWidgetRef.current = handleAddWidget;
+  }, [handleAddWidget, onAddWidgetRef]);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,10 +93,11 @@ export function WidgetGrid({ onAddWidget, gridMode }: WidgetGridProps) {
 
       const resolved: WidgetData[] = [];
       for (const w of snapped) {
-        if (!hasCollision(w.id, w.position.x, w.position.y, w.position.w, w.position.h, resolved)) {
+        const effectiveH = ((w.config.collapsed as boolean) ?? false) ? 25 : w.position.h;
+        if (!hasCollision(w.id, w.position.x, w.position.y, w.position.w, effectiveH, resolved)) {
           resolved.push(w);
         } else {
-          const slot = findFreeGridSlot(resolved, w.position.w, w.position.h);
+          const slot = findFreeGridSlot(resolved, w.position.w, effectiveH);
           resolved.push({ ...w, position: { ...w.position, x: slot.x, y: slot.y } });
         }
       }
@@ -127,7 +145,8 @@ export function WidgetGrid({ onAddWidget, gridMode }: WidgetGridProps) {
       let nx = widget.position.x + delta.x;
       let ny = widget.position.y + delta.y;
       const nw = widget.position.w;
-      const nh = widget.position.h;
+      const isCollapsed = (widget.config.collapsed as boolean) ?? false;
+      const nh = isCollapsed ? 25 : widget.position.h;
 
       if (gridMode) {
         nx = snapX(nx);

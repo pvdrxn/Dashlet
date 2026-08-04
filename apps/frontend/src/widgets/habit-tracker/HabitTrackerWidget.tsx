@@ -164,6 +164,7 @@ const SortableHabit = memo(function SortableHabit({
             <input
               ref={editInputRef}
               value={editText}
+              spellCheck={false}
               onChange={(e) => setEditText(e.target.value)}
               onBlur={() => { editHabit(habit.id, editText); setEditing(false); }}
               onKeyDown={(e) => {
@@ -330,6 +331,7 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({ config, onC
       >
         <input
           value={newName}
+          spellCheck={false}
           onChange={(e) => setNewName(e.target.value)}
           placeholder="Add a habit..."
           className="flex-1 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-200 outline-none focus:border-blue-400 placeholder-gray-500"

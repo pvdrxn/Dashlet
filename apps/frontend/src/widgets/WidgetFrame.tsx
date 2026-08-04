@@ -80,7 +80,7 @@ export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, min
     zIndex: isDragging ? 999 : ((config.zIndex as number) ?? zIndex),
     opacity: isDragging ? 0.85 : 1,
     transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined,
-    transition: 'width 0.15s ease-in-out, height 0.15s ease-in-out',
+    transition: gridMode ? 'width 0.15s ease-in-out, height 0.15s ease-in-out' : 'none',
   };
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -138,6 +138,7 @@ export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, min
         </span>
         <input
           type="text"
+          spellCheck={false}
           value={(config.title as string) ?? ''}
           onChange={(e) => onConfigChange(id, { ...config, title: e.target.value })}
           onClick={(e) => e.stopPropagation()}
