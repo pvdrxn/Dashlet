@@ -168,12 +168,19 @@ export function WidgetGrid({ onAddWidget, gridMode }: WidgetGridProps) {
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
       <Suspense fallback={<div className="text-gray-500 text-sm">Loading widgets...</div>}>
-        <div className="relative min-h-[600px] w-full">
+        <div className="relative w-full" style={{ minHeight: Math.max(600, ...widgets.map((w) => {
+          const collapsed = (w.config.collapsed as boolean) ?? false;
+          const effectiveH = collapsed ? 25 : w.position.h;
+          return w.position.y + effectiveH + CELL_H * 4;
+        })) }}>
           {gridMode && widgets.length > 0 && (() => {
             const maxX = widgets.reduce((m, w) => Math.max(m, w.position.x + w.position.w), 0);
-            const maxY = widgets.reduce((m, w) => Math.max(m, w.position.y + w.position.h), 0);
-            const gridW = Math.max(maxX + CELL_W * 2, viewport.w);
-            const gridH = Math.max(maxY + CELL_H * 2, viewport.h);
+            const maxY = widgets.reduce((m, w) => {
+              const effectiveH = ((w.config.collapsed as boolean) ?? false) ? 25 : w.position.h;
+              return Math.max(m, w.position.y + effectiveH);
+            }, 0);
+            const gridW = Math.max(maxX + CELL_W * 8, viewport.w);
+            const gridH = Math.max(maxY + CELL_H * 8, viewport.h);
             return (
               <div
                 className="pointer-events-none absolute left-0 top-0"
@@ -193,6 +200,8 @@ export function WidgetGrid({ onAddWidget, gridMode }: WidgetGridProps) {
             const def = getWidget(widget.type);
             if (!def) return null;
 
+            const maxZ = widgets.reduce((m, w) => Math.max(m, (w.config.zIndex as number) ?? 0), 0);
+
             return (
               <WidgetFrame
                 key={widget.id}
@@ -206,6 +215,8 @@ export function WidgetGrid({ onAddWidget, gridMode }: WidgetGridProps) {
                 onDelete={handleDelete}
                 onConfigChange={handleConfigChange}
                 gridMode={gridMode}
+                label={def.label}
+                maxZIndex={maxZ}
               />
             );
           })}

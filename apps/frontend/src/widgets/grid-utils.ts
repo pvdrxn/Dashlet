@@ -1,7 +1,7 @@
 import type { WidgetData } from './types';
 
-export const CELL_W = 260;
-export const CELL_H = 180;
+export const CELL_W = 25;
+export const CELL_H = 25;
 
 export function snapX(value: number): number {
   return Math.round(value / CELL_W) * CELL_W;
@@ -31,13 +31,16 @@ export function hasCollision(
   id: string, x: number, y: number, w: number, h: number,
   widgets: WidgetData[],
 ): boolean {
-  return widgets.some((wgt) =>
-    wgt.id !== id &&
-    x < wgt.position.x + wgt.position.w &&
-    x + w > wgt.position.x &&
-    y < wgt.position.y + wgt.position.h &&
-    y + h > wgt.position.y,
-  );
+  return widgets.some((wgt) => {
+    if (wgt.id === id) return false;
+    const effectiveH = ((wgt.config.collapsed as boolean) ?? false) ? 25 : wgt.position.h;
+    return (
+      x < wgt.position.x + wgt.position.w &&
+      x + w > wgt.position.x &&
+      y < wgt.position.y + effectiveH &&
+      y + h > wgt.position.y
+    );
+  });
 }
 
 export function findFreeGridSlot(widgets: WidgetData[], defW: number, defH: number): { x: number; y: number } {
@@ -46,7 +49,7 @@ export function findFreeGridSlot(widgets: WidgetData[], defW: number, defH: numb
   const gridW = cols * CELL_W;
   const gridH = rows * CELL_H;
 
-  const LIMIT = 40;
+  const LIMIT = 12;
   for (let dist = 0; dist < LIMIT * 2; dist++) {
     for (let cy = 0; cy <= dist && cy < LIMIT; cy++) {
       const cx = dist - cy;

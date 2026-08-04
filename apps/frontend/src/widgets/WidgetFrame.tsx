@@ -1,5 +1,6 @@
-import { memo, useState, useCallback, useRef, Suspense, type ComponentType } from 'react';
+import { memo, useState, useCallback, useRef, useEffect, Suspense, type ComponentType } from 'react';
 import { useDraggable } from '@dnd-kit/core';
+import { FiChevronUp, FiChevronDown, FiX, FiMenu, FiLayers } from 'react-icons/fi';
 import { snapUpW, snapUpH } from './grid-utils';
 
 interface WidgetFrameProps {
@@ -13,26 +14,73 @@ interface WidgetFrameProps {
   onDelete: (id: string) => void;
   onConfigChange: (id: string, config: Record<string, unknown>) => void;
   gridMode: boolean;
+  label: string;
+  maxZIndex: number;
 }
 
-export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, minSize, config, component: WidgetComponent, onResize, onDelete, onConfigChange, gridMode }: WidgetFrameProps) {
+export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, minSize, config, component: WidgetComponent, onResize, onDelete, onConfigChange, gridMode, label, maxZIndex }: WidgetFrameProps) {
   const [size, setSize] = useState({ w: position.w, h: position.h });
   const [isResizing, setIsResizing] = useState(false);
   const resizeStateRef = useRef({ w: position.w, h: position.h });
+  const collapsed = (config.collapsed as boolean) ?? false;
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `widget-${id}`,
   });
+
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pointerPosRef = useRef({ x: 0, y: 0 });
+
+  const HEADER_HEIGHT = 25;
+
+  const handleHeaderPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.button !== 0) return;
+      pointerPosRef.current = { x: e.clientX, y: e.clientY };
+      longPressTimerRef.current = setTimeout(() => {
+        longPressTimerRef.current = null;
+        listeners.onPointerDown(e);
+      }, 25);
+    },
+    [listeners]
+  );
+
+  const handleHeaderPointerUp = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  const handleHeaderPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (!longPressTimerRef.current) return;
+      const dx = Math.abs(e.clientX - pointerPosRef.current.x);
+      const dy = Math.abs(e.clientY - pointerPosRef.current.y);
+      if (dx > 5 || dy > 5) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    };
+  }, []);
 
   const style: React.CSSProperties = {
     position: 'absolute',
     left: position.x,
     top: position.y,
     width: size.w,
-    height: size.h,
-    zIndex: isDragging ? 999 : zIndex,
+    height: collapsed ? HEADER_HEIGHT : size.h,
+    zIndex: isDragging ? 999 : ((config.zIndex as number) ?? zIndex),
     opacity: isDragging ? 0.85 : 1,
     transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined,
+    transition: 'width 0.15s ease-in-out, height 0.15s ease-in-out',
   };
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -72,50 +120,95 @@ export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, min
   );
 
   return (
-    <div style={style} className={`group rounded-lg border bg-gray-800 shadow-lg ${gridMode ? 'border-blue-500/30' : 'border-gray-700'}`}>
+    <div style={style} className="group rounded-lg border border-gray-700 bg-gray-800 shadow-lg overflow-hidden">
       <div
-        ref={setNodeRef}
-        {...listeners}
-        {...attributes}
-        className="flex cursor-grab active:cursor-grabbing items-center justify-between rounded-t-lg border-b border-gray-700 bg-gray-700 px-3 py-1.5 select-none"
-        style={{ touchAction: 'none' }}
+        className={`w-full flex items-center h-[25px] border-b border-gray-700 bg-gray-700 select-none ${collapsed ? 'rounded-b-lg border-b-0' : ''}`}
       >
-        <div className="flex gap-1.5">
-          <span className="inline-block h-2.5 w-2.5 rounded-full bg-red-400" />
-          <span className="inline-block h-2.5 w-2.5 rounded-full bg-yellow-400" />
-          <span className="inline-block h-2.5 w-2.5 rounded-full bg-green-400" />
-        </div>
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onDelete(id); }}
-          className="invisible group-hover:visible rounded p-0.5 text-gray-500 hover:bg-gray-600 hover:text-gray-300 text-xs leading-none"
-          title="Delete widget"
+        <span
+          ref={setNodeRef}
+          {...attributes}
+          className="cursor-grab active:cursor-grabbing shrink-0 flex items-center self-stretch pl-[6px] pr-1"
+          style={{ touchAction: 'none' }}
+          onPointerDown={handleHeaderPointerDown}
+          onPointerUp={handleHeaderPointerUp}
+          onPointerCancel={handleHeaderPointerUp}
+          onPointerMove={handleHeaderPointerMove}
         >
-          ✕
-        </button>
+          <FiMenu size={18} className="text-gray-500" />
+        </span>
+        <input
+          type="text"
+          value={(config.title as string) ?? ''}
+          onChange={(e) => onConfigChange(id, { ...config, title: e.target.value })}
+          onClick={(e) => e.stopPropagation()}
+          className="flex-1 min-w-0 bg-transparent border-transparent outline-none text-base text-white truncate cursor-text"
+          placeholder={label}
+          aria-label="Widget title"
+        />
+        <div className="flex items-center shrink-0 ml-1">
+          {(() => {
+            const isLayered = (config.layered as boolean) ?? false;
+            return (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onConfigChange(id, { ...config, zIndex: isLayered ? 0 : maxZIndex + 1, layered: !isLayered });
+                }}
+                className={`rounded p-0.5 leading-none ${isLayered ? 'text-blue-400 hover:bg-gray-600 hover:text-blue-300' : 'text-gray-400 hover:bg-gray-600 hover:text-gray-200'}`}
+                title={isLayered ? 'Bring to back' : 'Bring to front'}
+              >
+                <FiLayers size={18} />
+              </button>
+            );
+          })()}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onConfigChange(id, { ...config, collapsed: !collapsed });
+            }}
+            className="rounded p-0.5 text-gray-400 hover:bg-gray-600 hover:text-gray-200 leading-none"
+            title={collapsed ? 'Expand widget' : 'Collapse widget'}
+          >
+            {collapsed ? <FiChevronDown size={18} /> : <FiChevronUp size={18} />}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onDelete(id); }}
+            className="rounded p-0.5 text-red-400 hover:bg-gray-600 hover:text-red-300 leading-none ml-0.5"
+            title="Delete widget"
+          >
+            <FiX size={18} />
+          </button>
+        </div>
       </div>
 
-      <div className="overflow-hidden p-3" style={{ height: 'calc(100% - 32px)' }}>
-        <Suspense fallback={<div className="text-xs text-gray-500">Loading...</div>}>
-          <WidgetComponent config={config} onConfigChange={handleConfigChangeWrapped} />
-        </Suspense>
-      </div>
+      {!collapsed && (
+        <>
+          <div className="overflow-hidden p-3" style={{ height: 'calc(100% - 25px)' }}>
+            <Suspense fallback={<div className="text-xs text-gray-500">Loading...</div>}>
+              <WidgetComponent config={config} onConfigChange={handleConfigChangeWrapped} />
+            </Suspense>
+          </div>
 
-      <button
-        type="button"
-        aria-label="Resize widget"
-        onMouseDown={handleResizeStart}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleResizeStart(e as unknown as React.MouseEvent); } }}
-        className={`absolute bottom-0 right-0 h-4 w-4 cursor-nwse-resize ${isResizing ? 'bg-blue-200' : ''}`}
-        style={{
-          backgroundImage: 'linear-gradient(135deg, transparent 50%, #999 50%)',
-          backgroundSize: '8px 8px',
-          backgroundPosition: 'bottom right',
-          backgroundRepeat: 'no-repeat',
-          border: 'none',
-          padding: 0,
-        }}
-      />
+          <button
+            type="button"
+            aria-label="Resize widget"
+            onMouseDown={handleResizeStart}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleResizeStart(e as unknown as React.MouseEvent); } }}
+            className={`absolute bottom-0 right-0 h-4 w-4 cursor-nwse-resize ${isResizing ? 'bg-blue-200' : ''}`}
+            style={{
+              backgroundImage: 'linear-gradient(135deg, transparent 50%, #999 50%)',
+              backgroundSize: '8px 8px',
+              backgroundPosition: 'bottom right',
+              backgroundRepeat: 'no-repeat',
+              border: 'none',
+              padding: 0,
+            }}
+          />
+        </>
+      )}
     </div>
   );
 });

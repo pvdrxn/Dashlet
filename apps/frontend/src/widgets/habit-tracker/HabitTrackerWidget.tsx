@@ -1,4 +1,5 @@
 import { memo, useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { FiMenu } from 'react-icons/fi';
 import {
   DndContext,
   closestCenter,
@@ -21,6 +22,7 @@ interface HabitItem {
 }
 
 interface HabitTrackerConfig {
+  title?: string;
   habits?: HabitItem[];
 }
 
@@ -146,9 +148,9 @@ const SortableHabit = memo(function SortableHabit({
         <button
           {...attributes}
           {...listeners}
-          className="cursor-grab active:cursor-grabbing touch-none text-gray-600 hover:text-gray-400 text-sm leading-none px-0.5"
+          className="flex items-center -ml-2 cursor-grab active:cursor-grabbing touch-none text-gray-600 hover:text-gray-400 text-sm leading-none px-0.5"
         >
-          &#x2630;
+          <FiMenu size={18} />
         </button>
         <input
           type="checkbox"
@@ -312,9 +314,6 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({ config, onC
 
   return (
     <div className="flex h-full flex-col gap-1">
-      <div className="border-b border-gray-700 pb-1">
-        <span className="text-sm font-semibold text-gray-200">habits</span>
-      </div>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={habits.map((h) => h.id)} strategy={verticalListSortingStrategy}>
           <div className="flex-1 overflow-auto space-y-0.5">

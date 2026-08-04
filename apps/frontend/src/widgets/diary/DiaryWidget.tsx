@@ -73,15 +73,22 @@ export const DiaryWidget = memo(function DiaryWidget({ config, onConfigChange }:
         >
           &#x25C0;
         </button>
-        <span className="text-sm font-semibold text-gray-200">Page {page}</span>
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={toggleSearch} className="text-gray-500 hover:text-gray-300" aria-label="Search entries" title="Search">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-5 h-5">
-              <path fillRule="evenodd" d="M9.965 11.026a5 5 0 1 1 1.06-1.06l2.755 2.754a.75.75 0 1 1-1.06 1.06l-2.755-2.754ZM10.5 7a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z" clipRule="evenodd" />
-            </svg>
-          </button>
-          <button type="button" onClick={goNext} className="text-lg text-gray-500 hover:text-gray-300">&#x25B6;</button>
-        </div>
+        <input
+          type="text"
+          value={page}
+          onChange={(e) => {
+            const newPage = parseInt(e.target.value) || 1;
+            if (newPage !== page && newPage > 0) setPage(newPage);
+          }}
+          className="w-16 rounded border border-gray-600 bg-gray-700 px-2 py-0.5 text-sm text-gray-200 outline-none focus:border-blue-400 text-center"
+          placeholder="Page"
+        />
+        <button type="button" onClick={toggleSearch} className="text-gray-500 hover:text-gray-300" aria-label="Search entries" title="Search">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-5 h-5">
+            <path fillRule="evenodd" d="M9.965 11.026a5 5 0 1 1 1.06-1.06l2.755 2.754a.75.75 0 1 1-1.06 1.06l-2.755-2.754ZM10.5 7a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z" clipRule="evenodd" />
+          </svg>
+        </button>
+        <button type="button" onClick={goNext} className="text-lg text-gray-500 hover:text-gray-300">&#x25B6;</button>
       </div>
       {showSearch && (
         <div className="flex flex-col gap-1">

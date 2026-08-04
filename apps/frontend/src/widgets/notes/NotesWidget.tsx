@@ -13,32 +13,25 @@ interface NotesWidgetProps {
 
 export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }: NotesWidgetProps) {
   const { title = 'Notes', content = '', lastModified } = config as NotesConfig;
-  const [localTitle, setLocalTitle] = useState(title);
   const [localContent, setLocalContent] = useState(content);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const scheduleSave = useCallback((newTitle: string, newContent: string) => {
+  const scheduleSave = useCallback((newContent: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       onConfigChange({
-        title: newTitle,
+        title,
         content: newContent,
         lastModified: new Date().toISOString(),
       });
     }, 500);
-  }, [onConfigChange]);
-
-  const handleTitleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const newTitle = e.target.value;
-    setLocalTitle(newTitle);
-    scheduleSave(newTitle, localContent);
-  }, [localContent, scheduleSave]);
+  }, [onConfigChange, title]);
 
   const handleContentChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newContent = e.target.value;
     setLocalContent(newContent);
-    scheduleSave(localTitle, newContent);
-  }, [localTitle, scheduleSave]);
+    scheduleSave(newContent);
+  }, [scheduleSave]);
 
   useEffect(() => {
     return () => {
@@ -52,15 +45,7 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
 
   return (
     <div className="flex h-full flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <input
-          value={localTitle}
-          onChange={handleTitleChange}
-          className="flex-1 border-none bg-transparent text-sm font-semibold text-gray-200 outline-none"
-          aria-label="Note title"
-        />
-        {modifiedDate && <span className="shrink-0 text-xs text-gray-500">Saved {modifiedDate}</span>}
-      </div>
+      {modifiedDate && <span className="shrink-0 text-xs text-gray-500">Saved {modifiedDate}</span>}
       <textarea
         value={localContent}
         onChange={handleContentChange}

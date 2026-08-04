@@ -167,16 +167,18 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
 
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3">
-      <div className="relative flex items-center justify-center">
-        <svg width="140" height="140" className="-rotate-90">
-          <circle cx="70" cy="70" r="60" fill="none" stroke="#374151" strokeWidth="6" />
-          <circle cx="70" cy="70" r="60" fill="none"
-            stroke={phase === 'break' ? '#22c55e' : '#3b82f6'} strokeWidth="6"
-            strokeDasharray={`${2 * Math.PI * 60}`}
-            strokeDashoffset={`${2 * Math.PI * 60 * (1 - Math.min(progress, 100) / 100)}`}
-            strokeLinecap="round" className="transition-all duration-1000" />
-        </svg>
-        <span className="absolute text-2xl font-mono font-bold text-gray-200">{formatTime(remainingSeconds)}</span>
+      <div className="flex items-center justify-center gap-3">
+        <div className="relative flex items-center justify-center">
+          <svg width="140" height="140" className="-rotate-90">
+            <circle cx="70" cy="70" r="60" fill="none" stroke="#374151" strokeWidth="6" />
+            <circle cx="70" cy="70" r="60" fill="none"
+              stroke={phase === 'break' ? '#22c55e' : '#3b82f6'} strokeWidth="6"
+              strokeDasharray={`${2 * Math.PI * 60}`}
+              strokeDashoffset={`${2 * Math.PI * 60 * (1 - Math.min(progress, 100) / 100)}`}
+              strokeLinecap="round" className="transition-all duration-1000" />
+          </svg>
+          <span className="absolute text-2xl font-mono font-bold text-gray-200">{formatTime(remainingSeconds)}</span>
+        </div>
       </div>
 
       <div className="flex gap-2">

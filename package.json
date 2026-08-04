@@ -9,11 +9,14 @@
     "doctor": "npx react-doctor@latest"
   },
   "devDependencies": {
-    "turbo": "^2.5.0",
-    "prettier": "^3.5.0"
+    "prettier": "^3.5.0",
+    "turbo": "^2.5.0"
   },
   "packageManager": "pnpm@10.6.0",
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "react-icons": "^5.7.0"
   }
 }
