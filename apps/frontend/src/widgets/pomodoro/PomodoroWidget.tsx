@@ -139,12 +139,17 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
   }, [state, workMinutes, restMinutes, phase]);
 
   const start = useCallback(() => {
-    const isBreakStart = state === 'break';
-    const totalSecs = isBreakStart ? restMinutes * 60 : workMinutes * 60;
+    const isBreak = phase === 'break' || state === 'break';
+    const totalSecs = isBreak ? restMinutes * 60 : workMinutes * 60;
     const init = state === 'paused' ? remainingSeconds : totalSecs;
     remainingRef.current = init;
-    onConfigChange({ ...config, state: 'running', remainingSeconds: init, phase: isBreakStart ? 'break' : 'work' });
-  }, [state, remainingSeconds, workMinutes, restMinutes, config, onConfigChange]);
+    onConfigChange({
+      ...config,
+      state: 'running',
+      remainingSeconds: init,
+      phase: isBreak ? 'break' : 'work',
+    });
+  }, [state, phase, remainingSeconds, workMinutes, restMinutes, config, onConfigChange]);
 
   const pause = useCallback(() => {
     workerRef.current?.postMessage({ t: 'stop' });
@@ -157,7 +162,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
   }, [workMinutes, config, onConfigChange]);
 
   const isRunning = state === 'running';
-  const totalSeconds = state === 'break' ? restMinutes * 60 : workMinutes * 60;
+  const totalSeconds = phase === 'break' ? restMinutes * 60 : workMinutes * 60;
   const progress = totalSeconds > 0 ? ((totalSeconds - remainingSeconds) / totalSeconds) * 100 : 0;
 
   return (
@@ -166,7 +171,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
         <svg width="140" height="140" className="-rotate-90">
           <circle cx="70" cy="70" r="60" fill="none" stroke="#374151" strokeWidth="6" />
           <circle cx="70" cy="70" r="60" fill="none"
-            stroke={state === 'break' ? '#22c55e' : '#3b82f6'} strokeWidth="6"
+            stroke={phase === 'break' ? '#22c55e' : '#3b82f6'} strokeWidth="6"
             strokeDasharray={`${2 * Math.PI * 60}`}
             strokeDashoffset={`${2 * Math.PI * 60 * (1 - Math.min(progress, 100) / 100)}`}
             strokeLinecap="round" className="transition-all duration-1000" />
@@ -200,7 +205,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
         <label className="flex items-center gap-1 text-gray-400">
           Rest
           <input type="number" min={1} max={30} value={restMinutes}
-            onChange={(e) => { const v = Number(e.target.value); onConfigChange({ ...config, restMinutes: v, ...(state === 'break' ? { remainingSeconds: v * 60 } : {}) }); }}
+            onChange={(e) => { const v = Number(e.target.value); onConfigChange({ ...config, restMinutes: v, ...(phase === 'break' && state !== 'running' ? { remainingSeconds: v * 60 } : {}) }); }}
             className="w-12 rounded border border-gray-600 bg-gray-700 px-1 py-0.5 text-center text-gray-200" disabled={isRunning} />
         </label>
       </div>

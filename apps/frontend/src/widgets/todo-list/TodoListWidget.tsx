@@ -1,4 +1,4 @@
-import { memo, useState, useCallback, useRef, useEffect } from 'react';
+import { memo, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -30,8 +30,32 @@ interface TodoListWidgetProps {
   onConfigChange: (config: Record<string, unknown>) => void;
 }
 
-let nextId = 1;
-function genId() { return `todo-${nextId++}`; }
+function genId(prefix = 'todo'): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+}
+
+function ensureUniqueIds(items: TodoItem[]): TodoItem[] {
+  const seen = new Set<string>();
+  let hasDuplicates = false;
+
+  const sanitized = items.map((item) => {
+    if (!item || !item.id || seen.has(item.id)) {
+      hasDuplicates = true;
+      return {
+        id: genId('todo'),
+        text: item?.text ?? '',
+        completed: Boolean(item?.completed),
+      };
+    }
+    seen.add(item.id);
+    return item;
+  });
+
+  return hasDuplicates ? sanitized : items;
+}
 
 const SortableItem = memo(function SortableItem({
   item,
@@ -53,14 +77,23 @@ const SortableItem = memo(function SortableItem({
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(item.text);
   const editInputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => { if (editing && editInputRef.current) editInputRef.current.focus(); }, [editing]);
+
+  useEffect(() => {
+    setEditText(item.text);
+  }, [item.text]);
+
+  useEffect(() => {
+    if (editing && editInputRef.current) editInputRef.current.focus();
+  }, [editing]);
 
   return (
     <div ref={setNodeRef} style={style} className="flex items-center gap-2 group/item rounded px-0.5 hover:bg-gray-700/50">
       <button
+        type="button"
         {...attributes}
         {...listeners}
         className="cursor-grab active:cursor-grabbing touch-none text-gray-600 hover:text-gray-400 text-sm leading-none px-0.5"
+        aria-label={`Reorder task ${item.text}`}
       >
         &#x2630;
       </button>
@@ -76,10 +109,23 @@ const SortableItem = memo(function SortableItem({
           ref={editInputRef}
           value={editText}
           onChange={(e) => setEditText(e.target.value)}
-          onBlur={() => { editItem(item.id, editText); setEditing(false); }}
+          onBlur={() => {
+            if (editText.trim() !== item.text) {
+              editItem(item.id, editText.trim());
+            }
+            setEditing(false);
+          }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') { editItem(item.id, editText); setEditing(false); }
-            if (e.key === 'Escape') { setEditText(item.text); setEditing(false); }
+            if (e.key === 'Enter') {
+              if (editText.trim() !== item.text) {
+                editItem(item.id, editText.trim());
+              }
+              setEditing(false);
+            }
+            if (e.key === 'Escape') {
+              setEditText(item.text);
+              setEditing(false);
+            }
           }}
           className="flex-1 rounded border border-blue-500 bg-gray-800 px-1 py-0.5 text-sm text-gray-200 outline-none"
           aria-label="Edit task text"
@@ -98,6 +144,7 @@ const SortableItem = memo(function SortableItem({
         type="button"
         onClick={() => removeItem(item.id)}
         className="invisible group-hover/item:visible text-xs text-gray-500 hover:text-red-400"
+        aria-label={`Delete task ${item.text}`}
       >
         &#x2715;
       </button>
@@ -106,18 +153,34 @@ const SortableItem = memo(function SortableItem({
 });
 
 export const TodoListWidget = memo(function TodoListWidget({ config, onConfigChange }: TodoListWidgetProps) {
-  const { title = 'Todo List', items = [] } = config as TodoListConfig;
+  const { title = 'Todo List', items: rawItems = [] } = (config ?? {}) as TodoListConfig;
   const [newText, setNewText] = useState('');
+
+  const items = useMemo(() => ensureUniqueIds(rawItems), [rawItems]);
+
+  useEffect(() => {
+    if (items !== rawItems) {
+      onConfigChange({ ...config, items });
+    }
+  }, [items, rawItems, config, onConfigChange]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
 
   const addItem = useCallback(() => {
-    if (!newText.trim()) return;
+    const trimmed = newText.trim();
+    if (!trimmed) return;
+
+    const newItem: TodoItem = {
+      id: genId('todo'),
+      text: trimmed,
+      completed: false,
+    };
+
     onConfigChange({
       ...config,
-      items: [...items, { id: genId(), text: newText.trim(), completed: false }],
+      items: [...items, newItem],
     });
     setNewText('');
   }, [newText, config, items, onConfigChange]);
@@ -151,8 +214,11 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    const oldIndex = items.findIndex((i) => i.id === active.id);
-    const newIndex = items.findIndex((i) => i.id === over.id);
+    const activeId = String(active.id);
+    const overId = String(over.id);
+
+    const oldIndex = items.findIndex((i) => i.id === activeId);
+    const newIndex = items.findIndex((i) => i.id === overId);
     if (oldIndex === -1 || newIndex === -1) return;
 
     const reordered = [...items];

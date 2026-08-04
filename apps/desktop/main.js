@@ -1,4 +1,4 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, Menu } = require('electron');
 const { fork } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -10,6 +10,7 @@ let frontendServer = null;
 
 const isDev = !app.isPackaged;
 const BACKEND_PORT = 3001;
+const FRONTEND_PORT = 3002;
 
 function getBackendPath() {
   if (isDev) {
@@ -119,7 +120,7 @@ function startFrontendServer(publicPath) {
       });
     });
 
-    frontendServer.listen(0, () => resolve(frontendServer.address().port));
+    frontendServer.listen(FRONTEND_PORT, () => resolve(frontendServer.address().port));
     frontendServer.on('error', reject);
   });
 }
@@ -152,6 +153,7 @@ async function createWindow(frontendUrl) {
 }
 
 app.on('ready', async () => {
+  Menu.setApplicationMenu(null);
   if (!isDev) {
     const publicPath = getPublicPath();
     const port = await startFrontendServer(publicPath);

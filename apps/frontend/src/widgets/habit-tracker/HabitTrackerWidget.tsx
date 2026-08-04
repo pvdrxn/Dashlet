@@ -58,8 +58,32 @@ function computeStreak(completedDates: string[]): number {
   return streak;
 }
 
-let nextId = 1;
-function genId() { return `habit-${nextId++}`; }
+function genId(prefix = 'habit'): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+}
+
+function ensureUniqueIds(habits: HabitItem[]): HabitItem[] {
+  const seen = new Set<string>();
+  let hasDuplicates = false;
+
+  const sanitized = habits.map((habit) => {
+    if (!habit || !habit.id || seen.has(habit.id)) {
+      hasDuplicates = true;
+      return {
+        id: genId('habit'),
+        name: habit?.name ?? '',
+        completedDates: Array.isArray(habit?.completedDates) ? habit.completedDates : [],
+      };
+    }
+    seen.add(habit.id);
+    return habit;
+  });
+
+  return hasDuplicates ? sanitized : habits;
+}
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -214,8 +238,16 @@ const SortableHabit = memo(function SortableHabit({
 });
 
 export const HabitTrackerWidget = memo(function HabitTrackerWidget({ config, onConfigChange }: HabitTrackerWidgetProps) {
-  const { habits = [] } = config as HabitTrackerConfig;
+  const { habits: rawHabits = [] } = (config ?? {}) as HabitTrackerConfig;
   const [newName, setNewName] = useState('');
+
+  const habits = useMemo(() => ensureUniqueIds(rawHabits), [rawHabits]);
+
+  useEffect(() => {
+    if (habits !== rawHabits) {
+      onConfigChange({ ...config, habits });
+    }
+  }, [habits, rawHabits, config, onConfigChange]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),

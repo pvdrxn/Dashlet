@@ -27,6 +27,7 @@ interface WidgetGridProps {
 
 export function WidgetGrid({ onAddWidget, gridMode }: WidgetGridProps) {
   const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache());
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -36,6 +37,7 @@ export function WidgetGrid({ onAddWidget, gridMode }: WidgetGridProps) {
         if (!cancelled) {
           setWidgets(data);
           saveCache(data);
+          setLoaded(true);
         }
       }).catch(() => {
         if (!cancelled) {
@@ -142,6 +144,13 @@ export function WidgetGrid({ onAddWidget, gridMode }: WidgetGridProps) {
   }, [gridMode]);
 
   if (widgets.length === 0) {
+    if (!loaded) {
+      return (
+        <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+          <p className="mb-4">Loading widgets...</p>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col items-center justify-center py-20 text-gray-400">
         <p className="mb-4">No widgets yet</p>
