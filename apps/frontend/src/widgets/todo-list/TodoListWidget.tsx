@@ -10,14 +10,16 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
-import { FiChevronDown, FiChevronRight, FiCornerDownRight } from 'react-icons/fi';
+import { FiChevronDown, FiChevronRight, FiCornerDownRight, FiPlus } from 'react-icons/fi';
 import {
   DndContext,
   closestCenter,
   PointerSensor,
   useSensor,
   useSensors,
+  DragOverlay,
   type DragEndEvent,
+  type DragStartEvent,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -105,6 +107,7 @@ function AutoGrowInput({
   inputRef,
   minWidth = 48,
   maxWidth = 240,
+  expand = false,
   className = '',
   placeholder,
   ...rest
@@ -112,6 +115,7 @@ function AutoGrowInput({
   inputRef?: RefObject<HTMLInputElement | null>;
   minWidth?: number;
   maxWidth?: number | string;
+  expand?: boolean;
 }) {
   const spanRef = useRef<HTMLSpanElement>(null);
   const [width, setWidth] = useState(0);
@@ -126,8 +130,12 @@ function AutoGrowInput({
 
   return (
     <div
-      className="relative inline-block"
-      style={{ width: Math.max(width, minWidth), minWidth, maxWidth }}
+      className={`relative inline-block ${expand ? 'min-w-0 flex-1' : ''}`}
+      style={
+        expand
+          ? undefined
+          : { width: Math.max(width, minWidth), minWidth, maxWidth }
+      }
     >
       <span
         ref={spanRef}
@@ -148,11 +156,13 @@ function AutoGrowInput({
   );
 }
 
-const SortableItem = memo(function SortableItem({
+const TaskRowContent = memo(function TaskRowContent({
   item,
   level,
   childCount,
   completedChildCount,
+  editing,
+  onEditingChange,
   toggleItem,
   removeItem,
   editItem,
@@ -163,25 +173,16 @@ const SortableItem = memo(function SortableItem({
   level: number;
   childCount: number;
   completedChildCount: number;
+  editing: boolean;
+  onEditingChange: (editing: boolean) => void;
   toggleItem: (id: string) => void;
   removeItem: (id: string) => void;
   editItem: (id: string, text: string) => void;
   toggleIndent: (id: string) => void;
   toggleCollapse: (id: string) => void;
 }) {
-  const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(item.text);
   const editInputRef = useRef<HTMLInputElement>(null);
-
-  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: item.id,
-    disabled: editing,
-  });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
-  };
 
   useEffect(() => {
     setEditText(item.text);
@@ -192,12 +193,7 @@ const SortableItem = memo(function SortableItem({
   }, [editing]);
 
   return (
-    <div
-      ref={setNodeRef}
-      {...listeners}
-      style={{ ...style, paddingLeft: 21 + level * 16 }}
-      className="group/item mx-0.5 relative flex cursor-grab touch-none items-center gap-1.5 rounded py-0.5 hover:bg-gray-700/50 active:cursor-grabbing"
-    >
+    <>
       <button
         type="button"
         onClick={() => toggleIndent(item.id)}
@@ -234,18 +230,18 @@ const SortableItem = memo(function SortableItem({
             if (editText.trim() !== item.text) {
               editItem(item.id, editText.trim());
             }
-            setEditing(false);
+            onEditingChange(false);
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               if (editText.trim() !== item.text) {
                 editItem(item.id, editText.trim());
               }
-              setEditing(false);
+              onEditingChange(false);
             }
             if (e.key === 'Escape') {
               setEditText(item.text);
-              setEditing(false);
+              onEditingChange(false);
             }
           }}
           className="rounded border border-blue-500 bg-gray-800 px-1 py-0.5 text-sm text-gray-200 outline-none"
@@ -256,13 +252,13 @@ const SortableItem = memo(function SortableItem({
           type="button"
           onClick={() => {
             setEditText(item.text);
-            setEditing(true);
+            onEditingChange(true);
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
               setEditText(item.text);
-              setEditing(true);
+              onEditingChange(true);
             }
           }}
           className={`min-w-0 flex-1 cursor-text break-words bg-transparent p-0 text-left text-sm ${
@@ -301,6 +297,63 @@ const SortableItem = memo(function SortableItem({
           &#x2715;
         </button>
       </div>
+    </>
+  );
+});
+
+const SortableItem = memo(function SortableItem({
+  item,
+  level,
+  childCount,
+  completedChildCount,
+  toggleItem,
+  removeItem,
+  editItem,
+  toggleIndent,
+  toggleCollapse,
+}: {
+  item: TodoItem;
+  level: number;
+  childCount: number;
+  completedChildCount: number;
+  toggleItem: (id: string) => void;
+  removeItem: (id: string) => void;
+  editItem: (id: string, text: string) => void;
+  toggleIndent: (id: string) => void;
+  toggleCollapse: (id: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+
+  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: item.id,
+    disabled: editing,
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      style={{ ...style, paddingLeft: 21 + level * 16 }}
+      className="group/item mx-0.5 relative flex cursor-grab touch-none items-center gap-1.5 rounded py-0.5 hover:bg-gray-700/50 active:cursor-grabbing"
+    >
+      <TaskRowContent
+        item={item}
+        level={level}
+        childCount={childCount}
+        completedChildCount={completedChildCount}
+        editing={editing}
+        onEditingChange={setEditing}
+        toggleItem={toggleItem}
+        removeItem={removeItem}
+        editItem={editItem}
+        toggleIndent={toggleIndent}
+        toggleCollapse={toggleCollapse}
+      />
     </div>
   );
 });
@@ -308,9 +361,13 @@ const SortableItem = memo(function SortableItem({
 export const TodoListWidget = memo(function TodoListWidget({ config, onConfigChange }: TodoListWidgetProps) {
   const { items: rawItems = [] } = (config ?? {}) as TodoListConfig;
   const [newText, setNewText] = useState('');
+  const [activeId, setActiveId] = useState<string | null>(null);
 
   const items = useMemo(() => ensureUniqueIds(rawItems), [rawItems]);
   const childrenMap = useMemo(() => buildChildrenMap(items), [items]);
+
+  const activeItem = activeId ? items.find((i) => i.id === activeId) ?? null : null;
+  const activeChildren = activeItem ? (childrenMap.get(activeItem.id) ?? []) : [];
 
   useEffect(() => {
     if (items !== rawItems) {
@@ -415,7 +472,12 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
     });
   }, [config, items, onConfigChange]);
 
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveId(String(event.active.id));
+  }, []);
+
   const handleDragEnd = useCallback((event: DragEndEvent) => {
+    setActiveId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
@@ -430,7 +492,21 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
     const [moved] = reordered.splice(oldIndex, 1);
     reordered.splice(newIndex, 0, moved);
 
-    onConfigChange({ ...config, items: toTreeOrder(reordered) });
+    let result = reordered;
+    if (moved.parentId) {
+      const movedIndex = reordered.findIndex((i) => i.id === moved.id);
+      const newParent = [...reordered]
+        .slice(0, movedIndex)
+        .reverse()
+        .find((i) => !i.parentId);
+      result = reordered.map((i) =>
+        i.id === moved.id
+          ? { ...i, parentId: newParent?.id ?? undefined }
+          : i,
+      );
+    }
+
+    onConfigChange({ ...config, items: toTreeOrder(result) });
   }, [items, config, onConfigChange]);
 
   const renderTree = useMemo(() => {
@@ -469,12 +545,40 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
   return (
     <div className="flex h-full flex-col gap-2">
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragCancel={() => setActiveId(null)}
+        onDragEnd={handleDragEnd}
+      >
         <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
           <div className="-mx-3 flex-1 space-y-0.5 overflow-auto">
             {renderTree}
           </div>
         </SortableContext>
+        <DragOverlay>
+          {activeItem ? (
+            <div
+              className="pointer-events-none group/item relative inline-flex cursor-grabbing touch-none items-center gap-1.5 rounded bg-gray-800 py-0.5 shadow-2xl ring-1 ring-gray-600"
+              style={{ paddingLeft: 21 + (activeItem.parentId ? 1 : 0) * 16 }}
+            >
+              <TaskRowContent
+                item={activeItem}
+                level={activeItem.parentId ? 1 : 0}
+                childCount={activeChildren.length}
+                completedChildCount={activeChildren.filter((c) => c.completed).length}
+                editing={false}
+                onEditingChange={() => {}}
+                toggleItem={toggleItem}
+                removeItem={removeItem}
+                editItem={editItem}
+                toggleIndent={toggleIndent}
+                toggleCollapse={toggleCollapse}
+              />
+            </div>
+          ) : null}
+        </DragOverlay>
       </DndContext>
 
       <form
@@ -482,9 +586,8 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
         className="flex gap-1 border-t border-gray-700 pt-1"
       >
         <AutoGrowInput
+          expand
           value={newText}
-          minWidth={64}
-          maxWidth="calc(100% - 3.5rem)"
           placeholder="Add a task..."
           onChange={(e) => setNewText(e.target.value)}
           className="rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-200 outline-none placeholder-gray-500 focus:border-blue-400"
@@ -492,10 +595,12 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
         />
         <button
           type="submit"
-          className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
+          title="Add task"
+          className="rounded bg-blue-600 p-1 text-white hover:bg-blue-500 disabled:opacity-50"
           disabled={!newText.trim()}
+          aria-label="Add task"
         >
-          Add
+          <FiPlus size={16} />
         </button>
       </form>
     </div>

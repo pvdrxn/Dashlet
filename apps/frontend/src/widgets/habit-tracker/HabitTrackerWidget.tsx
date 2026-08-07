@@ -1,5 +1,5 @@
 import { memo, useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { FiMenu } from 'react-icons/fi';
+import { FiMenu, FiPlus } from 'react-icons/fi';
 import {
   DndContext,
   closestCenter,
@@ -339,10 +339,12 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({ config, onC
         />
         <button
           type="submit"
-          className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
+          title="Add habit"
+          className="rounded bg-blue-600 p-1 text-white hover:bg-blue-500 disabled:opacity-50"
           disabled={!newName.trim()}
+          aria-label="Add habit"
         >
-          Add
+          <FiPlus size={16} />
         </button>
       </form>
     </div>
