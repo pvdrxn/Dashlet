@@ -158,7 +158,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
 
   const reset = useCallback(() => {
     workerRef.current?.postMessage({ t: 'stop' });
-    onConfigChange({ ...config, state: 'idle', phase: 'work', remainingSeconds: workMinutes * 60 });
+    onConfigChange({ ...config, state: 'idle', phase: 'work', remainingSeconds: workMinutes * 60, cycleCount: 0 });
   }, [workMinutes, config, onConfigChange]);
 
   const isRunning = state === 'running';

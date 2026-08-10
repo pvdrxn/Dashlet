@@ -23,9 +23,10 @@ function saveCache(data: WidgetData[]) {
 interface WidgetGridProps {
   gridMode: boolean;
   onAddWidgetRef: React.MutableRefObject<((type: string) => void) | null>;
+  onRefreshRef?: React.MutableRefObject<(() => void) | null>;
 }
 
-export function WidgetGrid({ gridMode, onAddWidgetRef }: WidgetGridProps) {
+export function WidgetGrid({ gridMode, onAddWidgetRef, onRefreshRef }: WidgetGridProps) {
   const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache());
   const [loaded, setLoaded] = useState(false);
 
@@ -45,6 +46,18 @@ export function WidgetGrid({ gridMode, onAddWidgetRef }: WidgetGridProps) {
   useEffect(() => {
     onAddWidgetRef.current = handleAddWidget;
   }, [handleAddWidget, onAddWidgetRef]);
+
+  const refresh = useCallback(() => {
+    api.fetchWidgets().then((data) => {
+      setWidgets(data);
+      saveCache(data);
+      setLoaded(true);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (onRefreshRef) onRefreshRef.current = refresh;
+  }, [refresh, onRefreshRef]);
 
   useEffect(() => {
     let cancelled = false;

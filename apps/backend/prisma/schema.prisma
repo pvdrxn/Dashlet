@@ -24,9 +24,10 @@ model Widget {
   type     String
   config   String   @default("{}")
   position String   @default("{\"x\":0,\"y\":0,\"w\":300,\"h\":200}")
-  zIndex   Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  zIndex    Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 }
 
 model TodoList {

@@ -12,6 +12,7 @@ export interface WidgetDto {
   config: Record<string, unknown>;
   position: Position;
   zIndex: number;
+  deletedAt: string | null;
 }
 
 export interface CreateWidgetDto {

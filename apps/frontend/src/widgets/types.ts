@@ -14,6 +14,7 @@ export interface WidgetData {
   config: Record<string, unknown>;
   position: Position;
   zIndex: number;
+  deletedAt?: string | null;
 }
 
 export type WidgetType = 'todo-list' | 'pomodoro' | 'notes' | 'calculator' | 'habit-tracker' | 'diary';

@@ -1,17 +1,18 @@
 import { getAllWidgets } from '../widgets/registry';
+import { FiTrash2 } from 'react-icons/fi';
 
 interface ToolbarProps {
   onAddWidget: (type: string) => void;
   gridMode: boolean;
   onToggleGridMode: () => void;
+  onOpenTrash: () => void;
 }
 
-export function Toolbar({ onAddWidget, gridMode, onToggleGridMode }: ToolbarProps) {
+export function Toolbar({ onAddWidget, gridMode, onToggleGridMode, onOpenTrash }: ToolbarProps) {
   const availableWidgets = getAllWidgets();
 
   return (
-    <div className="flex items-center gap-2 border-b border-gray-700 bg-gray-800 px-4 py-2 shadow-sm">
-      <span className="mr-2 text-sm font-semibold text-gray-300">Widgets</span>
+    <div className="flex items-center gap-2 px-4 py-2">
       {availableWidgets.map(([type, def]) => (
         <button
           key={type}
@@ -23,6 +24,14 @@ export function Toolbar({ onAddWidget, gridMode, onToggleGridMode }: ToolbarProp
         </button>
       ))}
       <div className="ml-auto flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onOpenTrash}
+          className="rounded-md border border-gray-600 px-2.5 py-1 text-sm text-gray-400 hover:bg-gray-700 hover:text-gray-200"
+          title="Open trash"
+        >
+          <FiTrash2 size={15} className="inline-block -mt-0.5" />
+        </button>
         <span className="text-xs text-gray-500">Snap Grid</span>
         <button
           type="button"

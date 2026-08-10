@@ -1,8 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateWidgetDto, UpdateWidgetDto, WidgetDto } from '@widget-master/shared';
 
 const HARDCODED_USER_ID = 'hardcoded-user-id';
+const TRASH_RETENTION_DAYS = 30;
+const TRASH_PURGE_INTERVAL_MS = 60 * 60 * 1000;
 
 function parseJsonField<T>(value: string | null, fallback: T): T {
   try {
@@ -17,12 +19,26 @@ function toWidgetDto(widget: Record<string, unknown>): WidgetDto {
     ...widget,
     config: parseJsonField(widget.config as string, {}),
     position: parseJsonField(widget.position as string, { x: 0, y: 0, w: 300, h: 200 }),
+    deletedAt: widget.deletedAt ? new Date(widget.deletedAt as string).toISOString() : null,
   } as WidgetDto;
 }
 
 @Injectable()
-export class WidgetsService {
+export class WidgetsService implements OnModuleInit {
+  private purgeTimer: ReturnType<typeof setInterval> | null = null;
+
   constructor(private readonly prisma: PrismaService) {}
+
+  onModuleInit() {
+    this.purgeExpired().catch(() => {});
+    this.purgeTimer = setInterval(() => {
+      this.purgeExpired().catch(() => {});
+    }, TRASH_PURGE_INTERVAL_MS);
+  }
+
+  onModuleDestroy() {
+    if (this.purgeTimer) clearInterval(this.purgeTimer);
+  }
 
   private async ensureUser(userId: string) {
     const existing = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -33,10 +49,25 @@ export class WidgetsService {
     }
   }
 
+  private async purgeExpired() {
+    const cutoff = new Date(Date.now() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    await this.prisma.widget.deleteMany({ where: { deletedAt: { lt: cutoff } } });
+  }
+
   async findAll(userId: string) {
+    await this.purgeExpired();
     const widgets = await this.prisma.widget.findMany({
-      where: { userId },
+      where: { userId, deletedAt: null },
       orderBy: { createdAt: 'asc' },
+    });
+    return widgets.map(toWidgetDto);
+  }
+
+  async findTrash(userId: string) {
+    await this.purgeExpired();
+    const widgets = await this.prisma.widget.findMany({
+      where: { userId, deletedAt: { not: null } },
+      orderBy: { deletedAt: 'desc' },
     });
     return widgets.map(toWidgetDto);
   }
@@ -69,6 +100,28 @@ export class WidgetsService {
   }
 
   async remove(id: string) {
+    const existing = await this.prisma.widget.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Widget not found');
+
+    const widget = await this.prisma.widget.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+    return toWidgetDto(widget);
+  }
+
+  async restore(id: string) {
+    const existing = await this.prisma.widget.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Widget not found');
+
+    const widget = await this.prisma.widget.update({
+      where: { id },
+      data: { deletedAt: null },
+    });
+    return toWidgetDto(widget);
+  }
+
+  async removeForever(id: string) {
     const existing = await this.prisma.widget.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Widget not found');
 

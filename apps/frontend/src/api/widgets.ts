@@ -37,6 +37,18 @@ export async function updateWidget(
   });
 }
 
-export async function deleteWidget(id: string): Promise<void> {
-  return request<void>(`${BASE}/${id}`, { method: 'DELETE' });
+export async function deleteWidget(id: string): Promise<WidgetData> {
+  return request<WidgetData>(`${BASE}/${id}`, { method: 'DELETE' });
+}
+
+export async function fetchTrashedWidgets(): Promise<WidgetData[]> {
+  return request<WidgetData[]>(`${BASE}/trash`);
+}
+
+export async function restoreWidget(id: string): Promise<WidgetData> {
+  return request<WidgetData>(`${BASE}/${id}/restore`, { method: 'POST' });
+}
+
+export async function deleteWidgetForever(id: string): Promise<void> {
+  return request<void>(`${BASE}/${id}/forever`, { method: 'DELETE' });
 }

@@ -11,6 +11,11 @@ export class WidgetsController {
     return this.service.findAll('hardcoded-user-id');
   }
 
+  @Get('trash')
+  async findTrash() {
+    return this.service.findTrash('hardcoded-user-id');
+  }
+
   @Post()
   async create(@Body() dto: CreateWidgetDto) {
     return this.service.create('hardcoded-user-id', dto);
@@ -21,8 +26,18 @@ export class WidgetsController {
     return this.service.update(id, dto);
   }
 
+  @Post(':id/restore')
+  async restore(@Param('id') id: string) {
+    return this.service.restore(id);
+  }
+
   @Delete(':id')
   async remove(@Param('id') id: string) {
     return this.service.remove(id);
+  }
+
+  @Delete(':id/forever')
+  async removeForever(@Param('id') id: string) {
+    return this.service.removeForever(id);
   }
 }
