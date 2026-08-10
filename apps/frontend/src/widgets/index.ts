@@ -1,4 +1,7 @@
 import { lazy } from 'react';
+import { FiCheckSquare, FiClock, FiEdit3, FiBook } from 'react-icons/fi';
+import { LuListChecks } from 'react-icons/lu';
+import { LuCalculator } from 'react-icons/lu';
 import { registerWidget } from './registry';
 
 const TodoListWidget = lazy(() => import('./todo-list/TodoListWidget').then(m => ({ default: m.TodoListWidget })));
@@ -11,7 +14,7 @@ const DiaryWidget = lazy(() => import('./diary/DiaryWidget').then(m => ({ defaul
 registerWidget('todo-list', {
   component: TodoListWidget,
   label: 'Todo List',
-  icon: '\u2611',
+  icon: FiCheckSquare,
   defaultConfig: { title: 'Todo List', items: [] },
   defaultSize: { w: 300, h: 300 },
   minSize: { w: 260, h: 180 },
@@ -20,7 +23,7 @@ registerWidget('todo-list', {
 registerWidget('pomodoro', {
   component: PomodoroWidget,
   label: 'Timer',
-  icon: '\u23F1',
+  icon: FiClock,
   defaultConfig: { title: 'Timer', workMinutes: 25, restMinutes: 5, state: 'idle', remainingSeconds: 1500, cycleCount: 0 },
   defaultSize: { w: 280, h: 340 },
   minSize: { w: 220, h: 280 },
@@ -29,7 +32,7 @@ registerWidget('pomodoro', {
 registerWidget('notes', {
   component: NotesWidget,
   label: 'Notes',
-  icon: '\uD83D\uDCDD',
+  icon: FiEdit3,
   defaultConfig: { title: 'Notes', content: '', lastModified: null },
   defaultSize: { w: 320, h: 280 },
   minSize: { w: 240, h: 180 },
@@ -38,7 +41,7 @@ registerWidget('notes', {
 registerWidget('calculator', {
   component: CalculatorWidget,
   label: 'Calculator',
-  icon: '\uD83D\uDD22',
+  icon: LuCalculator,
   defaultConfig: { title: 'Calculator', history: [], lastResult: '' },
   defaultSize: { w: 260, h: 360 },
   minSize: { w: 220, h: 310 },
@@ -47,7 +50,7 @@ registerWidget('calculator', {
 registerWidget('habit-tracker', {
   component: HabitTrackerWidget,
   label: 'Habit Tracker',
-  icon: '\uD83D\uDCC5',
+  icon: LuListChecks,
   defaultConfig: { title: 'Habits', habits: [] },
   defaultSize: { w: 280, h: 280 },
   minSize: { w: 240, h: 180 },
@@ -56,7 +59,7 @@ registerWidget('habit-tracker', {
 registerWidget('diary', {
   component: DiaryWidget,
   label: 'Diary',
-  icon: '\uD83D\uDCD6',
+  icon: FiBook,
   defaultConfig: { title: 'Diary', entries: {} },
   defaultSize: { w: 320, h: 300 },
   minSize: { w: 260, h: 200 },

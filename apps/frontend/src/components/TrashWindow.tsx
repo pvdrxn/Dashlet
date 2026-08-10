@@ -100,7 +100,7 @@ export function TrashWindow({ onClose, onRestoreComplete }: TrashWindowProps) {
                 return (
                   <li key={widget.id} className="flex items-center gap-3 rounded-md border border-gray-700 bg-gray-900 p-2.5">
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-700 text-lg">
-                      {def?.icon ?? '?'}
+                      {def?.icon ? <def.icon size={18} /> : '?'}
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm text-white">{title}</p>

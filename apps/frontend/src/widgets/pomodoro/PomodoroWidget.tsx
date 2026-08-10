@@ -170,7 +170,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
       <div className="flex items-center justify-center gap-3">
         <div className="relative flex items-center justify-center">
           <svg width="140" height="140" className="-rotate-90">
-            <circle cx="70" cy="70" r="60" fill="none" stroke="#374151" strokeWidth="6" />
+            <circle cx="70" cy="70" r="60" fill="none" stroke="#222936" strokeWidth="6" />
             <circle cx="70" cy="70" r="60" fill="none"
               stroke={phase === 'break' ? '#22c55e' : '#3b82f6'} strokeWidth="6"
               strokeDasharray={`${2 * Math.PI * 60}`}

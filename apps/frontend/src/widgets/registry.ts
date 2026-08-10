@@ -1,9 +1,10 @@
-import type { ComponentType, WidgetType } from './types';
+import type { ComponentType } from 'react';
+import type { WidgetType } from './types';
 
 interface WidgetDefinition {
   component: ComponentType;
   label: string;
-  icon: string;
+  icon: ComponentType<{ size?: number }>;
   defaultConfig: Record<string, unknown>;
   defaultSize: { w: number; h: number };
   minSize: { w: number; h: number };

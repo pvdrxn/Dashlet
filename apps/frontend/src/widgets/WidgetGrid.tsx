@@ -220,8 +220,8 @@ export function WidgetGrid({ gridMode, onAddWidgetRef, onRefreshRef }: WidgetGri
                   width: gridW,
                   height: gridH,
                   backgroundImage: `
-                    linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
-                    linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)
+                    linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)
                   `,
                   backgroundSize: `${CELL_W}px ${CELL_H}px`,
                 }}

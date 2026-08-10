@@ -120,9 +120,9 @@ export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, min
   );
 
   return (
-    <div style={style} className="group rounded-lg border border-gray-700 bg-gray-800 shadow-lg overflow-hidden">
+    <div style={style} className="group border border-gray-700 bg-gray-800 shadow-lg overflow-hidden rounded-[4px]">
       <div
-        className={`w-full flex items-center h-[25px] border-b border-gray-700 bg-gray-700 select-none ${collapsed ? 'rounded-b-lg border-b-0' : ''}`}
+        className={`w-full flex items-center h-[25px] bg-transparent select-none`}
       >
         <span
           ref={setNodeRef}
@@ -146,7 +146,7 @@ export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, min
           placeholder={label}
           aria-label="Widget title"
         />
-        <div className="flex items-center shrink-0 ml-1">
+        <div className="flex items-center shrink-0 ml-1 bg-gray-800/50 ring-1 ring-gray-600/40 overflow-hidden">
           {(() => {
             const isLayered = (config.layered as boolean) ?? false;
             return (
@@ -156,10 +156,11 @@ export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, min
                   e.stopPropagation();
                   onConfigChange(id, { ...config, zIndex: isLayered ? 0 : maxZIndex + 1, layered: !isLayered });
                 }}
-                className={`rounded p-0.5 leading-none ${isLayered ? 'text-blue-400 hover:bg-gray-600 hover:text-blue-300' : 'text-gray-400 hover:bg-gray-600 hover:text-gray-200'}`}
+                className={`flex h-7 w-7 items-center justify-center transition-colors ${isLayered ? 'bg-blue-500/10 text-blue-400' : 'text-gray-400 hover:bg-blue-500/10 hover:text-blue-400'}`}
                 title={isLayered ? 'Bring to back' : 'Bring to front'}
+                aria-pressed={isLayered}
               >
-                <FiLayers size={18} />
+                <FiLayers size={15} />
               </button>
             );
           })()}
@@ -169,18 +170,19 @@ export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, min
               e.stopPropagation();
               onConfigChange(id, { ...config, collapsed: !collapsed });
             }}
-            className="rounded p-0.5 text-gray-400 hover:bg-gray-600 hover:text-gray-200 leading-none"
+            className={`flex h-7 w-7 items-center justify-center border-l border-gray-700 transition-colors ${collapsed ? 'bg-blue-500/10 text-blue-400' : 'text-gray-400 hover:bg-blue-500/10 hover:text-blue-400'}`}
             title={collapsed ? 'Expand widget' : 'Collapse widget'}
+            aria-pressed={collapsed}
           >
-            {collapsed ? <FiChevronDown size={18} /> : <FiChevronUp size={18} />}
+            {collapsed ? <FiChevronDown size={15} /> : <FiChevronUp size={15} />}
           </button>
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onDelete(id); }}
-            className="rounded p-0.5 text-red-400 hover:bg-gray-600 hover:text-red-300 leading-none ml-0.5"
+            className="flex h-7 w-7 items-center justify-center border-l border-gray-700 text-gray-500 transition-colors hover:bg-blue-500/10 hover:text-blue-400"
             title="Delete widget"
           >
-            <FiX size={18} />
+            <FiX size={15} />
           </button>
         </div>
       </div>
