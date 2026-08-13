@@ -6,6 +6,7 @@ import {
   useRef,
   useEffect,
   useMemo,
+  type ComponentType,
   type InputHTMLAttributes,
   type ReactNode,
   type RefObject,
@@ -32,8 +33,21 @@ interface TodoItem {
   id: string;
   text: string;
   completed: boolean;
+  completedAt?: number;
   parentId?: string | null;
   collapsed?: boolean;
+}
+
+interface TaskRowProps {
+  item: TodoItem;
+  level: number;
+  childCount: number;
+  completedChildCount: number;
+  toggleItem: (id: string) => void;
+  removeItem: (id: string) => void;
+  editItem: (id: string, text: string) => void;
+  toggleIndent: (id: string) => void;
+  toggleCollapse: (id: string) => void;
 }
 
 interface TodoListConfig {
@@ -64,6 +78,7 @@ function ensureUniqueIds(items: TodoItem[]): TodoItem[] {
         id: genId('todo'),
         text: item?.text ?? '',
         completed: Boolean(item?.completed),
+        completedAt: item?.completedAt ?? undefined,
         parentId: item?.parentId ?? undefined,
         collapsed: Boolean(item?.collapsed),
       };
@@ -311,17 +326,7 @@ const SortableItem = memo(function SortableItem({
   editItem,
   toggleIndent,
   toggleCollapse,
-}: {
-  item: TodoItem;
-  level: number;
-  childCount: number;
-  completedChildCount: number;
-  toggleItem: (id: string) => void;
-  removeItem: (id: string) => void;
-  editItem: (id: string, text: string) => void;
-  toggleIndent: (id: string) => void;
-  toggleCollapse: (id: string) => void;
-}) {
+}: TaskRowProps) {
   const [editing, setEditing] = useState(false);
 
   const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -358,10 +363,46 @@ const SortableItem = memo(function SortableItem({
   );
 });
 
+const StaticItemRow = memo(function StaticItemRow({
+  item,
+  level,
+  childCount,
+  completedChildCount,
+  toggleItem,
+  removeItem,
+  editItem,
+  toggleIndent,
+  toggleCollapse,
+}: TaskRowProps) {
+  const [editing, setEditing] = useState(false);
+
+  return (
+    <div
+      style={{ paddingLeft: 21 + level * 16 }}
+      className="group/item mx-0.5 relative flex cursor-default items-center gap-1.5 rounded py-0.5 hover:bg-gray-700/50"
+    >
+      <TaskRowContent
+        item={item}
+        level={level}
+        childCount={childCount}
+        completedChildCount={completedChildCount}
+        editing={editing}
+        onEditingChange={setEditing}
+        toggleItem={toggleItem}
+        removeItem={removeItem}
+        editItem={editItem}
+        toggleIndent={toggleIndent}
+        toggleCollapse={toggleCollapse}
+      />
+    </div>
+  );
+});
+
 export const TodoListWidget = memo(function TodoListWidget({ config, onConfigChange }: TodoListWidgetProps) {
   const { items: rawItems = [] } = (config ?? {}) as TodoListConfig;
   const [newText, setNewText] = useState('');
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [completedExpanded, setCompletedExpanded] = useState(true);
 
   const items = useMemo(() => ensureUniqueIds(rawItems), [rawItems]);
   const childrenMap = useMemo(() => buildChildrenMap(items), [items]);
@@ -400,15 +441,22 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
     const item = items.find((i) => i.id === id);
     if (!item) return;
     const willComplete = !item.completed;
+    const now = Date.now();
     let toggled = items.map((i) =>
-      i.id === id ? { ...i, completed: willComplete } : i,
+      i.id === id
+        ? willComplete
+          ? { ...i, completed: true, completedAt: now }
+          : { ...i, completed: false, completedAt: undefined }
+        : i,
     );
 
     if (willComplete && item.parentId) {
       const siblings = toggled.filter((i) => i.parentId === item.parentId);
       if (siblings.length > 0 && siblings.every((s) => s.completed)) {
         toggled = toggled.map((i) =>
-          i.id === item.parentId ? { ...i, completed: true } : i,
+          i.id === item.parentId
+            ? { ...i, completed: true, completedAt: now }
+            : i,
         );
       }
     }
@@ -509,14 +557,38 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
     onConfigChange({ ...config, items: toTreeOrder(result) });
   }, [items, config, onConfigChange]);
 
-  const renderTree = useMemo(() => {
+  const view = useMemo(() => {
     const ids = new Set(items.map((i) => i.id));
-    const roots = items.filter((i) => !i.parentId || !ids.has(i.parentId));
-    const renderNode = (node: TodoItem, level: number): ReactNode => {
+    const isRoot = (item: TodoItem) => !item.parentId || !ids.has(item.parentId);
+    const roots = items.filter(isRoot);
+
+    const completedRoots = roots
+      .filter((root) => root.completed)
+      .sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0));
+
+    const excludedIds = new Set<string>();
+    const collect = (parentId: string) => {
+      for (const child of items) {
+        if (child.parentId === parentId && !excludedIds.has(child.id)) {
+          excludedIds.add(child.id);
+          collect(child.id);
+        }
+      }
+    };
+    for (const root of completedRoots) {
+      excludedIds.add(root.id);
+      collect(root.id);
+    }
+
+    const renderNode = (
+      node: TodoItem,
+      level: number,
+      Row: ComponentType<TaskRowProps>,
+    ): ReactNode => {
       const children = childrenMap.get(node.id) ?? [];
       return (
         <Fragment key={node.id}>
-          <SortableItem
+          <Row
             item={node}
             level={level}
             childCount={children.length}
@@ -533,14 +605,34 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
             }`}
           >
             <div className="min-h-0 space-y-0.5 overflow-hidden">
-              {children.map((child) => renderNode(child, level + 1))}
+              {children.map((child) => renderNode(child, level + 1, Row))}
             </div>
           </div>
         </Fragment>
       );
     };
-    return roots.map((root) => renderNode(root, 0));
-  }, [items, childrenMap, toggleItem, removeItem, editItem, toggleIndent, toggleCollapse]);
+
+    const activeRoots = roots.filter((root) => !root.completed);
+    let completedCount = 0;
+    for (const root of completedRoots) {
+      completedCount += 1;
+      const stack = [...(childrenMap.get(root.id) ?? [])];
+      while (stack.length) {
+        completedCount += 1;
+        const node = stack.pop()!;
+        stack.push(...(childrenMap.get(node.id) ?? []));
+      }
+    }
+
+    return {
+      sortableIds: items.filter((i) => !excludedIds.has(i.id)).map((i) => i.id),
+      activeTree: activeRoots.map((root) => renderNode(root, 0, SortableItem)),
+      completedTree: completedExpanded
+        ? completedRoots.map((root) => renderNode(root, 0, StaticItemRow))
+        : null,
+      completedCount,
+    };
+  }, [items, childrenMap, toggleItem, removeItem, editItem, toggleIndent, toggleCollapse, completedExpanded]);
 
   return (
     <div className="flex h-full flex-col gap-2">
@@ -552,9 +644,27 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
         onDragCancel={() => setActiveId(null)}
         onDragEnd={handleDragEnd}
       >
-        <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+        <SortableContext items={view.sortableIds} strategy={verticalListSortingStrategy}>
           <div className="-mx-3 flex-1 space-y-0.5 overflow-auto">
-            {renderTree}
+            {view.activeTree}
+            {view.completedCount > 0 && (
+              <div className="mt-2 border-t border-gray-700/70 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setCompletedExpanded((v) => !v)}
+                  className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-xs font-medium text-gray-500 hover:text-gray-300"
+                  aria-expanded={completedExpanded}
+                >
+                  {completedExpanded ? (
+                    <FiChevronDown size={14} />
+                  ) : (
+                    <FiChevronRight size={14} />
+                  )}
+                  <span>Completed ({view.completedCount})</span>
+                </button>
+                {view.completedTree}
+              </div>
+            )}
           </div>
         </SortableContext>
         <DragOverlay>
