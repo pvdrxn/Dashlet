@@ -1,8 +1,8 @@
 import type { ComponentType } from 'react';
-import type { WidgetType } from './types';
+import type { ComponentType as WidgetComponentType } from './types';
 
 interface WidgetDefinition {
-  component: ComponentType;
+  component: WidgetComponentType;
   label: string;
   icon: ComponentType<{ size?: number }>;
   defaultConfig: Record<string, unknown>;
@@ -22,8 +22,4 @@ export function getWidget(type: string): WidgetDefinition | undefined {
 
 export function getAllWidgets(): [string, WidgetDefinition][] {
   return Array.from(registry.entries());
-}
-
-function getRegisteredTypes(): string[] {
-  return Array.from(registry.keys());
 }

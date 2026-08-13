@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { WidgetFrame } from './WidgetFrame';
@@ -188,7 +188,7 @@ export function WidgetGrid({ gridMode, onAddWidgetRef, onRefreshRef }: WidgetGri
         <p className="mb-4">No widgets yet</p>
         <button
           type="button"
-          onClick={onAddWidget}
+          onClick={() => handleAddWidget('todo-list')}
           className="rounded-lg bg-blue-500 px-4 py-2 text-white hover:bg-blue-600"
         >
           Add your first widget

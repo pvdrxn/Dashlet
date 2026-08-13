@@ -88,7 +88,6 @@ function ensureUniqueIds(habits: HabitItem[]): HabitItem[] {
 }
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 function getMonthGrid(): { date: string; day: number; empty: boolean }[][] {
   const now = new Date();

@@ -67,18 +67,32 @@ function formatTime(seconds: number) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
+function normalizeConfig(config: Record<string, unknown>): PomodoroConfig {
+  const workMinutes = typeof config.workMinutes === 'number' ? config.workMinutes : 25;
+  const restMinutes = typeof config.restMinutes === 'number' ? config.restMinutes : 5;
+  const state =
+    config.state === 'running' || config.state === 'paused' || config.state === 'break'
+      ? config.state
+      : 'idle';
+  const phase = config.phase === 'break' ? 'break' : 'work';
+  const remainingSeconds =
+    typeof config.remainingSeconds === 'number' ? config.remainingSeconds : workMinutes * 60;
+  const cycleCount = typeof config.cycleCount === 'number' ? config.cycleCount : 0;
+  return { workMinutes, restMinutes, state, remainingSeconds, cycleCount, phase };
+}
+
 export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigChange }: PomodoroWidgetProps) {
-  const c = config as PomodoroConfig;
-  const { workMinutes = 25, restMinutes = 5, state = 'idle', remainingSeconds = workMinutes * 60, cycleCount = 0, phase = 'work' } = c;
+  const c = normalizeConfig(config);
+  const { workMinutes, restMinutes, state, remainingSeconds, cycleCount, phase } = c;
 
   const startTimeRef = useRef(0);
-  const configRef = useRef(config);
+  const configRef = useRef(normalizeConfig(config));
   const remainingRef = useRef(remainingSeconds);
   const onConfigChangeRef = useRef(onConfigChange);
   const workerRef = useRef<Worker | null>(null);
   const isRunningRef = useRef(state === 'running');
 
-  configRef.current = config;
+  configRef.current = normalizeConfig(config);
   remainingRef.current = remainingSeconds;
   onConfigChangeRef.current = onConfigChange;
   isRunningRef.current = state === 'running';
@@ -93,7 +107,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
     const w = new Worker(URL.createObjectURL(blob));
     w.onmessage = () => {
       if (!isRunningRef.current) return;
-      const curCfg = configRef.current as PomodoroConfig;
+      const curCfg = configRef.current;
       const totalSecs = curCfg.phase === 'break' ? curCfg.restMinutes * 60 : curCfg.workMinutes * 60;
       const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
       const newRemaining = Math.max(0, totalSecs - elapsed);

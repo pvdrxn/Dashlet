@@ -117,7 +117,7 @@ export const CalculatorWidget = memo(function CalculatorWidget({ config, onConfi
         <details className="text-xs text-gray-500">
           <summary className="cursor-pointer">History ({history.length})</summary>
           <div className="mt-1 max-h-20 overflow-y-auto space-y-0.5">
-            {history.map((entry, i) => (
+            {history.map((entry) => (
               <div key={entry} className="text-gray-500">{entry}</div>
             ))}
           </div>

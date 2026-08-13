@@ -1,7 +1,8 @@
-import { memo, useState, useCallback, useRef, useEffect, Suspense, type ComponentType } from 'react';
+import { memo, useState, useCallback, useRef, useEffect, Suspense } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { FiChevronUp, FiChevronDown, FiX, FiMenu, FiLayers } from 'react-icons/fi';
 import { snapUpW, snapUpH } from './grid-utils';
+import type { ComponentType } from './types';
 
 interface WidgetFrameProps {
   id: string;
@@ -9,7 +10,7 @@ interface WidgetFrameProps {
   zIndex: number;
   minSize: { w: number; h: number };
   config: Record<string, unknown>;
-  component: ComponentType<{ config: Record<string, unknown>; onConfigChange: (config: Record<string, unknown>) => void }>;
+  component: ComponentType;
   onResize: (id: string, w: number, h: number) => void;
   onDelete: (id: string) => void;
   onConfigChange: (id: string, config: Record<string, unknown>) => void;
@@ -107,7 +108,7 @@ export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, min
       pointerPosRef.current = { x: e.clientX, y: e.clientY };
       longPressTimerRef.current = setTimeout(() => {
         longPressTimerRef.current = null;
-        listeners.onPointerDown(e);
+        listeners?.onPointerDown(e);
       }, 25);
     },
     [listeners]

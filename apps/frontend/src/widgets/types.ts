@@ -17,8 +17,6 @@ export interface WidgetData {
   deletedAt?: string | null;
 }
 
-export type WidgetType = 'todo-list' | 'pomodoro' | 'notes' | 'calculator' | 'habit-tracker' | 'diary';
-
 interface WidgetComponentProps {
   config: Record<string, unknown>;
   onConfigChange: (config: Record<string, unknown>) => void;
