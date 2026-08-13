@@ -76,7 +76,7 @@ export function TrashWindow({ onClose, onRestoreComplete }: TrashWindowProps) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-0.5 text-gray-400 hover:bg-gray-600 hover:text-gray-200 leading-none"
+            className="rounded p-0.5 text-gray-400 hover:bg-red-500/10 hover:text-red-400 leading-none"
             title="Close trash"
             aria-label="Close trash"
           >
