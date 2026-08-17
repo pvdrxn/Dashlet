@@ -11,7 +11,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
-import { FiChevronDown, FiChevronRight, FiCornerDownRight, FiPlus } from 'react-icons/fi';
+import { FiChevronDown, FiChevronRight, FiCornerDownRight, FiPlus, FiTrash2 } from 'react-icons/fi';
 import {
   DndContext,
   closestCenter,
@@ -403,6 +403,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
   const [newText, setNewText] = useState('');
   const [activeId, setActiveId] = useState<string | null>(null);
   const [completedExpanded, setCompletedExpanded] = useState(true);
+  const [confirmClear, setConfirmClear] = useState(false);
 
   const items = useMemo(() => ensureUniqueIds(rawItems), [rawItems]);
   const childrenMap = useMemo(() => buildChildrenMap(items), [items]);
@@ -480,6 +481,23 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
         .filter((item) => item.id !== id)
         .map((item) => (item.parentId === id ? { ...item, parentId: undefined } : item)),
     });
+  }, [config, items, onConfigChange]);
+
+  const clearCompleted = useCallback(() => {
+    const removedIds = new Set(
+      items.filter((item) => item.completed).map((item) => item.id),
+    );
+    onConfigChange({
+      ...config,
+      items: items
+        .filter((item) => !removedIds.has(item.id))
+        .map((item) =>
+          item.parentId && removedIds.has(item.parentId)
+            ? { ...item, parentId: undefined }
+            : item,
+        ),
+    });
+    setConfirmClear(false);
   }, [config, items, onConfigChange]);
 
   const toggleIndent = useCallback((id: string) => {
@@ -635,7 +653,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
   }, [items, childrenMap, toggleItem, removeItem, editItem, toggleIndent, toggleCollapse, completedExpanded]);
 
   return (
-    <div className="flex h-full flex-col gap-2">
+    <div className="relative flex h-full flex-col gap-2">
 
       <DndContext
         sensors={sensors}
@@ -649,19 +667,30 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
             {view.activeTree}
             {view.completedCount > 0 && (
               <div className="mt-2 border-t border-gray-700/70 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setCompletedExpanded((v) => !v)}
-                  className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-xs font-medium text-gray-500 hover:text-gray-300"
-                  aria-expanded={completedExpanded}
-                >
-                  {completedExpanded ? (
-                    <FiChevronDown size={14} />
-                  ) : (
-                    <FiChevronRight size={14} />
-                  )}
-                  <span>Completed ({view.completedCount})</span>
-                </button>
+                <div className="flex items-center">
+                  <button
+                    type="button"
+                    onClick={() => setCompletedExpanded((v) => !v)}
+                    className="flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-0.5 text-left text-xs font-medium text-gray-500 hover:text-gray-300"
+                    aria-expanded={completedExpanded}
+                  >
+                    {completedExpanded ? (
+                      <FiChevronDown size={14} />
+                    ) : (
+                      <FiChevronRight size={14} />
+                    )}
+                    <span>Completed ({view.completedCount})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmClear(true)}
+                    title="Delete all completed tasks"
+                    aria-label="Delete all completed tasks"
+                    className="rounded p-1 text-gray-500 hover:bg-red-500/10 hover:text-red-400"
+                  >
+                    <FiTrash2 size={14} />
+                  </button>
+                </div>
                 {view.completedTree}
               </div>
             )}
@@ -713,6 +742,38 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
           <FiPlus size={16} />
         </button>
       </form>
+
+      {confirmClear && (
+        <div className="absolute -inset-3 z-10 flex items-center justify-center rounded-[4px] bg-black/70 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Confirm delete completed tasks"
+            className="w-full max-w-56 rounded-lg border border-gray-600 bg-gray-800 p-3 shadow-xl"
+          >
+            <p className="text-sm text-gray-200">
+              Delete {view.completedCount} completed{' '}
+              {view.completedCount === 1 ? 'task' : 'tasks'}?
+            </p>
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmClear(false)}
+                className="rounded bg-gray-600 px-2.5 py-1 text-xs text-white hover:bg-gray-500"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={clearCompleted}
+                className="rounded bg-red-600 px-2.5 py-1 text-xs text-white hover:bg-red-500"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 });
