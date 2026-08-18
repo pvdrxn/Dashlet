@@ -58,6 +58,11 @@ body {
   }
 }
 
+@keyframes ghost-pop {
+  from { scale: 0.55; }
+  to { scale: 1; }
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

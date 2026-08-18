@@ -1,7 +1,7 @@
 import type { ComponentType } from 'react';
 import type { ComponentType as WidgetComponentType } from './types';
 
-interface WidgetDefinition {
+export interface WidgetDefinition {
   component: WidgetComponentType;
   label: string;
   icon: ComponentType<{ size?: number }>;

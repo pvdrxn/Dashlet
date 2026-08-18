@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { WidgetFrame } from './WidgetFrame';
 import { getWidget } from './registry';
-import type { WidgetData } from './types';
+import type { WidgetData, Position } from './types';
 import * as api from '../api/widgets';
 import { CELL_W, CELL_H, snapX, snapY, snapW, snapH, snapUpW, snapUpH, hasCollision, findFreeGridSlot } from './grid-utils';
 
@@ -20,6 +20,17 @@ function saveCache(data: WidgetData[]) {
   try { localStorage.setItem('dashlet-widgets', JSON.stringify(data)); } catch {}
 }
 
+function bringIntoDashboard(
+  data: WidgetData[],
+): WidgetData[] {
+  return data.map((w) => {
+    const x = Math.max(0, w.position.x);
+    const y = Math.max(0, w.position.y);
+    if (x === w.position.x && y === w.position.y) return w;
+    return { ...w, position: { ...w.position, x, y } };
+  });
+}
+
 interface WidgetGridProps {
   gridMode: boolean;
   onAddWidgetRef: React.MutableRefObject<((type: string) => void) | null>;
@@ -30,18 +41,27 @@ export function WidgetGrid({ gridMode, onAddWidgetRef, onRefreshRef }: WidgetGri
   const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache());
   const [loaded, setLoaded] = useState(false);
 
-  const handleAddWidget = useCallback(async (type: string) => {
+const handleAddWidget = useCallback(async (type: string, dropPoint?: { x: number; y: number }) => {
     const def = getWidget(type);
     if (!def) return;
     const snappedW = snapUpW(def.minSize.w);
     const snappedH = snapUpH(def.minSize.h);
-    const slot = findFreeGridSlot(widgets, snappedW, snappedH);
-    const position = { x: slot.x, y: slot.y, w: snappedW, h: snappedH };
+    const position: Position = dropPoint
+      ? {
+          x: Math.max(0, gridMode ? snapX(dropPoint.x) : dropPoint.x),
+          y: Math.max(0, gridMode ? snapY(dropPoint.y) : dropPoint.y),
+          w: snappedW,
+          h: snappedH,
+        }
+      : (() => {
+          const slot = findFreeGridSlot(widgets, snappedW, snappedH);
+          return { x: slot.x, y: slot.y, w: snappedW, h: snappedH };
+        })();
     await api.createWidget(type, def.defaultConfig, position);
     const data = await api.fetchWidgets();
-    setWidgets(data);
+    setWidgets(bringIntoDashboard(data));
     saveCache(data);
-  }, [widgets]);
+  }, [widgets, gridMode]);
 
   useEffect(() => {
     onAddWidgetRef.current = handleAddWidget;
@@ -149,6 +169,31 @@ export function WidgetGrid({ gridMode, onAddWidgetRef, onRefreshRef }: WidgetGri
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
 
+  const dropAreaRef = useRef<HTMLDivElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  const handleDragOverArea = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setDragOver(true);
+  }, []);
+
+  const handleWidgetDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const type = e.dataTransfer.getData('text/plain');
+    if (!type) return;
+    const rect = dropAreaRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const def = getWidget(type);
+    if (!def) return;
+    const w = snapUpW(def.minSize.w);
+    const h = snapUpH(def.minSize.h);
+    const x = e.clientX - rect.left - w / 2;
+    const y = e.clientY - rect.top - h / 2;
+    handleAddWidget(type, { x, y });
+  }, [handleAddWidget]);
+
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, delta } = event;
     const widgetId = String(active.id).replace('widget-', '');
@@ -197,37 +242,44 @@ export function WidgetGrid({ gridMode, onAddWidgetRef, onRefreshRef }: WidgetGri
     );
   }
 
+  const dashW = Math.max(
+    viewport.w,
+    ...widgets.map((w) => w.position.x + w.position.w + CELL_W * 8),
+  );
+  const dashH = Math.max(
+    viewport.h,
+    ...widgets.map((w) => {
+      const effectiveH = ((w.config.collapsed as boolean) ?? false) ? 25 : w.position.h;
+      return w.position.y + effectiveH + CELL_H * 8;
+    }),
+  );
+
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
       <Suspense fallback={<div className="text-gray-500 text-sm">Loading widgets...</div>}>
-        <div className="relative w-full" style={{ minHeight: Math.max(600, ...widgets.map((w) => {
-          const collapsed = (w.config.collapsed as boolean) ?? false;
-          const effectiveH = collapsed ? 25 : w.position.h;
-          return w.position.y + effectiveH + CELL_H * 4;
-        })) }}>
-          {gridMode && widgets.length > 0 && (() => {
-            const maxX = widgets.reduce((m, w) => Math.max(m, w.position.x + w.position.w), 0);
-            const maxY = widgets.reduce((m, w) => {
-              const effectiveH = ((w.config.collapsed as boolean) ?? false) ? 25 : w.position.h;
-              return Math.max(m, w.position.y + effectiveH);
-            }, 0);
-            const gridW = Math.max(maxX + CELL_W * 8, viewport.w);
-            const gridH = Math.max(maxY + CELL_H * 8, viewport.h);
-            return (
-              <div
-                className="pointer-events-none absolute left-0 top-0"
-                style={{
-                  width: gridW,
-                  height: gridH,
-                  backgroundImage: `
-                    linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
-                    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)
-                  `,
-                  backgroundSize: `${CELL_W}px ${CELL_H}px`,
-                }}
-              />
-            );
-          })()}
+        <div
+          id="dashboard-drop-area"
+          ref={dropAreaRef}
+          onDragOver={handleDragOverArea}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleWidgetDrop}
+          className={`relative ${dragOver ? 'ring-2 ring-blue-400/60 ring-inset' : ''}`}
+          style={{ width: dashW, minHeight: dashH }}
+        >
+          {gridMode && widgets.length > 0 && (
+            <div
+              className="pointer-events-none absolute left-0 top-0"
+              style={{
+                width: dashW,
+                height: dashH,
+                backgroundImage: `
+                  linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                  linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)
+                `,
+                backgroundSize: `${CELL_W}px ${CELL_H}px`,
+              }}
+            />
+          )}
           {widgets.map((widget) => {
             const def = getWidget(widget.type);
             if (!def) return null;

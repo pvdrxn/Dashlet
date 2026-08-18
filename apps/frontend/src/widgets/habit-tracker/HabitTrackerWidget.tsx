@@ -116,11 +116,13 @@ function getMonthGrid(): { date: string; day: number; empty: boolean }[][] {
 const SortableHabit = memo(function SortableHabit({
   habit,
   toggleToday,
+  toggleDate,
   editHabit,
   removeHabit,
 }: {
   habit: HabitItem;
   toggleToday: (id: string) => void;
+  toggleDate: (id: string, date: string) => void;
   editHabit: (id: string, name: string) => void;
   removeHabit: (id: string) => void;
 }) {
@@ -215,21 +217,24 @@ const SortableHabit = memo(function SortableHabit({
             cell.empty ? (
               <div key={`e${rowIndex}${cell.day}`} className="w-5 h-5" />
             ) : (
-              <div
+              <button
+                type="button"
                 key={cell.date}
-                className={`flex items-center justify-center w-5 h-5 rounded-sm text-[10px] ${
+                onClick={() => toggleDate(habit.id, cell.date)}
+                className={`flex items-center justify-center w-5 h-5 rounded-sm text-[10px] cursor-pointer select-none ${
                   cell.date === today
                     ? 'ring-1 ring-green-500'
                     : ''
                 } ${
                   completedSet.has(cell.date)
-                    ? 'bg-green-600 text-white'
-                    : 'bg-gray-700 text-gray-500'
+                    ? 'bg-green-600 text-white hover:bg-green-500'
+                    : 'bg-gray-700 text-gray-500 hover:bg-gray-600 hover:text-gray-300'
                 }`}
                 title={cell.date}
+                aria-label={`${cell.date} - ${completedSet.has(cell.date) ? 'completed' : 'not completed'}`}
               >
                 {cell.day}
-              </div>
+              </button>
             )
           )}
         </div>
@@ -281,6 +286,22 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({ config, onC
     });
   }, [config, habits, onConfigChange]);
 
+  const toggleDate = useCallback((id: string, date: string) => {
+    onConfigChange({
+      ...config,
+      habits: habits.map((h) =>
+        h.id === id
+          ? {
+              ...h,
+              completedDates: h.completedDates.includes(date)
+                ? h.completedDates.filter((d) => d !== date)
+                : [...h.completedDates, date],
+            }
+          : h,
+      ),
+    });
+  }, [config, habits, onConfigChange]);
+
   const editHabit = useCallback((id: string, name: string) => {
     onConfigChange({
       ...config,
@@ -318,7 +339,7 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({ config, onC
         <SortableContext items={habits.map((h) => h.id)} strategy={verticalListSortingStrategy}>
           <div className="flex-1 overflow-auto space-y-0.5">
             {habits.map((habit) => (
-              <SortableHabit key={habit.id} habit={habit} toggleToday={toggleToday} editHabit={editHabit} removeHabit={removeHabit} />
+              <SortableHabit key={habit.id} habit={habit} toggleToday={toggleToday} toggleDate={toggleDate} editHabit={editHabit} removeHabit={removeHabit} />
             ))}
           </div>
         </SortableContext>
