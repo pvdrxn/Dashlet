@@ -16,14 +16,15 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
-export async function fetchWidgets(): Promise<WidgetData[]> {
-  return request<WidgetData[]>(BASE);
+export async function fetchWidgets(tabId?: string): Promise<WidgetData[]> {
+  const query = tabId ? `?tabId=${encodeURIComponent(tabId)}` : '';
+  return request<WidgetData[]>(`${BASE}${query}`);
 }
 
-export async function createWidget(type: string, config?: Record<string, unknown>, position?: Position): Promise<WidgetData> {
+export async function createWidget(type: string, config?: Record<string, unknown>, position?: Position, tabId?: string): Promise<WidgetData> {
   return request<WidgetData>(BASE, {
     method: 'POST',
-    body: JSON.stringify({ type, config, position }),
+    body: JSON.stringify({ type, tabId, config, position }),
   });
 }
 

@@ -10,6 +10,7 @@ export interface Position {
 export interface WidgetData {
   id: string;
   userId: string;
+  tabId: string | null;
   type: string;
   config: Record<string, unknown>;
   position: Position;

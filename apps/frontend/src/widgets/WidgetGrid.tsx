@@ -7,17 +7,17 @@ import type { WidgetData, Position } from './types';
 import * as api from '../api/widgets';
 import { CELL_W, CELL_H, snapX, snapY, snapW, snapH, snapUpW, snapUpH, hasCollision, findFreeGridSlot } from './grid-utils';
 
-function loadCache(): WidgetData[] {
+function loadCache(cacheKey: string): WidgetData[] {
   try {
-    const cached = localStorage.getItem('dashlet-widgets');
+    const cached = localStorage.getItem(cacheKey);
     return cached ? JSON.parse(cached) : [];
   } catch {
     return [];
   }
 }
 
-function saveCache(data: WidgetData[]) {
-  try { localStorage.setItem('dashlet-widgets', JSON.stringify(data)); } catch {}
+function saveCache(cacheKey: string, data: WidgetData[]) {
+  try { localStorage.setItem(cacheKey, JSON.stringify(data)); } catch {}
 }
 
 function bringIntoDashboard(
@@ -32,13 +32,16 @@ function bringIntoDashboard(
 }
 
 interface WidgetGridProps {
+  tabId: string;
   gridMode: boolean;
-  onAddWidgetRef: React.MutableRefObject<((type: string) => void) | null>;
-  onRefreshRef?: React.MutableRefObject<(() => void) | null>;
+  onAddWidgetRef: (tabId: string, fn: (type: string) => void) => void;
+  onRefreshRef?: (tabId: string, fn: () => void) => void;
 }
 
-export function WidgetGrid({ gridMode, onAddWidgetRef, onRefreshRef }: WidgetGridProps) {
-  const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache());
+export function WidgetGrid({ tabId, gridMode, onAddWidgetRef, onRefreshRef }: WidgetGridProps) {
+  const cacheKey = `dashlet-widgets-${tabId}`;
+
+  const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
   const [loaded, setLoaded] = useState(false);
 
 const handleAddWidget = useCallback(async (type: string, dropPoint?: { x: number; y: number }) => {
@@ -57,36 +60,36 @@ const handleAddWidget = useCallback(async (type: string, dropPoint?: { x: number
           const slot = findFreeGridSlot(widgets, snappedW, snappedH);
           return { x: slot.x, y: slot.y, w: snappedW, h: snappedH };
         })();
-    await api.createWidget(type, def.defaultConfig, position);
-    const data = await api.fetchWidgets();
+await api.createWidget(type, def.defaultConfig, position, tabId);
+    const data = await api.fetchWidgets(tabId);
     setWidgets(bringIntoDashboard(data));
-    saveCache(data);
-  }, [widgets, gridMode]);
+    saveCache(cacheKey, data);
+  }, [widgets, gridMode, tabId, cacheKey]);
 
   useEffect(() => {
-    onAddWidgetRef.current = handleAddWidget;
-  }, [handleAddWidget, onAddWidgetRef]);
+    onAddWidgetRef(tabId, handleAddWidget);
+  }, [handleAddWidget, onAddWidgetRef, tabId]);
 
   const refresh = useCallback(() => {
-    api.fetchWidgets().then((data) => {
+    api.fetchWidgets(tabId).then((data) => {
       setWidgets(data);
-      saveCache(data);
+      saveCache(cacheKey, data);
       setLoaded(true);
     }).catch(() => {});
-  }, []);
+  }, [tabId, cacheKey]);
 
   useEffect(() => {
-    if (onRefreshRef) onRefreshRef.current = refresh;
-  }, [refresh, onRefreshRef]);
+    if (onRefreshRef) onRefreshRef(tabId, refresh);
+  }, [refresh, onRefreshRef, tabId]);
 
   useEffect(() => {
     let cancelled = false;
 
     function fetch() {
-      api.fetchWidgets().then((data) => {
+      api.fetchWidgets(tabId).then((data) => {
         if (!cancelled) {
           setWidgets(data);
-          saveCache(data);
+          saveCache(cacheKey, data);
           setLoaded(true);
         }
       }).catch(() => {
@@ -98,11 +101,11 @@ const handleAddWidget = useCallback(async (type: string, dropPoint?: { x: number
 
     fetch();
     return () => { cancelled = true; };
-  }, []);
+  }, [tabId, cacheKey]);
 
   useEffect(() => {
-    saveCache(widgets);
-  }, [widgets]);
+    saveCache(cacheKey, widgets);
+  }, [widgets, cacheKey]);
 
   const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight });
   useEffect(() => {
@@ -220,28 +223,6 @@ const handleAddWidget = useCallback(async (type: string, dropPoint?: { x: number
     });
   }, [gridMode]);
 
-  if (widgets.length === 0) {
-    if (!loaded) {
-      return (
-        <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-          <p className="mb-4">Loading widgets...</p>
-        </div>
-      );
-    }
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-        <p className="mb-4">No widgets yet</p>
-        <button
-          type="button"
-          onClick={() => handleAddWidget('todo-list')}
-          className="rounded-lg bg-blue-500 px-4 py-2 text-white hover:bg-blue-600"
-        >
-          Add your first widget
-        </button>
-      </div>
-    );
-  }
-
   const dashW = Math.max(
     viewport.w,
     ...widgets.map((w) => w.position.x + w.position.w + CELL_W * 8),
@@ -266,7 +247,12 @@ const handleAddWidget = useCallback(async (type: string, dropPoint?: { x: number
           className={`relative ${dragOver ? 'ring-2 ring-blue-400/60 ring-inset' : ''}`}
           style={{ width: dashW, minHeight: dashH }}
         >
-          {gridMode && widgets.length > 0 && (
+          {!loaded && widgets.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-20 text-gray-500">
+              <p>Loading widgets...</p>
+            </div>
+          )}
+          {gridMode && (
             <div
               className="pointer-events-none absolute left-0 top-0"
               style={{

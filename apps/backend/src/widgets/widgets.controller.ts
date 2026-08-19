@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query } from '@nestjs/common';
 import { WidgetsService } from './widgets.service';
 import { CreateWidgetDto, UpdateWidgetDto } from '@widget-master/shared';
 
@@ -7,8 +7,8 @@ export class WidgetsController {
   constructor(private readonly service: WidgetsService) {}
 
   @Get()
-  async findAll() {
-    return this.service.findAll('hardcoded-user-id');
+  async findAll(@Query('tabId') tabId?: string) {
+    return this.service.findAll('hardcoded-user-id', tabId);
   }
 
   @Get('trash')

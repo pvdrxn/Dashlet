@@ -12,15 +12,30 @@ model User {
   email    String     @unique
   password String
   widgets  Widget[]
+  tabs     Tab[]
   lists    TodoList[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Tab {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  name      String
+  order     Int      @default(0)
+  widgets   Widget[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
 }
 
 model Widget {
   id       String   @id @default(uuid())
   userId   String
   user     User     @relation(fields: [userId], references: [id])
+  tabId    String?
+  tab      Tab?     @relation(fields: [tabId], references: [id])
   type     String
   config   String   @default("{}")
   position String   @default("{\"x\":0,\"y\":0,\"w\":300,\"h\":200}")

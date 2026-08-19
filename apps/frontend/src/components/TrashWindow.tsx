@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
-import { FiX, FiTrash2, FiRotateCcw, FiTrash, FiClock } from 'react-icons/fi';
+import { FiX, FiTrash2, FiRotateCcw, FiTrash, FiClock, FiFolder } from 'react-icons/fi';
 import { getWidget } from '../widgets/registry';
 import type { WidgetData } from '../widgets/types';
+import type { TabDto } from '@widget-master/shared';
 import * as api from '../api/widgets';
+import * as tabsApi from '../api/tabs';
 
 const RETENTION_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -27,9 +29,11 @@ function formatDaysLeft(days: number): string {
 
 export function TrashWindow({ onClose, onRestoreComplete }: TrashWindowProps) {
   const [items, setItems] = useState<WidgetData[]>([]);
+  const [trashedTabs, setTrashedTabs] = useState<TabDto[]>([]);
 
   const load = useCallback(() => {
     api.fetchTrashedWidgets().then(setItems).catch(() => {});
+    tabsApi.fetchTrashedTabs().then(setTrashedTabs).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -63,6 +67,24 @@ export function TrashWindow({ onClose, onRestoreComplete }: TrashWindowProps) {
     [load]
   );
 
+  const handleRestoreTab = useCallback(
+    async (id: string) => {
+      await tabsApi.restoreTab(id);
+      load();
+      onRestoreComplete();
+    },
+    [load, onRestoreComplete]
+  );
+
+  const handleDeleteTabForever = useCallback(
+    async (id: string) => {
+      await tabsApi.deleteTabForever(id);
+      load();
+      onRestoreComplete();
+    },
+    [load, onRestoreComplete]
+  );
+
   return (
     <div
       className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-4"
@@ -85,13 +107,54 @@ export function TrashWindow({ onClose, onRestoreComplete }: TrashWindowProps) {
         </div>
 
         <div className="flex-1 overflow-y-auto p-3">
-          {items.length === 0 ? (
+          {trashedTabs.length > 0 && (
+            <div className="mb-4">
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                Tabs in trash
+              </h3>
+              <ul className="flex flex-col gap-2">
+                {trashedTabs.map((tab) => (
+                  <li key={tab.id} className="flex items-center gap-3 rounded-md border border-gray-700 bg-gray-900 p-2.5">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-700 text-lg">
+                      <FiFolder size={18} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm text-white">{tab.name}</p>
+                      <p className="text-xs text-gray-400">
+                        {tab.widgetCount ?? 0} {tab.widgetCount === 1 ? 'widget' : 'widgets'} — restores the whole tab
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleRestoreTab(tab.id)}
+                        className="rounded-md border border-blue-500/60 px-2.5 py-1 text-xs text-blue-400 hover:bg-blue-500/20 hover:text-blue-300"
+                        title="Restore tab with all its widgets"
+                      >
+                        <FiRotateCcw size={13} className="inline-block mr-1 -mt-0.5" />
+                        Restore
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteTabForever(tab.id)}
+                        className="rounded-md border border-red-500/60 px-2 py-1 text-xs text-red-400 hover:bg-red-500/20 hover:text-red-300"
+                        title="Delete tab and its widgets permanently"
+                      >
+                        <FiTrash size={13} className="inline-block -mt-0.5" />
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {items.length === 0 && trashedTabs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-gray-500">
               <FiTrash2 size={32} className="mb-3" />
               <p className="text-sm">The trash is empty</p>
               <p className="mt-1 text-xs">Deleted widgets stay here for 30 days before being permanently removed</p>
             </div>
-          ) : (
+          ) : items.length > 0 ? (
             <ul className="flex flex-col gap-2">
               {items.map((widget) => {
                 const def = getWidget(widget.type);
@@ -132,10 +195,10 @@ export function TrashWindow({ onClose, onRestoreComplete }: TrashWindowProps) {
                 );
               })}
             </ul>
-          )}
+          ) : null}
         </div>
 
-        {items.length > 0 && (
+        {items.length > 0 && trashedTabs.length === 0 && (
           <div className="border-t border-gray-700 px-4 py-2 text-xs text-gray-500">
             Widgets are permanently deleted 30 days after being trashed
           </div>

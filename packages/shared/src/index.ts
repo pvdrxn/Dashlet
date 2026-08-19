@@ -5,9 +5,28 @@ export interface Position {
   h: number;
 }
 
+export interface TabDto {
+  id: string;
+  userId: string;
+  name: string;
+  order: number;
+  widgetCount?: number;
+  deletedAt: string | null;
+}
+
+export interface CreateTabDto {
+  name?: string;
+}
+
+export interface UpdateTabDto {
+  name?: string;
+  order?: number;
+}
+
 export interface WidgetDto {
   id: string;
   userId: string;
+  tabId: string | null;
   type: string;
   config: Record<string, unknown>;
   position: Position;
@@ -17,6 +36,7 @@ export interface WidgetDto {
 
 export interface CreateWidgetDto {
   type: string;
+  tabId?: string;
   config?: Record<string, unknown>;
   position?: Position;
 }

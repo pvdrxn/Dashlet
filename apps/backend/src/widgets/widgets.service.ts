@@ -49,15 +49,37 @@ export class WidgetsService implements OnModuleInit {
     }
   }
 
+  private async resolveTabId(userId: string, tabId?: string): Promise<string | null> {
+    if (tabId) {
+      const tab = await this.prisma.tab.findUnique({ where: { id: tabId } });
+      if (tab && tab.userId === userId && !tab.deletedAt) return tab.id;
+      return null;
+    }
+    const defaultTab = await this.prisma.tab.findFirst({
+      where: { userId, deletedAt: null },
+      orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+    });
+    return defaultTab?.id ?? null;
+  }
+
+  private activeTabFilter() {
+    return { OR: [{ tab: { deletedAt: null } }, { tabId: null }] };
+  }
+
   private async purgeExpired() {
     const cutoff = new Date(Date.now() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
     await this.prisma.widget.deleteMany({ where: { deletedAt: { lt: cutoff } } });
   }
 
-  async findAll(userId: string) {
+  async findAll(userId: string, tabId?: string) {
     await this.purgeExpired();
     const widgets = await this.prisma.widget.findMany({
-      where: { userId, deletedAt: null },
+      where: {
+        userId,
+        deletedAt: null,
+        ...this.activeTabFilter(),
+        ...(tabId ? { tabId } : {}),
+      },
       orderBy: { createdAt: 'asc' },
     });
     return widgets.map(toWidgetDto);
@@ -66,7 +88,11 @@ export class WidgetsService implements OnModuleInit {
   async findTrash(userId: string) {
     await this.purgeExpired();
     const widgets = await this.prisma.widget.findMany({
-      where: { userId, deletedAt: { not: null } },
+      where: {
+        userId,
+        deletedAt: { not: null },
+        ...this.activeTabFilter(),
+      },
       orderBy: { deletedAt: 'desc' },
     });
     return widgets.map(toWidgetDto);
@@ -74,10 +100,12 @@ export class WidgetsService implements OnModuleInit {
 
   async create(userId: string, dto: CreateWidgetDto) {
     await this.ensureUser(userId);
+    const tabId = await this.resolveTabId(userId, dto.tabId);
     const defaultPosition = { x: 100, y: 100, w: 300, h: 250 };
     const widget = await this.prisma.widget.create({
       data: {
         userId,
+        tabId,
         type: dto.type,
         config: JSON.stringify(dto.config ?? {}),
         position: JSON.stringify(dto.position ?? defaultPosition),
