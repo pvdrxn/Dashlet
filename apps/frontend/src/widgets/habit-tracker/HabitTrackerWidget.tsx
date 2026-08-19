@@ -8,11 +8,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core';
-import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
+import { SortableContext, useSortable, rectSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
 interface HabitItem {
@@ -126,7 +122,9 @@ const SortableHabit = memo(function SortableHabit({
   editHabit: (id: string, name: string) => void;
   removeHabit: (id: string) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: habit.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: habit.id,
+  });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -136,7 +134,9 @@ const SortableHabit = memo(function SortableHabit({
   const [expanded, setExpanded] = useState(false);
   const [editText, setEditText] = useState(habit.name);
   const editInputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => { if (editing && editInputRef.current) editInputRef.current.focus(); }, [editing]);
+  useEffect(() => {
+    if (editing && editInputRef.current) editInputRef.current.focus();
+  }, [editing]);
   const today = useMemo(() => formatDate(new Date()), []);
   const isCompletedToday = habit.completedDates.includes(today);
   const streak = useMemo(() => computeStreak(habit.completedDates), [habit.completedDates]);
@@ -144,7 +144,11 @@ const SortableHabit = memo(function SortableHabit({
   const monthGrid = useMemo(() => getMonthGrid(), []);
 
   return (
-    <div ref={setNodeRef} style={style} className="group/item rounded px-0.5 py-1 hover:bg-gray-700/50">
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="group/item rounded px-0.5 py-1 hover:bg-gray-700/50"
+    >
       <div className="flex items-center gap-2">
         <button
           {...attributes}
@@ -167,10 +171,19 @@ const SortableHabit = memo(function SortableHabit({
               value={editText}
               spellCheck={false}
               onChange={(e) => setEditText(e.target.value)}
-              onBlur={() => { editHabit(habit.id, editText); setEditing(false); }}
+              onBlur={() => {
+                editHabit(habit.id, editText);
+                setEditing(false);
+              }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') { editHabit(habit.id, editText); setEditing(false); }
-                if (e.key === 'Escape') { setEditText(habit.name); setEditing(false); }
+                if (e.key === 'Enter') {
+                  editHabit(habit.id, editText);
+                  setEditing(false);
+                }
+                if (e.key === 'Escape') {
+                  setEditText(habit.name);
+                  setEditing(false);
+                }
               }}
               className="flex-1 rounded border border-blue-500 bg-gray-800 px-1 py-0.5 text-sm text-gray-200 outline-none min-w-0"
               aria-label="Edit habit name"
@@ -178,8 +191,17 @@ const SortableHabit = memo(function SortableHabit({
           ) : (
             <button
               type="button"
-              onClick={() => { setEditText(habit.name); setEditing(true); }}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditText(habit.name); setEditing(true); } }}
+              onClick={() => {
+                setEditText(habit.name);
+                setEditing(true);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setEditText(habit.name);
+                  setEditing(true);
+                }
+              }}
               className="flex-1 text-sm text-gray-300 cursor-text truncate bg-transparent border-none p-0 text-left"
             >
               {habit.name}
@@ -199,7 +221,9 @@ const SortableHabit = memo(function SortableHabit({
       </div>
       <div className="flex items-center gap-1 pl-8 mt-1">
         {DAY_LABELS.map((l) => (
-          <span key={l} className="w-5 text-center text-[9px] text-gray-600">{l}</span>
+          <span key={l} className="w-5 text-center text-[9px] text-gray-600">
+            {l}
+          </span>
         ))}
         <button
           type="button"
@@ -209,42 +233,46 @@ const SortableHabit = memo(function SortableHabit({
           {expanded ? '\u25B2' : '\u25BC'}
         </button>
       </div>
-      {(expanded ? monthGrid : [monthGrid.find((row) => row.some((c) => !c.empty && c.date === today)) ?? monthGrid[0]]).map((row, ri) => {
+      {(expanded
+        ? monthGrid
+        : [monthGrid.find((row) => row.some((c) => !c.empty && c.date === today)) ?? monthGrid[0]]
+      ).map((row, ri) => {
         const rowIndex = expanded ? ri : monthGrid.indexOf(row);
         return (
-        <div key={rowIndex} className="flex items-center gap-1 pl-8 mt-0.5">
-          {row.map((cell) =>
-            cell.empty ? (
-              <div key={`e${rowIndex}${cell.day}`} className="w-5 h-5" />
-            ) : (
-              <button
-                type="button"
-                key={cell.date}
-                onClick={() => toggleDate(habit.id, cell.date)}
-                className={`flex items-center justify-center w-5 h-5 rounded-sm text-[10px] cursor-pointer select-none ${
-                  cell.date === today
-                    ? 'ring-1 ring-green-500'
-                    : ''
-                } ${
-                  completedSet.has(cell.date)
-                    ? 'bg-green-600 text-white hover:bg-green-500'
-                    : 'bg-gray-700 text-gray-500 hover:bg-gray-600 hover:text-gray-300'
-                }`}
-                title={cell.date}
-                aria-label={`${cell.date} - ${completedSet.has(cell.date) ? 'completed' : 'not completed'}`}
-              >
-                {cell.day}
-              </button>
-            )
-          )}
-        </div>
-      );
-    })}
+          <div key={rowIndex} className="flex items-center gap-1 pl-8 mt-0.5">
+            {row.map((cell) =>
+              cell.empty ? (
+                <div key={`e${rowIndex}${cell.day}`} className="w-5 h-5" />
+              ) : (
+                <button
+                  type="button"
+                  key={cell.date}
+                  onClick={() => toggleDate(habit.id, cell.date)}
+                  className={`flex items-center justify-center w-5 h-5 rounded-sm text-[10px] cursor-pointer select-none ${
+                    cell.date === today ? 'ring-1 ring-green-500' : ''
+                  } ${
+                    completedSet.has(cell.date)
+                      ? 'bg-green-600 text-white hover:bg-green-500'
+                      : 'bg-gray-700 text-gray-500 hover:bg-gray-600 hover:text-gray-300'
+                  }`}
+                  title={cell.date}
+                  aria-label={`${cell.date} - ${completedSet.has(cell.date) ? 'completed' : 'not completed'}`}
+                >
+                  {cell.day}
+                </button>
+              ),
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 });
 
-export const HabitTrackerWidget = memo(function HabitTrackerWidget({ config, onConfigChange }: HabitTrackerWidgetProps) {
+export const HabitTrackerWidget = memo(function HabitTrackerWidget({
+  config,
+  onConfigChange,
+}: HabitTrackerWidgetProps) {
   const { habits: rawHabits = [] } = (config ?? {}) as HabitTrackerConfig;
   const [newName, setNewName] = useState('');
 
@@ -256,9 +284,7 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({ config, onC
     }
   }, [habits, rawHabits, config, onConfigChange]);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-  );
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const addHabit = useCallback(() => {
     if (!newName.trim()) return;
@@ -269,84 +295,113 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({ config, onC
     setNewName('');
   }, [newName, config, habits, onConfigChange]);
 
-  const toggleToday = useCallback((id: string) => {
-    const today = formatDate(new Date());
-    onConfigChange({
-      ...config,
-      habits: habits.map((h) =>
-        h.id === id
-          ? {
-              ...h,
-              completedDates: h.completedDates.includes(today)
-                ? h.completedDates.filter((d) => d !== today)
-                : [...h.completedDates, today],
-            }
-          : h,
-      ),
-    });
-  }, [config, habits, onConfigChange]);
+  const toggleToday = useCallback(
+    (id: string) => {
+      const today = formatDate(new Date());
+      onConfigChange({
+        ...config,
+        habits: habits.map((h) =>
+          h.id === id
+            ? {
+                ...h,
+                completedDates: h.completedDates.includes(today)
+                  ? h.completedDates.filter((d) => d !== today)
+                  : [...h.completedDates, today],
+              }
+            : h,
+        ),
+      });
+    },
+    [config, habits, onConfigChange],
+  );
 
-  const toggleDate = useCallback((id: string, date: string) => {
-    onConfigChange({
-      ...config,
-      habits: habits.map((h) =>
-        h.id === id
-          ? {
-              ...h,
-              completedDates: h.completedDates.includes(date)
-                ? h.completedDates.filter((d) => d !== date)
-                : [...h.completedDates, date],
-            }
-          : h,
-      ),
-    });
-  }, [config, habits, onConfigChange]);
+  const toggleDate = useCallback(
+    (id: string, date: string) => {
+      onConfigChange({
+        ...config,
+        habits: habits.map((h) =>
+          h.id === id
+            ? {
+                ...h,
+                completedDates: h.completedDates.includes(date)
+                  ? h.completedDates.filter((d) => d !== date)
+                  : [...h.completedDates, date],
+              }
+            : h,
+        ),
+      });
+    },
+    [config, habits, onConfigChange],
+  );
 
-  const editHabit = useCallback((id: string, name: string) => {
-    onConfigChange({
-      ...config,
-      habits: habits.map((h) =>
-        h.id === id ? { ...h, name } : h,
-      ),
-    });
-  }, [config, habits, onConfigChange]);
+  const editHabit = useCallback(
+    (id: string, name: string) => {
+      onConfigChange({
+        ...config,
+        habits: habits.map((h) => (h.id === id ? { ...h, name } : h)),
+      });
+    },
+    [config, habits, onConfigChange],
+  );
 
-  const removeHabit = useCallback((id: string) => {
-    onConfigChange({
-      ...config,
-      habits: habits.filter((h) => h.id !== id),
-    });
-  }, [config, habits, onConfigChange]);
+  const removeHabit = useCallback(
+    (id: string) => {
+      onConfigChange({
+        ...config,
+        habits: habits.filter((h) => h.id !== id),
+      });
+    },
+    [config, habits, onConfigChange],
+  );
 
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
 
-    const oldIndex = habits.findIndex((h) => h.id === active.id);
-    const newIndex = habits.findIndex((h) => h.id === over.id);
-    if (oldIndex === -1 || newIndex === -1) return;
+      const oldIndex = habits.findIndex((h) => h.id === active.id);
+      const newIndex = habits.findIndex((h) => h.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return;
 
-    const reordered = [...habits];
-    const [moved] = reordered.splice(oldIndex, 1);
-    reordered.splice(newIndex, 0, moved);
+      const reordered = [...habits];
+      const [moved] = reordered.splice(oldIndex, 1);
+      reordered.splice(newIndex, 0, moved);
 
-    onConfigChange({ ...config, habits: reordered });
-  }, [habits, config, onConfigChange]);
+      onConfigChange({ ...config, habits: reordered });
+    },
+    [habits, config, onConfigChange],
+  );
 
   return (
     <div className="flex h-full flex-col gap-1">
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={habits.map((h) => h.id)} strategy={verticalListSortingStrategy}>
-          <div className="flex-1 overflow-auto space-y-0.5">
+        <SortableContext items={habits.map((h) => h.id)} strategy={rectSortingStrategy}>
+          <div
+            className="flex-1 content-start items-start gap-x-2 gap-y-0.5 overflow-auto"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(min(230px, 100%), 1fr))',
+            }}
+          >
             {habits.map((habit) => (
-              <SortableHabit key={habit.id} habit={habit} toggleToday={toggleToday} toggleDate={toggleDate} editHabit={editHabit} removeHabit={removeHabit} />
+              <SortableHabit
+                key={habit.id}
+                habit={habit}
+                toggleToday={toggleToday}
+                toggleDate={toggleDate}
+                editHabit={editHabit}
+                removeHabit={removeHabit}
+              />
             ))}
           </div>
         </SortableContext>
       </DndContext>
 
       <form
-        onSubmit={(e) => { e.preventDefault(); addHabit(); }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          addHabit();
+        }}
         className="flex gap-1 border-t border-gray-700 pt-1"
       >
         <input

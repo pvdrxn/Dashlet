@@ -19,7 +19,7 @@ import { SortableContext, useSortable, horizontalListSortingStrategy } from '@dn
 import { CSS } from '@dnd-kit/utilities';
 import type { TabDto } from '@widget-master/shared';
 
-const HOLD_THRESHOLD = 100;
+const HOLD_THRESHOLD = 180;
 const MOVE_THRESHOLD = 6;
 
 function TabName({ name }: { name: string }) {
@@ -109,7 +109,9 @@ function TabPill({
     : 0;
 
   const style: CSSProperties = {
-    transform: transform ? CSS.Transform.toString({ ...transform, x: clampedX, y: 0 }) : undefined,
+    transform: transform
+      ? CSS.Transform.toString({ ...transform, x: clampedX, y: 0, scaleX: 1, scaleY: 1 })
+      : undefined,
     transition,
     zIndex: isDragging ? 10 : undefined,
   };
