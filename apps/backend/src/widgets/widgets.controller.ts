@@ -23,7 +23,7 @@ export class WidgetsController {
 
   @Patch(':id')
   async update(@Param('id') id: string, @Body() dto: UpdateWidgetDto) {
-    return this.service.update(id, dto);
+    return this.service.update('hardcoded-user-id', id, dto);
   }
 
   @Post(':id/restore')

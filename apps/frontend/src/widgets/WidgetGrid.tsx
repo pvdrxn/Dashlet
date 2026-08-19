@@ -1,11 +1,25 @@
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
-import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
-import type { DragEndEvent } from '@dnd-kit/core';
+import { createPortal } from 'react-dom';
+import { DndContext, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core';
+import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
+import { FiMenu } from 'react-icons/fi';
 import { WidgetFrame } from './WidgetFrame';
 import { getWidget } from './registry';
 import type { WidgetData, Position } from './types';
 import * as api from '../api/widgets';
-import { CELL_W, CELL_H, snapX, snapY, snapW, snapH, snapUpW, snapUpH, hasCollision, findFreeGridSlot } from './grid-utils';
+import { getDragSession, type TransferAction } from './drag-session';
+import {
+  CELL_W,
+  CELL_H,
+  snapX,
+  snapY,
+  snapW,
+  snapH,
+  snapUpW,
+  snapUpH,
+  hasCollision,
+  findFreeGridSlot,
+} from './grid-utils';
 
 function loadCache(cacheKey: string): WidgetData[] {
   try {
@@ -17,12 +31,12 @@ function loadCache(cacheKey: string): WidgetData[] {
 }
 
 function saveCache(cacheKey: string, data: WidgetData[]) {
-  try { localStorage.setItem(cacheKey, JSON.stringify(data)); } catch {}
+  try {
+    localStorage.setItem(cacheKey, JSON.stringify(data));
+  } catch {}
 }
 
-function bringIntoDashboard(
-  data: WidgetData[],
-): WidgetData[] {
+function bringIntoDashboard(data: WidgetData[]): WidgetData[] {
   return data.map((w) => {
     const x = Math.max(0, w.position.x);
     const y = Math.max(0, w.position.y);
@@ -36,71 +50,109 @@ interface WidgetGridProps {
   gridMode: boolean;
   onAddWidgetRef: (tabId: string, fn: (type: string) => void) => void;
   onRefreshRef?: (tabId: string, fn: () => void) => void;
+  onTransferRef?: (tabId: string, fn: (action: TransferAction) => void) => void;
+  onWidgetDragStart: (widgetId: string, sourceTabId: string) => void;
+  onWidgetDragEnd: () => void;
+  onWidgetTransferred: (targetTabId: string, action: TransferAction) => void;
+  onWidgetSynced: (targetTabId: string) => void;
 }
 
-export function WidgetGrid({ tabId, gridMode, onAddWidgetRef, onRefreshRef }: WidgetGridProps) {
+export function WidgetGrid({
+  tabId,
+  gridMode,
+  onAddWidgetRef,
+  onRefreshRef,
+  onTransferRef,
+  onWidgetDragStart,
+  onWidgetDragEnd,
+  onWidgetTransferred,
+  onWidgetSynced,
+}: WidgetGridProps) {
   const cacheKey = `dashlet-widgets-${tabId}`;
 
   const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
   const [loaded, setLoaded] = useState(false);
 
-const handleAddWidget = useCallback(async (type: string, dropPoint?: { x: number; y: number }) => {
-    const def = getWidget(type);
-    if (!def) return;
-    const snappedW = snapUpW(def.minSize.w);
-    const snappedH = snapUpH(def.minSize.h);
-    const position: Position = dropPoint
-      ? {
-          x: Math.max(0, gridMode ? snapX(dropPoint.x) : dropPoint.x),
-          y: Math.max(0, gridMode ? snapY(dropPoint.y) : dropPoint.y),
-          w: snappedW,
-          h: snappedH,
-        }
-      : (() => {
-          const slot = findFreeGridSlot(widgets, snappedW, snappedH);
-          return { x: slot.x, y: slot.y, w: snappedW, h: snappedH };
-        })();
-await api.createWidget(type, def.defaultConfig, position, tabId);
-    const data = await api.fetchWidgets(tabId);
-    setWidgets(bringIntoDashboard(data));
-    saveCache(cacheKey, data);
-  }, [widgets, gridMode, tabId, cacheKey]);
+  const handleAddWidget = useCallback(
+    async (type: string, dropPoint?: { x: number; y: number }) => {
+      const def = getWidget(type);
+      if (!def) return;
+      const snappedW = snapUpW(def.minSize.w);
+      const snappedH = snapUpH(def.minSize.h);
+      const position: Position = dropPoint
+        ? {
+            x: Math.max(0, gridMode ? snapX(dropPoint.x) : dropPoint.x),
+            y: Math.max(0, gridMode ? snapY(dropPoint.y) : dropPoint.y),
+            w: snappedW,
+            h: snappedH,
+          }
+        : (() => {
+            const slot = findFreeGridSlot(widgets, snappedW, snappedH);
+            return { x: slot.x, y: slot.y, w: snappedW, h: snappedH };
+          })();
+      await api.createWidget(type, def.defaultConfig, position, tabId);
+      const data = await api.fetchWidgets(tabId);
+      setWidgets(bringIntoDashboard(data));
+      saveCache(cacheKey, data);
+    },
+    [widgets, gridMode, tabId, cacheKey],
+  );
 
   useEffect(() => {
     onAddWidgetRef(tabId, handleAddWidget);
   }, [handleAddWidget, onAddWidgetRef, tabId]);
 
   const refresh = useCallback(() => {
-    api.fetchWidgets(tabId).then((data) => {
-      setWidgets(data);
-      saveCache(cacheKey, data);
-      setLoaded(true);
-    }).catch(() => {});
+    api
+      .fetchWidgets(tabId)
+      .then((data) => {
+        setWidgets(data);
+        saveCache(cacheKey, data);
+        setLoaded(true);
+      })
+      .catch(() => {});
   }, [tabId, cacheKey]);
 
   useEffect(() => {
     if (onRefreshRef) onRefreshRef(tabId, refresh);
   }, [refresh, onRefreshRef, tabId]);
 
+  const handleTransfer = useCallback((action: TransferAction) => {
+    setWidgets((prev) => {
+      if (action.type === 'remove') return prev.filter((w) => w.id !== action.widgetId);
+      if (prev.some((w) => w.id === action.widget.id)) return prev;
+      return [...prev, action.widget];
+    });
+  }, []);
+
+  useEffect(() => {
+    if (onTransferRef) onTransferRef(tabId, handleTransfer);
+  }, [handleTransfer, onTransferRef, tabId]);
+
   useEffect(() => {
     let cancelled = false;
 
     function fetch() {
-      api.fetchWidgets(tabId).then((data) => {
-        if (!cancelled) {
-          setWidgets(data);
-          saveCache(cacheKey, data);
-          setLoaded(true);
-        }
-      }).catch(() => {
-        if (!cancelled) {
-          setTimeout(fetch, 1000);
-        }
-      });
+      api
+        .fetchWidgets(tabId)
+        .then((data) => {
+          if (!cancelled) {
+            setWidgets(data);
+            saveCache(cacheKey, data);
+            setLoaded(true);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setTimeout(fetch, 1000);
+          }
+        });
     }
 
     fetch();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [tabId, cacheKey]);
 
   useEffect(() => {
@@ -141,20 +193,26 @@ await api.createWidget(type, def.defaultConfig, position, tabId);
     });
   }, [gridMode]);
 
-  const handleResize = useCallback((id: string, w: number, h: number) => {
-    setWidgets((prev) => {
-      const widget = prev.find((x) => x.id === id);
-      if (!widget) return prev;
-      const snappedW = gridMode ? snapW(w) : w;
-      const snappedH = gridMode ? snapH(h) : h;
-      if (gridMode && hasCollision(id, widget.position.x, widget.position.y, snappedW, snappedH, prev)) {
-        return prev;
-      }
-      const newPos = { ...widget.position, w: snappedW, h: snappedH };
-      api.updateWidget(id, { position: newPos });
-      return prev.map((x) => (x.id === id ? { ...x, position: newPos } : x));
-    });
-  }, [gridMode]);
+  const handleResize = useCallback(
+    (id: string, w: number, h: number) => {
+      setWidgets((prev) => {
+        const widget = prev.find((x) => x.id === id);
+        if (!widget) return prev;
+        const snappedW = gridMode ? snapW(w) : w;
+        const snappedH = gridMode ? snapH(h) : h;
+        if (
+          gridMode &&
+          hasCollision(id, widget.position.x, widget.position.y, snappedW, snappedH, prev)
+        ) {
+          return prev;
+        }
+        const newPos = { ...widget.position, w: snappedW, h: snappedH };
+        api.updateWidget(id, { position: newPos });
+        return prev.map((x) => (x.id === id ? { ...x, position: newPos } : x));
+      });
+    },
+    [gridMode],
+  );
 
   const handleDelete = useCallback((id: string) => {
     api.deleteWidget(id);
@@ -162,15 +220,11 @@ await api.createWidget(type, def.defaultConfig, position, tabId);
   }, []);
 
   const handleConfigChange = useCallback((id: string, config: Record<string, unknown>) => {
-    setWidgets((prev) =>
-      prev.map((w) => (w.id === id ? { ...w, config } : w)),
-    );
+    setWidgets((prev) => prev.map((w) => (w.id === id ? { ...w, config } : w)));
     api.updateWidget(id, { config });
   }, []);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-  );
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const dropAreaRef = useRef<HTMLDivElement>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -181,47 +235,106 @@ await api.createWidget(type, def.defaultConfig, position, tabId);
     setDragOver(true);
   }, []);
 
-  const handleWidgetDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const type = e.dataTransfer.getData('text/plain');
-    if (!type) return;
-    const rect = dropAreaRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const def = getWidget(type);
-    if (!def) return;
-    const w = snapUpW(def.minSize.w);
-    const h = snapUpH(def.minSize.h);
-    const x = e.clientX - rect.left - w / 2;
-    const y = e.clientY - rect.top - h / 2;
-    handleAddWidget(type, { x, y });
-  }, [handleAddWidget]);
+  const handleWidgetDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      const type = e.dataTransfer.getData('text/plain');
+      if (!type) return;
+      const rect = dropAreaRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const def = getWidget(type);
+      if (!def) return;
+      const w = snapUpW(def.minSize.w);
+      const h = snapUpH(def.minSize.h);
+      const x = e.clientX - rect.left - w / 2;
+      const y = e.clientY - rect.top - h / 2;
+      handleAddWidget(type, { x, y });
+    },
+    [handleAddWidget],
+  );
 
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, delta } = event;
-    const widgetId = String(active.id).replace('widget-', '');
-    setWidgets((prev) => {
-      const widget = prev.find((w) => w.id === widgetId);
-      if (!widget) return prev;
-      let nx = widget.position.x + delta.x;
-      let ny = widget.position.y + delta.y;
-      const nw = widget.position.w;
-      const isCollapsed = (widget.config.collapsed as boolean) ?? false;
-      const nh = isCollapsed ? 25 : widget.position.h;
+  const [activeDrag, setActiveDrag] = useState<WidgetData | null>(null);
 
-      if (gridMode) {
-        nx = snapX(nx);
-        ny = snapY(ny);
-        if (hasCollision(widgetId, nx, ny, nw, nh, prev)) {
-          return prev;
+  const handleDragStart = useCallback(
+    (event: DragStartEvent) => {
+      const widgetId = String(event.active.id).replace('widget-', '');
+      onWidgetDragStart(widgetId, tabId);
+      setActiveDrag(widgets.find((w) => w.id === widgetId) ?? null);
+    },
+    [onWidgetDragStart, tabId, widgets],
+  );
+
+  const handleDragCancel = useCallback(() => {
+    setActiveDrag(null);
+    onWidgetDragEnd();
+  }, [onWidgetDragEnd]);
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, delta } = event;
+      const widgetId = String(active.id).replace('widget-', '');
+      setActiveDrag(null);
+
+      const session = getDragSession();
+      if (session && session.sourceTabId === tabId) {
+        const el = document.elementFromPoint(session.pointerX, session.pointerY);
+        const targetArea = el?.closest('[data-dashboard-tab-id]');
+        const targetTabId = targetArea?.getAttribute('data-dashboard-tab-id');
+        if (targetArea && targetTabId && targetTabId !== tabId) {
+          const widget = widgets.find((w) => w.id === widgetId);
+          if (widget) {
+            const rect = targetArea.getBoundingClientRect();
+            const collapsed = (widget.config.collapsed as boolean) ?? false;
+            const w = widget.position.w;
+            const h = collapsed ? 25 : widget.position.h;
+            const nx = Math.max(0, session.pointerX - rect.left - w / 2);
+            const ny = Math.max(0, session.pointerY - rect.top - h / 2);
+            const newPos = {
+              ...widget.position,
+              x: gridMode ? snapX(nx) : nx,
+              y: gridMode ? snapY(ny) : ny,
+            };
+            const moved: WidgetData = { ...widget, tabId: targetTabId, position: newPos };
+            onWidgetTransferred(targetTabId, { type: 'insert', widget: moved });
+            setWidgets((prev) => prev.filter((w) => w.id !== widgetId));
+            api.updateWidget(widgetId, { tabId: targetTabId, position: newPos }).then(
+              () => onWidgetSynced(targetTabId),
+              () => {
+                onWidgetTransferred(targetTabId, { type: 'remove', widgetId });
+                setWidgets((prev) =>
+                  prev.some((w) => w.id === widgetId) ? prev : [...prev, widget],
+                );
+              },
+            );
+          }
+          onWidgetDragEnd();
+          return;
         }
       }
+      onWidgetDragEnd();
 
-      const newPos = { ...widget.position, x: nx, y: ny };
-      api.updateWidget(widgetId, { position: newPos });
-      return prev.map((w) => (w.id === widgetId ? { ...w, position: newPos } : w));
-    });
-  }, [gridMode]);
+      const widget = widgets.find((w) => w.id === widgetId);
+      if (widget) {
+        let nx = widget.position.x + delta.x;
+        let ny = widget.position.y + delta.y;
+        const nw = widget.position.w;
+        const isCollapsed = (widget.config.collapsed as boolean) ?? false;
+        const nh = isCollapsed ? 25 : widget.position.h;
+
+        if (gridMode) {
+          nx = snapX(nx);
+          ny = snapY(ny);
+          if (hasCollision(widgetId, nx, ny, nw, nh, widgets)) return;
+        }
+
+        const newPos = { ...widget.position, x: nx, y: ny };
+        api.updateWidget(widgetId, { position: newPos });
+        setWidgets((prev) => prev.map((w) => (w.id === widgetId ? { ...w, position: newPos } : w)));
+      }
+    },
+    [gridMode, tabId, widgets, onWidgetDragEnd, onWidgetTransferred, onWidgetSynced],
+  );
 
   const dashW = Math.max(
     viewport.w,
@@ -236,11 +349,17 @@ await api.createWidget(type, def.defaultConfig, position, tabId);
   );
 
   return (
-    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+    <DndContext
+      sensors={sensors}
+      onDragStart={handleDragStart}
+      onDragCancel={handleDragCancel}
+      onDragEnd={handleDragEnd}
+    >
       <Suspense fallback={<div className="text-gray-500 text-sm">Loading widgets...</div>}>
         <div
           id="dashboard-drop-area"
           ref={dropAreaRef}
+          data-dashboard-tab-id={tabId}
           onDragOver={handleDragOverArea}
           onDragLeave={() => setDragOver(false)}
           onDrop={handleWidgetDrop}
@@ -292,6 +411,43 @@ await api.createWidget(type, def.defaultConfig, position, tabId);
           })}
         </div>
       </Suspense>
+      {createPortal(
+        <DragOverlay style={{ pointerEvents: 'none' }}>
+          {activeDrag &&
+            (() => {
+              const def = getWidget(activeDrag.type);
+              if (!def) return null;
+              const collapsed = (activeDrag.config.collapsed as boolean) ?? false;
+              const title = (activeDrag.config.title as string) || def.label;
+              return (
+                <div
+                  className="overflow-hidden rounded-[4px] border border-gray-700 bg-gray-800 shadow-2xl"
+                  style={{
+                    width: activeDrag.position.w,
+                    height: collapsed ? 25 : activeDrag.position.h,
+                    opacity: 0.92,
+                  }}
+                >
+                  <div className="flex h-[25px] shrink-0 items-center gap-1.5 border-b border-gray-700/60 px-2">
+                    <FiMenu size={15} className="shrink-0 text-gray-500" />
+                    <span className="truncate text-sm text-white">{title}</span>
+                  </div>
+                  {!collapsed && (
+                    <div
+                      className="min-h-0 overflow-hidden p-3"
+                      style={{ height: 'calc(100% - 25px)' }}
+                    >
+                      <Suspense fallback={null}>
+                        <def.component config={activeDrag.config} onConfigChange={() => {}} />
+                      </Suspense>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+        </DragOverlay>,
+        document.body,
+      )}
     </DndContext>
   );
 }

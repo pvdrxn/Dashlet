@@ -1,4 +1,11 @@
-import { useState, useCallback, useRef, useEffect, type CSSProperties, type RefObject } from 'react';
+import {
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+  type CSSProperties,
+  type RefObject,
+} from 'react';
 import { FiPlus, FiX, FiEdit2 } from 'react-icons/fi';
 import {
   DndContext,
@@ -8,11 +15,7 @@ import {
   closestCenter,
   type DragEndEvent,
 } from '@dnd-kit/core';
-import {
-  SortableContext,
-  useSortable,
-  horizontalListSortingStrategy,
-} from '@dnd-kit/sortable';
+import { SortableContext, useSortable, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { TabDto } from '@widget-master/shared';
 
@@ -85,7 +88,7 @@ function TabPill({
       nodeRef.current = node;
       setNodeRef(node);
     },
-    [setNodeRef]
+    [setNodeRef],
   );
 
   useEffect(() => {
@@ -101,7 +104,9 @@ function TabPill({
     }
   }, [isDragging]);
 
-  const clampedX = transform ? Math.min(Math.max(transform.x, dragBounds?.min ?? -Infinity), dragBounds?.max ?? Infinity) : 0;
+  const clampedX = transform
+    ? Math.min(Math.max(transform.x, dragBounds?.min ?? -Infinity), dragBounds?.max ?? Infinity)
+    : 0;
 
   const style: CSSProperties = {
     transform: transform ? CSS.Transform.toString({ ...transform, x: clampedX, y: 0 }) : undefined,
@@ -114,6 +119,7 @@ function TabPill({
       ref={setRefs}
       style={style}
       {...attributes}
+      data-tab-id={tab.id}
       role="tab"
       aria-selected={isActive}
       className={`group relative flex h-8 max-w-56 shrink-0 cursor-pointer select-none items-center overflow-hidden rounded-full border px-3.5 text-sm transition-colors ${
@@ -191,6 +197,7 @@ interface TabBarProps {
   tabs: TabDto[];
   activeTabId: string | null;
   topOffset: number;
+  widgetDragActive: boolean;
   onSelectTab: (id: string) => void;
   onCreateTab: () => void;
   onRenameTab: (id: string, name: string) => void;
@@ -204,6 +211,7 @@ export function TabBar({
   tabs,
   activeTabId,
   topOffset,
+  widgetDragActive,
   onSelectTab,
   onCreateTab,
   onRenameTab,
@@ -243,15 +251,28 @@ export function TabBar({
       setDraftName(tab.name);
       onEditingTabIdChange(tab.id);
     },
-    [editingTabId, onEditingTabIdChange]
+    [editingTabId, onEditingTabIdChange],
   );
 
   const handleTabClick = useCallback(
     (id: string) => {
       onSelectTab(id);
     },
-    [onSelectTab]
+    [onSelectTab],
   );
+
+  useEffect(() => {
+    if (!widgetDragActive) return;
+    const onPointerMove = (e: PointerEvent) => {
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const tabEl = el?.closest('[data-tab-id]');
+      if (!tabEl) return;
+      const tabId = tabEl.getAttribute('data-tab-id');
+      if (tabId && tabId !== activeTabId) onSelectTab(tabId);
+    };
+    document.addEventListener('pointermove', onPointerMove);
+    return () => document.removeEventListener('pointermove', onPointerMove);
+  }, [widgetDragActive, activeTabId, onSelectTab]);
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -265,7 +286,7 @@ export function TabBar({
       reordered.splice(to, 0, moved);
       onReorderTabs(reordered.map((t) => t.id));
     },
-    [tabs, onReorderTabs]
+    [tabs, onReorderTabs],
   );
 
   return (
@@ -273,11 +294,7 @@ export function TabBar({
       className="sticky z-30 flex items-center gap-1.5 overflow-hidden border-b border-gray-700/60 bg-gray-900/90 px-3 py-2 backdrop-blur-sm"
       style={{ top: topOffset }}
     >
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-      >
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
           <div className="flex min-w-0 items-center gap-1.5">
             {tabs.map((tab) => (

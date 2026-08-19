@@ -19,7 +19,20 @@ interface WidgetFrameProps {
   maxZIndex: number;
 }
 
-export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, minSize, config, component: WidgetComponent, onResize, onDelete, onConfigChange, gridMode, label, maxZIndex }: WidgetFrameProps) {
+export const WidgetFrame = memo(function WidgetFrame({
+  id,
+  position,
+  zIndex,
+  minSize,
+  config,
+  component: WidgetComponent,
+  onResize,
+  onDelete,
+  onConfigChange,
+  gridMode,
+  label,
+  maxZIndex,
+}: WidgetFrameProps) {
   const [size, setSize] = useState({ w: position.w, h: position.h });
   const [isResizing, setIsResizing] = useState(false);
   const resizeStateRef = useRef({ w: position.w, h: position.h });
@@ -40,7 +53,12 @@ export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, min
 
   const isHoldTargetInteractive = useCallback((target: EventTarget | null): boolean => {
     if (!(target instanceof HTMLElement)) return true;
-    if (target.closest('button, input, textarea, select, a, [contenteditable="true"], [role="button"], [aria-roledescription]')) return true;
+    if (
+      target.closest(
+        'button, input, textarea, select, a, [contenteditable="true"], [role="button"], [aria-roledescription]',
+      )
+    )
+      return true;
     return false;
   }, []);
 
@@ -63,9 +81,11 @@ export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, min
       holdPosRef.current = { x: e.clientX, y: e.clientY };
       clearHoldTimer();
       holdTimerRef.current = setTimeout(fireHoldToggle, HOLD_THRESHOLD);
-      try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {}
     },
-    [isHoldTargetInteractive, clearHoldTimer, fireHoldToggle]
+    [isHoldTargetInteractive, clearHoldTimer, fireHoldToggle],
   );
 
   const handleTitleHoldPointerDown = useCallback(
@@ -75,9 +95,11 @@ export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, min
       holdPosRef.current = { x: e.clientX, y: e.clientY };
       clearHoldTimer();
       holdTimerRef.current = setTimeout(fireHoldToggle, HOLD_THRESHOLD);
-      try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {}
     },
-    [clearHoldTimer, fireHoldToggle]
+    [clearHoldTimer, fireHoldToggle],
   );
 
   const handleHoldPointerMove = useCallback(
@@ -91,15 +113,17 @@ export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, min
       const dy = Math.abs(e.clientY - holdPosRef.current.y);
       if (dx > 5 || dy > 5) clearHoldTimer();
     },
-    [clearHoldTimer]
+    [clearHoldTimer],
   );
 
   const handleHoldPointerUp = useCallback(
     (e: React.PointerEvent) => {
       clearHoldTimer();
-      try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {}
     },
-    [clearHoldTimer]
+    [clearHoldTimer],
   );
 
   const handleHeaderPointerDown = useCallback(
@@ -111,7 +135,7 @@ export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, min
         listeners?.onPointerDown(e);
       }, 25);
     },
-    [listeners]
+    [listeners],
   );
 
   const handleHeaderPointerUp = useCallback(() => {
@@ -121,23 +145,20 @@ export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, min
     }
   }, []);
 
-  const handleHeaderPointerMove = useCallback(
-    (e: React.PointerEvent) => {
-      if (!longPressTimerRef.current) return;
-      if ((e.buttons & 1) === 0) {
-        clearTimeout(longPressTimerRef.current);
-        longPressTimerRef.current = null;
-        return;
-      }
-      const dx = Math.abs(e.clientX - pointerPosRef.current.x);
-      const dy = Math.abs(e.clientY - pointerPosRef.current.y);
-      if (dx > 5 || dy > 5) {
-        clearTimeout(longPressTimerRef.current);
-        longPressTimerRef.current = null;
-      }
-    },
-    []
-  );
+  const handleHeaderPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!longPressTimerRef.current) return;
+    if ((e.buttons & 1) === 0) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+      return;
+    }
+    const dx = Math.abs(e.clientX - pointerPosRef.current.x);
+    const dy = Math.abs(e.clientY - pointerPosRef.current.y);
+    if (dx > 5 || dy > 5) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -153,57 +174,65 @@ export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, min
     width: size.w,
     height: collapsed ? HEADER_HEIGHT : size.h,
     zIndex: isDragging ? 999 : ((config.zIndex as number) ?? zIndex),
-    opacity: isDragging ? 0.85 : 1,
+    opacity: isDragging ? 0.25 : 1,
+    pointerEvents: isDragging ? 'none' : undefined,
     transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined,
     transition: gridMode ? 'width 0.15s ease-in-out, height 0.15s ease-in-out' : 'none',
   };
 
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsResizing(true);
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const startW = size.w;
-    const startH = size.h;
+  const handleResizeStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsResizing(true);
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const startW = size.w;
+      const startH = size.h;
 
-    const handleMouseMove = (me: MouseEvent) => {
-      if ((me.buttons & 1) === 0) {
-        handleMouseUp();
-        return;
-      }
-      let newW = Math.max(minSize.w, startW + me.clientX - startX);
-      let newH = Math.max(minSize.h, startH + me.clientY - startY);
-      if (gridMode) {
-        newW = snapUpW(newW);
-        newH = snapUpH(newH);
-      }
-      resizeStateRef.current = { w: newW, h: newH };
-      setSize({ w: newW, h: newH });
-    };
+      const handleMouseMove = (me: MouseEvent) => {
+        if ((me.buttons & 1) === 0) {
+          handleMouseUp();
+          return;
+        }
+        let newW = Math.max(minSize.w, startW + me.clientX - startX);
+        let newH = Math.max(minSize.h, startH + me.clientY - startY);
+        if (gridMode) {
+          newW = snapUpW(newW);
+          newH = snapUpH(newH);
+        }
+        resizeStateRef.current = { w: newW, h: newH };
+        setSize({ w: newW, h: newH });
+      };
 
-    const handleMouseUp = () => {
-      setIsResizing(false);
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      window.removeEventListener('blur', handleBlur);
-      onResize(id, resizeStateRef.current.w, resizeStateRef.current.h);
-    };
+      const handleMouseUp = () => {
+        setIsResizing(false);
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+        window.removeEventListener('blur', handleBlur);
+        onResize(id, resizeStateRef.current.w, resizeStateRef.current.h);
+      };
 
-    const handleBlur = () => handleMouseUp();
+      const handleBlur = () => handleMouseUp();
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    window.addEventListener('blur', handleBlur);
-  }, [id, size, onResize, minSize, gridMode]);
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      window.addEventListener('blur', handleBlur);
+    },
+    [id, size, onResize, minSize, gridMode],
+  );
 
   const handleConfigChangeWrapped = useCallback(
     (newConfig: Record<string, unknown>) => onConfigChange(id, newConfig),
-    [id, onConfigChange]
+    [id, onConfigChange],
   );
 
   return (
-    <div style={style} className="group border border-gray-700 bg-gray-800 shadow-lg overflow-hidden rounded-[4px]">
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="group border border-gray-700 bg-gray-800 shadow-lg overflow-hidden rounded-[4px]"
+    >
       <div
         className={`w-full flex items-center h-[25px] bg-transparent select-none`}
         onPointerDown={handleHoldPointerDown}
@@ -213,7 +242,6 @@ export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, min
         onLostPointerCapture={clearHoldTimer}
       >
         <span
-          ref={setNodeRef}
           {...attributes}
           className="cursor-grab active:cursor-grabbing shrink-0 flex items-center self-stretch pl-[6px] pr-1"
           style={{ touchAction: 'none' }}
@@ -231,9 +259,18 @@ export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, min
           onChange={(e) => onConfigChange(id, { ...config, title: e.target.value })}
           onClick={(e) => e.stopPropagation()}
           onPointerDown={handleTitleHoldPointerDown}
-          onPointerMove={(e) => { e.stopPropagation(); handleHoldPointerMove(e); }}
-          onPointerUp={(e) => { e.stopPropagation(); handleHoldPointerUp(e); }}
-          onPointerCancel={(e) => { e.stopPropagation(); handleHoldPointerUp(e); }}
+          onPointerMove={(e) => {
+            e.stopPropagation();
+            handleHoldPointerMove(e);
+          }}
+          onPointerUp={(e) => {
+            e.stopPropagation();
+            handleHoldPointerUp(e);
+          }}
+          onPointerCancel={(e) => {
+            e.stopPropagation();
+            handleHoldPointerUp(e);
+          }}
           className="flex-1 min-w-0 bg-transparent border-transparent outline-none text-base text-white truncate cursor-text"
           placeholder={label}
           aria-label="Widget title"
@@ -246,7 +283,11 @@ export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, min
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onConfigChange(id, { ...config, zIndex: isLayered ? 0 : maxZIndex + 1, layered: !isLayered });
+                  onConfigChange(id, {
+                    ...config,
+                    zIndex: isLayered ? 0 : maxZIndex + 1,
+                    layered: !isLayered,
+                  });
                 }}
                 className={`flex h-7 w-7 items-center justify-center transition-colors ${isLayered ? 'bg-blue-500/10 text-blue-400' : 'text-gray-400 hover:bg-blue-500/10 hover:text-blue-400'}`}
                 title={isLayered ? 'Bring to back' : 'Bring to front'}
@@ -270,7 +311,10 @@ export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, min
           </button>
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); onDelete(id); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(id);
+            }}
             className="flex h-7 w-7 items-center justify-center border-l border-gray-700 text-gray-500 transition-colors hover:bg-red-500/10 hover:text-red-400"
             title="Delete widget"
           >
@@ -299,7 +343,12 @@ export const WidgetFrame = memo(function WidgetFrame({ id, position, zIndex, min
             type="button"
             aria-label="Resize widget"
             onMouseDown={handleResizeStart}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleResizeStart(e as unknown as React.MouseEvent); } }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleResizeStart(e as unknown as React.MouseEvent);
+              }
+            }}
             className={`absolute bottom-0 right-0 h-4 w-4 cursor-nwse-resize ${isResizing ? 'bg-blue-200' : ''}`}
             style={{
               backgroundImage: 'linear-gradient(135deg, transparent 50%, #999 50%)',

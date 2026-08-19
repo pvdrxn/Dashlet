@@ -1,8 +1,6 @@
 import type { WidgetData, Position } from '../widgets/types';
 
-const BASE = import.meta.env.PROD
-  ? 'http://localhost:3001/api/v1/widgets'
-  : '/api/v1/widgets';
+const BASE = import.meta.env.PROD ? 'http://localhost:3001/api/v1/widgets' : '/api/v1/widgets';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
@@ -21,7 +19,12 @@ export async function fetchWidgets(tabId?: string): Promise<WidgetData[]> {
   return request<WidgetData[]>(`${BASE}${query}`);
 }
 
-export async function createWidget(type: string, config?: Record<string, unknown>, position?: Position, tabId?: string): Promise<WidgetData> {
+export async function createWidget(
+  type: string,
+  config?: Record<string, unknown>,
+  position?: Position,
+  tabId?: string,
+): Promise<WidgetData> {
   return request<WidgetData>(BASE, {
     method: 'POST',
     body: JSON.stringify({ type, tabId, config, position }),
@@ -30,7 +33,12 @@ export async function createWidget(type: string, config?: Record<string, unknown
 
 export async function updateWidget(
   id: string,
-  data: { config?: Record<string, unknown>; position?: Position; zIndex?: number },
+  data: {
+    config?: Record<string, unknown>;
+    position?: Position;
+    zIndex?: number;
+    tabId?: string | null;
+  },
 ): Promise<WidgetData> {
   return request<WidgetData>(`${BASE}/${id}`, {
     method: 'PATCH',

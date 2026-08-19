@@ -114,7 +114,7 @@ export class WidgetsService implements OnModuleInit {
     return toWidgetDto(widget);
   }
 
-  async update(id: string, dto: UpdateWidgetDto) {
+  async update(userId: string, id: string, dto: UpdateWidgetDto) {
     const existing = await this.prisma.widget.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Widget not found');
 
@@ -122,6 +122,15 @@ export class WidgetsService implements OnModuleInit {
     if (dto.config !== undefined) data.config = JSON.stringify(dto.config);
     if (dto.position !== undefined) data.position = JSON.stringify(dto.position);
     if (dto.zIndex !== undefined) data.zIndex = dto.zIndex;
+    if (dto.tabId !== undefined) {
+      if (dto.tabId === null) {
+        data.tabId = null;
+      } else {
+        const tabId = await this.resolveTabId(userId, dto.tabId);
+        if (!tabId) throw new NotFoundException('Tab not found');
+        data.tabId = tabId;
+      }
+    }
 
     const widget = await this.prisma.widget.update({ where: { id }, data });
     return toWidgetDto(widget);

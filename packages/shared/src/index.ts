@@ -45,6 +45,7 @@ export interface UpdateWidgetDto {
   config?: Record<string, unknown>;
   position?: Position;
   zIndex?: number;
+  tabId?: string | null;
 }
 
 export interface TodoListDto {
@@ -62,6 +63,14 @@ export interface TodoItemDto {
   order: number;
 }
 
-export type WidgetType = 'todo-list' | 'pomodoro' | 'notes' | 'calculator' | 'habit-tracker' | 'diary';
+export type WidgetType =
+  'todo-list' | 'pomodoro' | 'notes' | 'calculator' | 'habit-tracker' | 'diary';
 
-export const WIDGET_TYPES: WidgetType[] = ['todo-list', 'pomodoro', 'notes', 'calculator', 'habit-tracker', 'diary'];
+export const WIDGET_TYPES: WidgetType[] = [
+  'todo-list',
+  'pomodoro',
+  'notes',
+  'calculator',
+  'habit-tracker',
+  'diary',
+];

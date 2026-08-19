@@ -5,6 +5,12 @@ import { TabBar } from './components/TabBar';
 import { TrashWindow } from './components/TrashWindow';
 import * as tabsApi from './api/tabs';
 import type { TabDto } from '@widget-master/shared';
+import {
+  beginDragSession,
+  clearDragSession,
+  updateDragPointer,
+  type TransferAction,
+} from './widgets/drag-session';
 
 const ACTIVE_TAB_KEY = 'dashlet-active-tab';
 
@@ -17,8 +23,10 @@ function App() {
     localStorage.getItem(ACTIVE_TAB_KEY),
   );
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
+  const [widgetDragActive, setWidgetDragActive] = useState(false);
   const addWidgetRefs = useRef(new Map<string, (type: string) => void>());
   const refreshWidgetsRefs = useRef(new Map<string, () => void>());
+  const transferWidgetRefs = useRef(new Map<string, (action: TransferAction) => void>());
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [toolbarHeight, setToolbarHeight] = useState(0);
 
@@ -36,21 +44,26 @@ function App() {
     let cancelled = false;
 
     function fetch() {
-      tabsApi.fetchTabs().then((data) => {
-        if (cancelled) return;
-        setTabs(data);
-        setTabsLoaded(true);
-        setActiveTabId((prev) => {
-          if (prev && data.some((t) => t.id === prev)) return prev;
-          return data[0]?.id ?? null;
+      tabsApi
+        .fetchTabs()
+        .then((data) => {
+          if (cancelled) return;
+          setTabs(data);
+          setTabsLoaded(true);
+          setActiveTabId((prev) => {
+            if (prev && data.some((t) => t.id === prev)) return prev;
+            return data[0]?.id ?? null;
+          });
+        })
+        .catch(() => {
+          if (!cancelled) setTimeout(fetch, 1000);
         });
-      }).catch(() => {
-        if (!cancelled) setTimeout(fetch, 1000);
-      });
     }
 
     fetch();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -61,6 +74,23 @@ function App() {
   const handleSelectTab = useCallback((id: string) => {
     setActiveTabId(id);
   }, []);
+
+  const handleWidgetDragStart = useCallback((widgetId: string, sourceTabId: string) => {
+    beginDragSession({ widgetId, sourceTabId });
+    setWidgetDragActive(true);
+  }, []);
+
+  const handleWidgetDragEnd = useCallback(() => {
+    clearDragSession();
+    setWidgetDragActive(false);
+  }, []);
+
+  useEffect(() => {
+    if (!widgetDragActive) return;
+    const onPointerMove = (e: PointerEvent) => updateDragPointer(e.clientX, e.clientY);
+    document.addEventListener('pointermove', onPointerMove);
+    return () => document.removeEventListener('pointermove', onPointerMove);
+  }, [widgetDragActive]);
 
   const handleCreateTab = useCallback(async () => {
     try {
@@ -78,17 +108,20 @@ function App() {
     } catch {}
   }, []);
 
-  const handleDeleteTab = useCallback(async (id: string) => {
-    try {
-      await tabsApi.deleteTab(id);
-      setTabs((prev) => {
-        const next = prev.filter((t) => t.id !== id);
-        setActiveTabId((current) => (current === id ? (next[0]?.id ?? null) : current));
-        return next;
-      });
-      if (editingTabId === id) setEditingTabId(null);
-    } catch {}
-  }, [editingTabId]);
+  const handleDeleteTab = useCallback(
+    async (id: string) => {
+      try {
+        await tabsApi.deleteTab(id);
+        setTabs((prev) => {
+          const next = prev.filter((t) => t.id !== id);
+          setActiveTabId((current) => (current === id ? (next[0]?.id ?? null) : current));
+          return next;
+        });
+        if (editingTabId === id) setEditingTabId(null);
+      } catch {}
+    },
+    [editingTabId],
+  );
 
   const handleReorderTabs = useCallback((orderedIds: string[]) => {
     setTabs((prev) => {
@@ -110,17 +143,37 @@ function App() {
     refreshWidgetsRefs.current.set(tabId, fn);
   }, []);
 
-  const handleAddWidget = useCallback((type: string) => {
-    if (!activeTabId) return;
-    addWidgetRefs.current.get(activeTabId)?.(type);
-  }, [activeTabId]);
+  const registerTransferRef = useCallback((tabId: string, fn: (action: TransferAction) => void) => {
+    transferWidgetRefs.current.set(tabId, fn);
+  }, []);
+
+  const handleWidgetTransferred = useCallback((targetTabId: string, action: TransferAction) => {
+    transferWidgetRefs.current.get(targetTabId)?.(action);
+  }, []);
+
+  const handleWidgetSynced = useCallback((targetTabId: string) => {
+    refreshWidgetsRefs.current.get(targetTabId)?.();
+  }, []);
+
+  const handleAddWidget = useCallback(
+    (type: string) => {
+      if (!activeTabId) return;
+      addWidgetRefs.current.get(activeTabId)?.(type);
+    },
+    [activeTabId],
+  );
 
   const handleRestoreComplete = useCallback(() => {
     refreshWidgetsRefs.current.forEach((fn) => fn());
-    tabsApi.fetchTabs().then((data) => {
-      setTabs(data);
-      setActiveTabId((prev) => (prev && data.some((t) => t.id === prev) ? prev : data[0]?.id ?? null));
-    }).catch(() => {});
+    tabsApi
+      .fetchTabs()
+      .then((data) => {
+        setTabs(data);
+        setActiveTabId((prev) =>
+          prev && data.some((t) => t.id === prev) ? prev : (data[0]?.id ?? null),
+        );
+      })
+      .catch(() => {});
   }, []);
 
   if (!tabsLoaded) {
@@ -154,6 +207,7 @@ function App() {
         editingTabId={editingTabId}
         onEditingTabIdChange={setEditingTabId}
         topOffset={toolbarHeight}
+        widgetDragActive={widgetDragActive}
       />
       <div className="p-4">
         {tabs.map((tab) => (
@@ -163,11 +217,21 @@ function App() {
               gridMode={gridMode}
               onAddWidgetRef={registerAddWidgetRef}
               onRefreshRef={registerRefreshRef}
+              onTransferRef={registerTransferRef}
+              onWidgetDragStart={handleWidgetDragStart}
+              onWidgetDragEnd={handleWidgetDragEnd}
+              onWidgetTransferred={handleWidgetTransferred}
+              onWidgetSynced={handleWidgetSynced}
             />
           </div>
         ))}
       </div>
-      {trashOpen && <TrashWindow onClose={() => setTrashOpen(false)} onRestoreComplete={handleRestoreComplete} />}
+      {trashOpen && (
+        <TrashWindow
+          onClose={() => setTrashOpen(false)}
+          onRestoreComplete={handleRestoreComplete}
+        />
+      )}
     </main>
   );
 }
