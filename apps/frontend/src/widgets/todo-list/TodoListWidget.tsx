@@ -117,6 +117,26 @@ function toTreeOrder(items: TodoItem[]): TodoItem[] {
   return ordered;
 }
 
+function getCompletedItemIds(items: TodoItem[], childrenMap: Map<string, TodoItem[]>): Set<string> {
+  const ids = new Set(items.map((i) => i.id));
+  const isRoot = (item: TodoItem) => !item.parentId || !ids.has(item.parentId);
+  const excludedIds = new Set<string>();
+  const collect = (parentId: string) => {
+    for (const child of childrenMap.get(parentId) ?? []) {
+      if (excludedIds.has(child.id)) continue;
+      excludedIds.add(child.id);
+      collect(child.id);
+    }
+  };
+  for (const root of items) {
+    if (root.completed && isRoot(root)) {
+      excludedIds.add(root.id);
+      collect(root.id);
+    }
+  }
+  return excludedIds;
+}
+
 function AutoGrowInput({
   value,
   inputRef,
@@ -212,7 +232,7 @@ const TaskRowContent = memo(function TaskRowContent({
       <button
         type="button"
         onClick={() => toggleIndent(item.id)}
-        style={{ left: 4 + level * 16 }}
+        style={{ left: 4 + level * 20 }}
         title={item.parentId ? 'Outdent (make it a task)' : 'Indent (make it a subtask)'}
         className={`absolute top-1/2 -translate-y-1/2 flex items-center px-0 leading-none ${
           item.parentId
@@ -231,7 +251,7 @@ const TaskRowContent = memo(function TaskRowContent({
         type="checkbox"
         checked={item.completed}
         onChange={() => toggleItem(item.id)}
-        className="h-3.5 w-3.5 shrink-0 accent-blue-500"
+        className="h-4 w-4 shrink-0 cursor-pointer appearance-none rounded border border-gray-500 bg-gray-700 transition-colors checked:border-blue-600 checked:bg-blue-600 checked:bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2016%2016%27%20fill=%27none%27%20stroke=%27white%27%20stroke-width=%272.5%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%3E%3Cpath%20d=%27M3.5%208.5l3%203%206-7%27/%3E%3C/svg%3E')] checked:bg-center checked:bg-no-repeat checked:bg-[length:12px_12px] hover:border-gray-400"
         aria-label={`Mark "${item.text}" as completed`}
       />
       {editing ? (
@@ -343,7 +363,7 @@ const SortableItem = memo(function SortableItem({
     <div
       ref={setNodeRef}
       {...listeners}
-      style={{ ...style, paddingLeft: 21 + level * 16 }}
+      style={{ ...style, paddingLeft: 21 + level * 20 }}
       className="group/item mx-0.5 relative flex cursor-grab touch-none items-center gap-1.5 rounded py-0.5 hover:bg-gray-700/50 active:cursor-grabbing"
     >
       <TaskRowContent
@@ -378,7 +398,7 @@ const StaticItemRow = memo(function StaticItemRow({
 
   return (
     <div
-      style={{ paddingLeft: 21 + level * 16 }}
+      style={{ paddingLeft: 21 + level * 20 }}
       className="group/item mx-0.5 relative flex cursor-default items-center gap-1.5 rounded py-0.5 hover:bg-gray-700/50"
     >
       <TaskRowContent
@@ -443,13 +463,31 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
     if (!item) return;
     const willComplete = !item.completed;
     const now = Date.now();
-    let toggled = items.map((i) =>
-      i.id === id
-        ? willComplete
+
+    let completedIds: Set<string> | null = null;
+    if (willComplete) {
+      completedIds = new Set<string>();
+      const collect = (parentId: string) => {
+        for (const child of childrenMap.get(parentId) ?? []) {
+          if (completedIds!.has(child.id)) continue;
+          completedIds!.add(child.id);
+          collect(child.id);
+        }
+      };
+      collect(id);
+    }
+
+    let toggled = items.map((i) => {
+      if (i.id === id) {
+        return willComplete
           ? { ...i, completed: true, completedAt: now }
-          : { ...i, completed: false, completedAt: undefined }
-        : i,
-    );
+          : { ...i, completed: false, completedAt: undefined };
+      }
+      if (willComplete && completedIds?.has(i.id)) {
+        return { ...i, completed: true, completedAt: now };
+      }
+      return i;
+    });
 
     if (willComplete && item.parentId) {
       const siblings = toggled.filter((i) => i.parentId === item.parentId);
@@ -463,7 +501,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
     }
 
     onConfigChange({ ...config, items: toggled });
-  }, [config, items, onConfigChange]);
+  }, [config, items, childrenMap, onConfigChange]);
 
   const editItem = useCallback((id: string, text: string) => {
     onConfigChange({
@@ -514,10 +552,11 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
       return;
     }
 
+    const excludedIds = getCompletedItemIds(items, childrenMap);
     const previousRoot = [...items]
       .slice(0, index)
       .reverse()
-      .find((item) => !item.parentId);
+      .find((item) => !item.parentId && !excludedIds.has(item.id));
     if (!previousRoot) return;
     onConfigChange({
       ...config,
@@ -527,7 +566,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
           : item,
       ),
     });
-  }, [items, config, onConfigChange]);
+  }, [items, childrenMap, config, onConfigChange]);
 
   const toggleCollapse = useCallback((id: string) => {
     onConfigChange({
@@ -550,11 +589,15 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
     const activeId = String(active.id);
     const overId = String(over.id);
 
-    const oldIndex = items.findIndex((i) => i.id === activeId);
-    const newIndex = items.findIndex((i) => i.id === overId);
+    const excludedIds = getCompletedItemIds(items, childrenMap);
+    const pendingItems = items.filter((i) => !excludedIds.has(i.id));
+    const completedItems = items.filter((i) => excludedIds.has(i.id));
+
+    const oldIndex = pendingItems.findIndex((i) => i.id === activeId);
+    const newIndex = pendingItems.findIndex((i) => i.id === overId);
     if (oldIndex === -1 || newIndex === -1) return;
 
-    const reordered = [...items];
+    const reordered = [...pendingItems];
     const [moved] = reordered.splice(oldIndex, 1);
     reordered.splice(newIndex, 0, moved);
 
@@ -572,8 +615,8 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
       );
     }
 
-    onConfigChange({ ...config, items: toTreeOrder(result) });
-  }, [items, config, onConfigChange]);
+    onConfigChange({ ...config, items: toTreeOrder([...result, ...completedItems]) });
+  }, [items, childrenMap, config, onConfigChange]);
 
   const view = useMemo(() => {
     const ids = new Set(items.map((i) => i.id));
@@ -584,19 +627,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
       .filter((root) => root.completed)
       .sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0));
 
-    const excludedIds = new Set<string>();
-    const collect = (parentId: string) => {
-      for (const child of items) {
-        if (child.parentId === parentId && !excludedIds.has(child.id)) {
-          excludedIds.add(child.id);
-          collect(child.id);
-        }
-      }
-    };
-    for (const root of completedRoots) {
-      excludedIds.add(root.id);
-      collect(root.id);
-    }
+    const excludedIds = getCompletedItemIds(items, childrenMap);
 
     const renderNode = (
       node: TodoItem,
@@ -626,6 +657,9 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
               {children.map((child) => renderNode(child, level + 1, Row))}
             </div>
           </div>
+          {children.length > 0 && (
+            <div className="mx-auto my-0.5 w-[97%] border-b border-gray-700/60" aria-hidden />
+          )}
         </Fragment>
       );
     };
@@ -700,7 +734,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
           {activeItem ? (
             <div
               className="pointer-events-none group/item relative inline-flex cursor-grabbing touch-none items-center gap-1.5 rounded bg-gray-800 py-0.5 shadow-2xl ring-1 ring-gray-600"
-              style={{ paddingLeft: 21 + (activeItem.parentId ? 1 : 0) * 16 }}
+              style={{ paddingLeft: 21 + (activeItem.parentId ? 1 : 0) * 20 }}
             >
               <TaskRowContent
                 item={activeItem}

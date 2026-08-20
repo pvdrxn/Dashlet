@@ -1,5 +1,5 @@
 import { memo, useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { FiMenu, FiPlus } from 'react-icons/fi';
+import { FiPlus } from 'react-icons/fi';
 import {
   DndContext,
   closestCenter,
@@ -147,21 +147,16 @@ const SortableHabit = memo(function SortableHabit({
     <div
       ref={setNodeRef}
       style={style}
-      className="group/item rounded px-0.5 py-1 hover:bg-gray-700/50"
+      {...attributes}
+      {...listeners}
+      className="group/item cursor-grab active:cursor-grabbing rounded px-0.5 py-1 hover:bg-gray-700/50"
     >
       <div className="flex items-center gap-2">
-        <button
-          {...attributes}
-          {...listeners}
-          className="flex items-center -ml-2 cursor-grab active:cursor-grabbing touch-none text-gray-600 hover:text-gray-400 text-sm leading-none px-0.5"
-        >
-          <FiMenu size={18} />
-        </button>
         <input
           type="checkbox"
           checked={isCompletedToday}
           onChange={() => toggleToday(habit.id)}
-          className="h-4 w-4 accent-blue-500 shrink-0"
+          className="ml-1 h-5 w-5 shrink-0 cursor-pointer appearance-none rounded border border-gray-500 bg-gray-700 transition-colors checked:border-blue-600 checked:bg-blue-600 checked:bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2016%2016%27%20fill=%27none%27%20stroke=%27white%27%20stroke-width=%272.5%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%3E%3Cpath%20d=%27M3.5%208.5l3%203%206-7%27/%3E%3C/svg%3E')] checked:bg-center checked:bg-no-repeat checked:bg-[length:14px_14px] hover:border-gray-400"
           aria-label={`Mark "${habit.name}" as completed`}
         />
         <div className="flex-1 flex items-center gap-2 min-w-0">
@@ -214,12 +209,12 @@ const SortableHabit = memo(function SortableHabit({
         <button
           type="button"
           onClick={() => removeHabit(habit.id)}
-          className="invisible group-hover/item:visible text-xs text-gray-500 hover:text-red-400"
+          className="invisible group-hover/item:visible text-xs text-gray-500 hover:text-red-400 mr-1"
         >
           &#x2715;
         </button>
       </div>
-      <div className="flex items-center gap-1 pl-8 mt-1">
+      <div className="flex items-center gap-1 pl-6 mt-1">
         {DAY_LABELS.map((l) => (
           <span key={l} className="w-5 text-center text-[9px] text-gray-600">
             {l}
@@ -239,7 +234,7 @@ const SortableHabit = memo(function SortableHabit({
       ).map((row, ri) => {
         const rowIndex = expanded ? ri : monthGrid.indexOf(row);
         return (
-          <div key={rowIndex} className="flex items-center gap-1 pl-8 mt-0.5">
+          <div key={rowIndex} className="flex items-center gap-1 pl-6 mt-0.5">
             {row.map((cell) =>
               cell.empty ? (
                 <div key={`e${rowIndex}${cell.day}`} className="w-5 h-5" />
