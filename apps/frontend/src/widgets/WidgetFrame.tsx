@@ -1,6 +1,6 @@
 import { memo, useState, useCallback, useRef, useEffect, Suspense } from 'react';
 import { useDraggable } from '@dnd-kit/core';
-import { FiChevronUp, FiChevronDown, FiX, FiMenu, FiLayers } from 'react-icons/fi';
+import { FiChevronUp, FiChevronDown, FiX, FiMoreVertical, FiLayers } from 'react-icons/fi';
 import { snapUpW, snapUpH } from './grid-utils';
 import type { ComponentType } from './types';
 
@@ -14,7 +14,6 @@ interface WidgetFrameProps {
   onResize: (id: string, w: number, h: number) => void;
   onDelete: (id: string) => void;
   onConfigChange: (id: string, config: Record<string, unknown>) => void;
-  gridMode: boolean;
   label: string;
   maxZIndex: number;
 }
@@ -29,7 +28,6 @@ export const WidgetFrame = memo(function WidgetFrame({
   onResize,
   onDelete,
   onConfigChange,
-  gridMode,
   label,
   maxZIndex,
 }: WidgetFrameProps) {
@@ -177,7 +175,7 @@ export const WidgetFrame = memo(function WidgetFrame({
     opacity: isDragging ? 0.25 : 1,
     pointerEvents: isDragging ? 'none' : undefined,
     transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined,
-    transition: gridMode ? 'width 0.15s ease-in-out, height 0.15s ease-in-out' : 'none',
+    transition: 'width 0.15s ease-in-out, height 0.15s ease-in-out',
   };
 
   const handleResizeStart = useCallback(
@@ -197,10 +195,8 @@ export const WidgetFrame = memo(function WidgetFrame({
         }
         let newW = Math.max(minSize.w, startW + me.clientX - startX);
         let newH = Math.max(minSize.h, startH + me.clientY - startY);
-        if (gridMode) {
-          newW = snapUpW(newW);
-          newH = snapUpH(newH);
-        }
+        newW = snapUpW(newW);
+        newH = snapUpH(newH);
         resizeStateRef.current = { w: newW, h: newH };
         setSize({ w: newW, h: newH });
       };
@@ -219,7 +215,7 @@ export const WidgetFrame = memo(function WidgetFrame({
       document.addEventListener('mouseup', handleMouseUp);
       window.addEventListener('blur', handleBlur);
     },
-    [id, size, onResize, minSize, gridMode],
+    [id, size, onResize, minSize],
   );
 
   const handleConfigChangeWrapped = useCallback(
@@ -234,7 +230,7 @@ export const WidgetFrame = memo(function WidgetFrame({
       className="group border border-gray-700 bg-gray-800 shadow-lg overflow-hidden rounded-[4px]"
     >
       <div
-        className={`w-full flex items-center h-[25px] bg-transparent select-none`}
+        className={`w-full flex items-center h-[25px] select-none ${collapsed ? 'bg-blue-500/10' : 'bg-transparent'}`}
         onPointerDown={handleHoldPointerDown}
         onPointerMove={handleHoldPointerMove}
         onPointerUp={handleHoldPointerUp}
@@ -250,7 +246,7 @@ export const WidgetFrame = memo(function WidgetFrame({
           onPointerCancel={handleHeaderPointerUp}
           onPointerMove={handleHeaderPointerMove}
         >
-          <FiMenu size={18} className="text-gray-500" />
+          <FiMoreVertical size={15} className="text-gray-500" />
         </span>
         <input
           type="text"
@@ -275,7 +271,7 @@ export const WidgetFrame = memo(function WidgetFrame({
           placeholder={label}
           aria-label="Widget title"
         />
-        <div className="flex items-center shrink-0 ml-1 bg-gray-800/50 ring-1 ring-gray-600/40 overflow-hidden">
+        <div className="flex items-center shrink-0 ml-1 rounded-md bg-gray-800/50 ring-1 ring-gray-600/40 divide-x divide-gray-700/60">
           {(() => {
             const isLayered = (config.layered as boolean) ?? false;
             return (
@@ -289,8 +285,9 @@ export const WidgetFrame = memo(function WidgetFrame({
                     layered: !isLayered,
                   });
                 }}
-                className={`flex h-7 w-7 items-center justify-center transition-colors ${isLayered ? 'bg-blue-500/10 text-blue-400' : 'text-gray-400 hover:bg-blue-500/10 hover:text-blue-400'}`}
+                className={`relative flex h-7 w-7 items-center justify-center transition-all duration-150 active:scale-90 after:pointer-events-auto after:absolute after:-inset-1 after:content-[''] ${isLayered ? 'bg-blue-500/10 text-blue-400' : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'}`}
                 title={isLayered ? 'Bring to back' : 'Bring to front'}
+                aria-label={isLayered ? 'Bring to back' : 'Bring to front'}
                 aria-pressed={isLayered}
               >
                 <FiLayers size={15} />
@@ -303,8 +300,9 @@ export const WidgetFrame = memo(function WidgetFrame({
               e.stopPropagation();
               onConfigChange(id, { ...config, collapsed: !collapsed });
             }}
-            className={`flex h-7 w-7 items-center justify-center border-l border-gray-700 transition-colors ${collapsed ? 'bg-blue-500/10 text-blue-400' : 'text-gray-400 hover:bg-blue-500/10 hover:text-blue-400'}`}
+            className={`relative flex h-7 w-7 items-center justify-center transition-all duration-150 active:scale-90 after:pointer-events-auto after:absolute after:-inset-1 after:content-[''] ${collapsed ? 'bg-blue-500/10 text-blue-400' : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'}`}
             title={collapsed ? 'Expand widget' : 'Collapse widget'}
+            aria-label={collapsed ? 'Expand widget' : 'Collapse widget'}
             aria-pressed={collapsed}
           >
             {collapsed ? <FiChevronDown size={15} /> : <FiChevronUp size={15} />}
@@ -315,8 +313,9 @@ export const WidgetFrame = memo(function WidgetFrame({
               e.stopPropagation();
               onDelete(id);
             }}
-            className="flex h-7 w-7 items-center justify-center border-l border-gray-700 text-gray-500 transition-colors hover:bg-red-500/10 hover:text-red-400"
+            className="relative flex h-7 w-7 items-center justify-center text-gray-500 transition-all duration-150 active:scale-90 after:pointer-events-auto after:absolute after:-inset-1 after:content-[''] hover:bg-red-500/10 hover:text-red-400"
             title="Delete widget"
+            aria-label="Delete widget"
           >
             <FiX size={15} />
           </button>

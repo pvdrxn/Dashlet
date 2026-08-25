@@ -1,12 +1,12 @@
 import { Suspense, useState, useRef, useEffect } from 'react';
 import { getAllWidgets, getWidget, type WidgetDefinition } from '../widgets/registry';
-import { FiPlus, FiTrash2, FiMenu } from 'react-icons/fi';
+import { FiPlus, FiTrash2, FiMoreVertical } from 'react-icons/fi';
 import { createRoot, type Root } from 'react-dom/client';
+import { snapUpW, snapUpH } from '../widgets/grid-utils';
 
 interface ToolbarProps {
   onAddWidget: (type: string) => void;
-  gridMode: boolean;
-  onToggleGridMode: () => void;
+  onCheckPlacement: (clientX: number, clientY: number, w: number, h: number) => boolean | null;
   onOpenTrash: () => void;
 }
 
@@ -20,7 +20,7 @@ function isInsideDashboard(clientX: number, clientY: number): boolean {
   );
 }
 
-export function Toolbar({ onAddWidget, gridMode, onToggleGridMode, onOpenTrash }: ToolbarProps) {
+export function Toolbar({ onAddWidget, onCheckPlacement, onOpenTrash }: ToolbarProps) {
   const availableWidgets = getAllWidgets();
   const [menuOpen, setMenuOpen] = useState(false);
   const ghostRef = useRef<{
@@ -40,6 +40,21 @@ export function Toolbar({ onAddWidget, gridMode, onToggleGridMode, onOpenTrash }
 
   useEffect(() => destroyGhost, []);
 
+  const applyPlacementTint = (clientX: number, clientY: number) => {
+    const ghost = ghostRef.current;
+    if (!ghost || ghost.mode !== 'widget') return;
+    const w = snapUpW(ghost.def.minSize.w);
+    const h = snapUpH(ghost.def.minSize.h);
+    const area = document.getElementById('dashboard-drop-area');
+    if (!area) return;
+    const rect = area.getBoundingClientRect();
+    const x = clientX - rect.left - w / 2;
+    const y = clientY - rect.top - h / 2;
+    const valid = onCheckPlacement(x, y, ghost.def.minSize.w, ghost.def.minSize.h);
+    if (valid === null) return;
+    ghost.el.style.borderColor = valid ? 'rgba(59,130,246,0.6)' : 'rgba(239,68,68,0.6)';
+  };
+
   const renderButtonGhost = (def: WidgetDefinition) => (
     <div className="flex items-center gap-2 rounded-[4px] border border-gray-700/80 bg-gray-800/90 py-1.5 pl-1.5 pr-3 text-sm shadow-xl">
       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] bg-gray-700/80 text-gray-300">
@@ -52,7 +67,7 @@ export function Toolbar({ onAddWidget, gridMode, onToggleGridMode, onOpenTrash }
   const renderWidgetGhost = (def: WidgetDefinition) => (
     <div className="flex h-full flex-col">
       <div className="flex h-[25px] shrink-0 items-center gap-1.5 border-b border-gray-700/60 px-2">
-        <FiMenu size={15} className="text-gray-500" />
+        <FiMoreVertical size={15} className="text-gray-500" />
         <span className="truncate text-sm text-white">{def.label}</span>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden p-3">
@@ -163,6 +178,7 @@ export function Toolbar({ onAddWidget, gridMode, onToggleGridMode, onOpenTrash }
               onDrag={(e) => {
                 moveGhost(e.clientX, e.clientY);
                 setGhostMode(isInsideDashboard(e.clientX, e.clientY) ? 'widget' : 'button');
+                applyPlacementTint(e.clientX, e.clientY);
               }}
               onDragEnd={destroyGhost}
               onClick={() => onAddWidget(type)}
@@ -190,14 +206,6 @@ export function Toolbar({ onAddWidget, gridMode, onToggleGridMode, onOpenTrash }
           title="Open trash"
         >
           <FiTrash2 size={15} className="inline-block -mt-0.5" />
-        </button>
-        <span className="text-xs text-gray-500">Snap Grid</span>
-        <button
-          type="button"
-          onClick={onToggleGridMode}
-          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${gridMode ? 'bg-blue-500' : 'bg-gray-600'}`}
-        >
-          <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${gridMode ? 'translate-x-4' : 'translate-x-0.5'}`} />
         </button>
       </div>
     </div>

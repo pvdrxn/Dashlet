@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import { DndContext, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core';
-import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
-import { FiMenu } from 'react-icons/fi';
+import type { DragEndEvent, DragMoveEvent, DragStartEvent } from '@dnd-kit/core';
+import { FiTrash2, FiRotateCcw, FiMoreVertical } from 'react-icons/fi';
 import { WidgetFrame } from './WidgetFrame';
 import { getWidget } from './registry';
 import type { WidgetData, Position } from './types';
@@ -36,19 +36,47 @@ function saveCache(cacheKey: string, data: WidgetData[]) {
   } catch {}
 }
 
+const UNDO_TOAST_MS = 5000;
+
 function bringIntoDashboard(data: WidgetData[]): WidgetData[] {
   return data.map((w) => {
-    const x = Math.max(0, w.position.x);
-    const y = Math.max(0, w.position.y);
+    const x = Math.max(0, snapX(w.position.x));
+    const y = Math.max(0, snapY(w.position.y));
     if (x === w.position.x && y === w.position.y) return w;
     return { ...w, position: { ...w.position, x, y } };
   });
 }
 
+function normalizeLayout(data: WidgetData[]): WidgetData[] {
+  const snapped = bringIntoDashboard(data).map((w) => ({
+    ...w,
+    position: {
+      ...w.position,
+      w: snapW(w.position.w),
+      h: snapH(w.position.h),
+    },
+  }));
+
+  const resolved: WidgetData[] = [];
+  for (const w of snapped) {
+    const effectiveH = ((w.config.collapsed as boolean) ?? false) ? 25 : w.position.h;
+    if (!hasCollision(w.id, w.position.x, w.position.y, w.position.w, effectiveH, resolved)) {
+      resolved.push(w);
+    } else {
+      const slot = findFreeGridSlot(resolved, w.position.w, effectiveH);
+      resolved.push({ ...w, position: { ...w.position, x: slot.x, y: slot.y } });
+    }
+  }
+  return resolved;
+}
+
 interface WidgetGridProps {
   tabId: string;
-  gridMode: boolean;
   onAddWidgetRef: (tabId: string, fn: (type: string) => void) => void;
+  onCheckPlacementRef?: (
+    tabId: string,
+    fn: (x: number, y: number, w: number, h: number) => boolean,
+  ) => void;
   onRefreshRef?: (tabId: string, fn: () => void) => void;
   onTransferRef?: (tabId: string, fn: (action: TransferAction) => void) => void;
   onWidgetDragStart: (widgetId: string, sourceTabId: string) => void;
@@ -59,8 +87,8 @@ interface WidgetGridProps {
 
 export function WidgetGrid({
   tabId,
-  gridMode,
   onAddWidgetRef,
+  onCheckPlacementRef,
   onRefreshRef,
   onTransferRef,
   onWidgetDragStart,
@@ -72,6 +100,43 @@ export function WidgetGrid({
 
   const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
   const [loaded, setLoaded] = useState(false);
+  const [undoToastWidget, setUndoToastWidget] = useState<WidgetData | null>(null);
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const widgetsRef = useRef(widgets);
+
+  useEffect(() => {
+    widgetsRef.current = widgets;
+  }, [widgets]);
+
+  useEffect(
+    () => () => {
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    },
+    [],
+  );
+
+  const dismissUndoToast = useCallback(() => {
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
+    setUndoToastWidget(null);
+  }, []);
+
+  const pauseUndoTimer = useCallback(() => {
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
+  }, []);
+
+  const startUndoTimer = useCallback(() => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    undoTimerRef.current = setTimeout(() => {
+      undoTimerRef.current = null;
+      setUndoToastWidget(null);
+    }, UNDO_TOAST_MS);
+  }, []);
 
   const handleAddWidget = useCallback(
     async (type: string, dropPoint?: { x: number; y: number }) => {
@@ -81,8 +146,8 @@ export function WidgetGrid({
       const snappedH = snapUpH(def.minSize.h);
       const position: Position = dropPoint
         ? {
-            x: Math.max(0, gridMode ? snapX(dropPoint.x) : dropPoint.x),
-            y: Math.max(0, gridMode ? snapY(dropPoint.y) : dropPoint.y),
+            x: Math.max(0, snapX(dropPoint.x)),
+            y: Math.max(0, snapY(dropPoint.y)),
             w: snappedW,
             h: snappedH,
           }
@@ -92,22 +157,41 @@ export function WidgetGrid({
           })();
       await api.createWidget(type, def.defaultConfig, position, tabId);
       const data = await api.fetchWidgets(tabId);
-      setWidgets(bringIntoDashboard(data));
-      saveCache(cacheKey, data);
+      const normalized = normalizeLayout(data);
+      setWidgets(normalized);
+      saveCache(cacheKey, normalized);
     },
-    [widgets, gridMode, tabId, cacheKey],
+    [widgets, tabId, cacheKey],
   );
 
   useEffect(() => {
     onAddWidgetRef(tabId, handleAddWidget);
   }, [handleAddWidget, onAddWidgetRef, tabId]);
 
+  const checkPlacement = useCallback(
+    (x: number, y: number, w: number, h: number) =>
+      !hasCollision(
+        '__placement__',
+        Math.max(0, snapX(x)),
+        Math.max(0, snapY(y)),
+        snapUpW(w),
+        snapUpH(h),
+        widgets,
+      ),
+    [widgets],
+  );
+
+  useEffect(() => {
+    if (onCheckPlacementRef) onCheckPlacementRef(tabId, checkPlacement);
+  }, [checkPlacement, onCheckPlacementRef, tabId]);
+
   const refresh = useCallback(() => {
     api
       .fetchWidgets(tabId)
       .then((data) => {
-        setWidgets(data);
-        saveCache(cacheKey, data);
+        const normalized = normalizeLayout(data);
+        setWidgets(normalized);
+        saveCache(cacheKey, normalized);
         setLoaded(true);
       })
       .catch(() => {});
@@ -137,8 +221,9 @@ export function WidgetGrid({
         .fetchWidgets(tabId)
         .then((data) => {
           if (!cancelled) {
-            setWidgets(data);
-            saveCache(cacheKey, data);
+            const normalized = normalizeLayout(data);
+            setWidgets(normalized);
+            saveCache(cacheKey, normalized);
             setLoaded(true);
           }
         })
@@ -166,58 +251,46 @@ export function WidgetGrid({
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  useEffect(() => {
-    if (!gridMode) return;
+  const handleResize = useCallback((id: string, w: number, h: number) => {
     setWidgets((prev) => {
-      const snapped = prev.map((w) => ({
-        ...w,
-        position: {
-          x: snapX(w.position.x),
-          y: snapY(w.position.y),
-          w: snapW(w.position.w),
-          h: snapH(w.position.h),
-        },
-      }));
-
-      const resolved: WidgetData[] = [];
-      for (const w of snapped) {
-        const effectiveH = ((w.config.collapsed as boolean) ?? false) ? 25 : w.position.h;
-        if (!hasCollision(w.id, w.position.x, w.position.y, w.position.w, effectiveH, resolved)) {
-          resolved.push(w);
-        } else {
-          const slot = findFreeGridSlot(resolved, w.position.w, effectiveH);
-          resolved.push({ ...w, position: { ...w.position, x: slot.x, y: slot.y } });
-        }
+      const widget = prev.find((x) => x.id === id);
+      if (!widget) return prev;
+      const snappedW = snapW(w);
+      const snappedH = snapH(h);
+      if (hasCollision(id, widget.position.x, widget.position.y, snappedW, snappedH, prev)) {
+        return prev;
       }
-      return resolved;
+      const newPos = { ...widget.position, w: snappedW, h: snappedH };
+      api.updateWidget(id, { position: newPos });
+      return prev.map((x) => (x.id === id ? { ...x, position: newPos } : x));
     });
-  }, [gridMode]);
+  }, []);
 
-  const handleResize = useCallback(
-    (id: string, w: number, h: number) => {
-      setWidgets((prev) => {
-        const widget = prev.find((x) => x.id === id);
-        if (!widget) return prev;
-        const snappedW = gridMode ? snapW(w) : w;
-        const snappedH = gridMode ? snapH(h) : h;
-        if (
-          gridMode &&
-          hasCollision(id, widget.position.x, widget.position.y, snappedW, snappedH, prev)
-        ) {
-          return prev;
-        }
-        const newPos = { ...widget.position, w: snappedW, h: snappedH };
-        api.updateWidget(id, { position: newPos });
-        return prev.map((x) => (x.id === id ? { ...x, position: newPos } : x));
-      });
+  const handleDelete = useCallback(
+    (id: string) => {
+      const widget = widgetsRef.current.find((w) => w.id === id);
+      api.deleteWidget(id);
+      setWidgets((prev) => prev.filter((w) => w.id !== id));
+      if (!widget) return;
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+      setUndoToastWidget(widget);
+      startUndoTimer();
     },
-    [gridMode],
+    [startUndoTimer],
   );
 
-  const handleDelete = useCallback((id: string) => {
-    api.deleteWidget(id);
-    setWidgets((prev) => prev.filter((w) => w.id !== id));
-  }, []);
+  const handleUndoDelete = useCallback(() => {
+    if (!undoToastWidget) return;
+    const widget = undoToastWidget;
+    dismissUndoToast();
+    api.restoreWidget(widget.id).then(
+      () =>
+        setWidgets((prev) =>
+          prev.some((w) => w.id === widget.id) ? prev : normalizeLayout([...prev, widget]),
+        ),
+      () => {},
+    );
+  }, [undoToastWidget, dismissUndoToast]);
 
   const handleConfigChange = useCallback((id: string, config: Record<string, unknown>) => {
     setWidgets((prev) => prev.map((w) => (w.id === id ? { ...w, config } : w)));
@@ -255,14 +328,29 @@ export function WidgetGrid({
   );
 
   const [activeDrag, setActiveDrag] = useState<WidgetData | null>(null);
+  const [dropValid, setDropValid] = useState(true);
 
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
       const widgetId = String(event.active.id).replace('widget-', '');
       onWidgetDragStart(widgetId, tabId);
       setActiveDrag(widgets.find((w) => w.id === widgetId) ?? null);
+      setDropValid(true);
     },
     [onWidgetDragStart, tabId, widgets],
+  );
+
+  const handleDragMove = useCallback(
+    (event: DragMoveEvent) => {
+      const widgetId = String(event.active.id).replace('widget-', '');
+      const widget = widgets.find((w) => w.id === widgetId);
+      if (!widget) return;
+      const h = ((widget.config.collapsed as boolean) ?? false) ? 25 : widget.position.h;
+      const x = Math.max(0, snapX(widget.position.x + event.delta.x));
+      const y = Math.max(0, snapY(widget.position.y + event.delta.y));
+      setDropValid(!hasCollision(widgetId, x, y, widget.position.w, h, widgets));
+    },
+    [widgets],
   );
 
   const handleDragCancel = useCallback(() => {
@@ -292,8 +380,8 @@ export function WidgetGrid({
             const ny = Math.max(0, session.pointerY - rect.top - h / 2);
             const newPos = {
               ...widget.position,
-              x: gridMode ? snapX(nx) : nx,
-              y: gridMode ? snapY(ny) : ny,
+              x: snapX(nx),
+              y: snapY(ny),
             };
             const moved: WidgetData = { ...widget, tabId: targetTabId, position: newPos };
             onWidgetTransferred(targetTabId, { type: 'insert', widget: moved });
@@ -322,18 +410,16 @@ export function WidgetGrid({
         const isCollapsed = (widget.config.collapsed as boolean) ?? false;
         const nh = isCollapsed ? 25 : widget.position.h;
 
-        if (gridMode) {
-          nx = snapX(nx);
-          ny = snapY(ny);
-          if (hasCollision(widgetId, nx, ny, nw, nh, widgets)) return;
-        }
+        nx = Math.max(0, snapX(nx));
+        ny = Math.max(0, snapY(ny));
+        if (hasCollision(widgetId, nx, ny, nw, nh, widgets)) return;
 
         const newPos = { ...widget.position, x: nx, y: ny };
         api.updateWidget(widgetId, { position: newPos });
         setWidgets((prev) => prev.map((w) => (w.id === widgetId ? { ...w, position: newPos } : w)));
       }
     },
-    [gridMode, tabId, widgets, onWidgetDragEnd, onWidgetTransferred, onWidgetSynced],
+    [tabId, widgets, onWidgetDragEnd, onWidgetTransferred, onWidgetSynced],
   );
 
   const dashW = Math.max(
@@ -352,6 +438,7 @@ export function WidgetGrid({
     <DndContext
       sensors={sensors}
       onDragStart={handleDragStart}
+      onDragMove={handleDragMove}
       onDragCancel={handleDragCancel}
       onDragEnd={handleDragEnd}
     >
@@ -371,20 +458,18 @@ export function WidgetGrid({
               <p>Loading widgets...</p>
             </div>
           )}
-          {gridMode && (
-            <div
-              className="pointer-events-none absolute left-0 top-0"
-              style={{
-                width: dashW,
-                height: dashH,
-                backgroundImage: `
-                  linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
-                  linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)
-                `,
-                backgroundSize: `${CELL_W}px ${CELL_H}px`,
-              }}
-            />
-          )}
+          <div
+            className="pointer-events-none absolute left-0 top-0"
+            style={{
+              width: dashW,
+              height: dashH,
+              backgroundImage: `
+                linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)
+              `,
+              backgroundSize: `${CELL_W}px ${CELL_H}px`,
+            }}
+          />
           {widgets.map((widget) => {
             const def = getWidget(widget.type);
             if (!def) return null;
@@ -403,7 +488,6 @@ export function WidgetGrid({
                 onResize={handleResize}
                 onDelete={handleDelete}
                 onConfigChange={handleConfigChange}
-                gridMode={gridMode}
                 label={def.label}
                 maxZIndex={maxZ}
               />
@@ -421,7 +505,7 @@ export function WidgetGrid({
               const title = (activeDrag.config.title as string) || def.label;
               return (
                 <div
-                  className="overflow-hidden rounded-[4px] border border-gray-700 bg-gray-800 shadow-2xl"
+                  className={`relative overflow-hidden rounded-[4px] border bg-gray-800 shadow-2xl ${dropValid ? 'border-blue-400/40' : 'border-red-400/40'}`}
                   style={{
                     width: activeDrag.position.w,
                     height: collapsed ? 25 : activeDrag.position.h,
@@ -429,7 +513,7 @@ export function WidgetGrid({
                   }}
                 >
                   <div className="flex h-[25px] shrink-0 items-center gap-1.5 border-b border-gray-700/60 px-2">
-                    <FiMenu size={15} className="shrink-0 text-gray-500" />
+                    <FiMoreVertical size={15} className="shrink-0 text-gray-500" />
                     <span className="truncate text-sm text-white">{title}</span>
                   </div>
                   {!collapsed && (
@@ -446,6 +530,32 @@ export function WidgetGrid({
               );
             })()}
         </DragOverlay>,
+        document.body,
+      )}
+      {createPortal(
+        undoToastWidget && (
+          <div
+            className="fixed bottom-4 left-1/2 z-[1200] flex -translate-x-1/2 items-center gap-2.5 rounded-md border border-gray-700 bg-gray-800 py-2 pl-3.5 pr-1.5 shadow-2xl transition-transform duration-150 hover:scale-110"
+            onMouseEnter={pauseUndoTimer}
+            onMouseLeave={startUndoTimer}
+          >
+            <FiTrash2 size={14} className="shrink-0 text-gray-500" />
+            <span className="whitespace-nowrap text-sm text-gray-300">
+              Deleted{' '}
+              {(undoToastWidget.config.title as string) ||
+                getWidget(undoToastWidget.type)?.label ||
+                undoToastWidget.type}
+            </span>
+            <button
+              type="button"
+              onClick={handleUndoDelete}
+              className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded border border-blue-500/60 px-2 py-0.5 text-xs text-blue-400 transition-colors hover:bg-blue-500/20 hover:text-blue-300"
+            >
+              <FiRotateCcw size={12} />
+              Undo
+            </button>
+          </div>
+        ),
         document.body,
       )}
     </DndContext>

@@ -15,7 +15,6 @@ import {
 const ACTIVE_TAB_KEY = 'dashlet-active-tab';
 
 function App() {
-  const [gridMode, setGridMode] = useState(false);
   const [trashOpen, setTrashOpen] = useState(false);
   const [tabs, setTabs] = useState<TabDto[]>([]);
   const [tabsLoaded, setTabsLoaded] = useState(false);
@@ -25,6 +24,9 @@ function App() {
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [widgetDragActive, setWidgetDragActive] = useState(false);
   const addWidgetRefs = useRef(new Map<string, (type: string) => void>());
+  const checkPlacementRefs = useRef(
+    new Map<string, (x: number, y: number, w: number, h: number) => boolean>(),
+  );
   const refreshWidgetsRefs = useRef(new Map<string, () => void>());
   const transferWidgetRefs = useRef(new Map<string, (action: TransferAction) => void>());
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -131,13 +133,26 @@ function App() {
     tabsApi.reorderTabs(orderedIds).catch(() => {});
   }, []);
 
-  const handleToggleGridMode = useCallback(() => {
-    setGridMode((prev) => !prev);
-  }, []);
-
   const registerAddWidgetRef = useCallback((tabId: string, fn: (type: string) => void) => {
     addWidgetRefs.current.set(tabId, fn);
   }, []);
+
+  const registerCheckPlacementRef = useCallback(
+    (tabId: string, fn: (x: number, y: number, w: number, h: number) => boolean) => {
+      checkPlacementRefs.current.set(tabId, fn);
+    },
+    [],
+  );
+
+  const handleCheckPlacement = useCallback(
+    (clientX: number, clientY: number, w: number, h: number): boolean | null => {
+      if (!activeTabId) return null;
+      const fn = checkPlacementRefs.current.get(activeTabId);
+      if (!fn) return null;
+      return fn(clientX, clientY, w, h);
+    },
+    [activeTabId],
+  );
 
   const registerRefreshRef = useCallback((tabId: string, fn: () => void) => {
     refreshWidgetsRefs.current.set(tabId, fn);
@@ -191,8 +206,7 @@ function App() {
       <div ref={toolbarRef}>
         <Toolbar
           onAddWidget={handleAddWidget}
-          gridMode={gridMode}
-          onToggleGridMode={handleToggleGridMode}
+          onCheckPlacement={handleCheckPlacement}
           onOpenTrash={() => setTrashOpen(true)}
         />
       </div>
@@ -214,8 +228,8 @@ function App() {
           <div key={tab.id} className={activeTabId === tab.id ? '' : 'hidden'}>
             <WidgetGrid
               tabId={tab.id}
-              gridMode={gridMode}
               onAddWidgetRef={registerAddWidgetRef}
+              onCheckPlacementRef={registerCheckPlacementRef}
               onRefreshRef={registerRefreshRef}
               onTransferRef={registerTransferRef}
               onWidgetDragStart={handleWidgetDragStart}
