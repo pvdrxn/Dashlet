@@ -170,7 +170,7 @@ function TabPill({
             e.stopPropagation();
             onStartEdit(tab);
           }}
-          className={`rounded p-0.5 leading-none text-gray-500 transition-colors hover:bg-blue-500/10 hover:text-blue-400 ${
+          className={`rounded p-0.5 leading-none text-gray-500 transition-all duration-150 hover:bg-blue-500/10 hover:text-blue-400 active:scale-90 ${
             isActive ? 'visible' : 'invisible group-hover:visible'
           }`}
         >
@@ -185,7 +185,7 @@ function TabPill({
           e.stopPropagation();
           onDelete(tab.id);
         }}
-        className={`rounded p-0.5 leading-none text-gray-500 transition-colors hover:bg-red-500/10 hover:text-red-400 ${
+        className={`rounded p-0.5 leading-none text-gray-500 transition-all duration-150 hover:bg-red-500/10 hover:text-red-400 active:scale-90 ${
           isActive ? 'visible' : 'invisible group-hover:visible'
         }`}
       >
@@ -323,7 +323,7 @@ export function TabBar({
         title="New tab"
         aria-label="New tab"
         onClick={onCreateTab}
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-blue-500/10 hover:text-blue-400"
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-gray-400 transition-all duration-150 hover:bg-blue-500/10 hover:text-blue-400 active:scale-90"
       >
         <FiPlus size={16} />
       </button>

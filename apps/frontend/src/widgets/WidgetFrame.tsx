@@ -228,6 +228,7 @@ export const WidgetFrame = memo(function WidgetFrame({
       ref={setNodeRef}
       style={style}
       className="group border border-gray-700 bg-gray-800 shadow-lg overflow-hidden rounded-[4px]"
+      onWheel={(e) => e.stopPropagation()}
     >
       <div
         className={`w-full flex items-center h-[25px] select-none ${collapsed ? 'bg-blue-500/10' : 'bg-transparent'}`}

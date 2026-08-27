@@ -346,17 +346,46 @@ const SortableItem = memo(function SortableItem({
   editItem,
   toggleIndent,
   toggleCollapse,
-}: TaskRowProps) {
+  activeId,
+  parentMap,
+  transformMapRef,
+}: TaskRowProps & {
+  activeId: string | null;
+  parentMap: Map<string, string | undefined>;
+  transformMapRef: React.MutableRefObject<Map<string, { x: number; y: number } | null>>;
+}) {
   const [editing, setEditing] = useState(false);
 
   const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
     disabled: editing,
   });
+
+  if (activeId) {
+    transformMapRef.set(item.id, transform);
+  }
+
+  const isDescendantOfActive = useMemo(() => {
+    if (!activeId || activeId === item.id) return false;
+    let currentId: string | undefined = item.parentId;
+    while (currentId) {
+      if (currentId === activeId) return true;
+      currentId = parentMap.get(currentId);
+    }
+    return false;
+  }, [activeId, item.id, item.parentId, parentMap]);
+
+  const effectiveTransform = useMemo(() => {
+    if (isDescendantOfActive && activeId) {
+      return transformMapRef.get(activeId) ?? transform;
+    }
+    return transform;
+  }, [isDescendantOfActive, activeId, transform, transformMapRef]);
+
   const style = {
-    transform: CSS.Transform.toString(transform),
+    transform: CSS.Transform.toString(effectiveTransform),
     transition,
-    opacity: isDragging ? 0.4 : 1,
+    opacity: isDragging || isDescendantOfActive ? 0.4 : 1,
   };
 
   return (
@@ -427,9 +456,28 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
 
   const items = useMemo(() => ensureUniqueIds(rawItems), [rawItems]);
   const childrenMap = useMemo(() => buildChildrenMap(items), [items]);
+  const parentMap = useMemo(() => {
+    const map = new Map<string, string | undefined>();
+    for (const item of items) map.set(item.id, item.parentId);
+    return map;
+  }, [items]);
+  const transformMapRef = useRef(new Map<string, { x: number; y: number } | null>());
 
   const activeItem = activeId ? items.find((i) => i.id === activeId) ?? null : null;
   const activeChildren = activeItem ? (childrenMap.get(activeItem.id) ?? []) : [];
+
+  const activeDescendants = useMemo(() => {
+    if (!activeId) return [];
+    const descendants: TodoItem[] = [];
+    const collect = (parentId: string) => {
+      for (const child of childrenMap.get(parentId) ?? []) {
+        descendants.push(child);
+        collect(child.id);
+      }
+    };
+    collect(activeId);
+    return descendants;
+  }, [activeId, childrenMap]);
 
   useEffect(() => {
     if (items !== rawItems) {
@@ -647,6 +695,9 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
             editItem={editItem}
             toggleIndent={toggleIndent}
             toggleCollapse={toggleCollapse}
+            {...(Row === SortableItem
+              ? { activeId, parentMap, transformMapRef }
+              : {})}
           />
           <div
             className={`grid transition-[grid-template-rows] duration-150 ease-in-out ${
@@ -733,22 +784,48 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
         <DragOverlay>
           {activeItem ? (
             <div
-              className="pointer-events-none group/item relative inline-flex cursor-grabbing touch-none items-center gap-1.5 rounded bg-gray-800 py-0.5 shadow-2xl ring-1 ring-gray-600"
-              style={{ paddingLeft: 21 + (activeItem.parentId ? 1 : 0) * 20 }}
+              className="pointer-events-none group/item flex flex-col items-stretch gap-0.5 rounded bg-gray-800 py-0.5 shadow-2xl ring-1 ring-gray-600"
             >
-              <TaskRowContent
-                item={activeItem}
-                level={activeItem.parentId ? 1 : 0}
-                childCount={activeChildren.length}
-                completedChildCount={activeChildren.filter((c) => c.completed).length}
-                editing={false}
-                onEditingChange={() => {}}
-                toggleItem={toggleItem}
-                removeItem={removeItem}
-                editItem={editItem}
-                toggleIndent={toggleIndent}
-                toggleCollapse={toggleCollapse}
-              />
+              <div style={{ paddingLeft: 21 }}>
+                <TaskRowContent
+                  item={activeItem}
+                  level={0}
+                  childCount={activeChildren.length}
+                  completedChildCount={activeChildren.filter((c) => c.completed).length}
+                  editing={false}
+                  onEditingChange={() => {}}
+                  toggleItem={toggleItem}
+                  removeItem={removeItem}
+                  editItem={editItem}
+                  toggleIndent={toggleIndent}
+                  toggleCollapse={toggleCollapse}
+                />
+              </div>
+              {activeDescendants.map((desc) => {
+                let descLevel = 0;
+                let cur: string | undefined = desc.parentId;
+                while (cur && cur !== activeItem.id) {
+                  descLevel++;
+                  cur = parentMap.get(cur);
+                }
+                return (
+                  <div key={desc.id} style={{ paddingLeft: 21 + (descLevel + 1) * 20 }}>
+                    <TaskRowContent
+                      item={desc}
+                      level={descLevel + 1}
+                      childCount={(childrenMap.get(desc.id) ?? []).length}
+                      completedChildCount={(childrenMap.get(desc.id) ?? []).filter((c) => c.completed).length}
+                      editing={false}
+                      onEditingChange={() => {}}
+                      toggleItem={toggleItem}
+                      removeItem={removeItem}
+                      editItem={editItem}
+                      toggleIndent={toggleIndent}
+                      toggleCollapse={toggleCollapse}
+                    />
+                  </div>
+                );
+              })}
             </div>
           ) : null}
         </DragOverlay>

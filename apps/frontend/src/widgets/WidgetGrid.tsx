@@ -72,7 +72,16 @@ function normalizeLayout(data: WidgetData[]): WidgetData[] {
 
 interface WidgetGridProps {
   tabId: string;
-  onAddWidgetRef: (tabId: string, fn: (type: string) => void) => void;
+  onAddWidgetRef: (
+    tabId: string,
+    fn: (
+      type: string,
+      dropPoint?: { x: number; y: number },
+      opts?: { deferCommit?: boolean },
+    ) => Promise<Position | null>,
+  ) => void;
+  onPredictAddRef?: (tabId: string, fn: (type: string) => Position | null) => void;
+  onRevealRef?: (tabId: string, fn: () => void) => void;
   onCheckPlacementRef?: (
     tabId: string,
     fn: (x: number, y: number, w: number, h: number) => boolean,
@@ -88,6 +97,8 @@ interface WidgetGridProps {
 export function WidgetGrid({
   tabId,
   onAddWidgetRef,
+  onPredictAddRef,
+  onRevealRef,
   onCheckPlacementRef,
   onRefreshRef,
   onTransferRef,
@@ -102,7 +113,12 @@ export function WidgetGrid({
   const [loaded, setLoaded] = useState(false);
   const [undoToastWidget, setUndoToastWidget] = useState<WidgetData | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const undoDeadlineRef = useRef(0);
+  const undoRingRafRef = useRef(0);
+  const undoRingRef = useRef<SVGRectElement | null>(null);
   const widgetsRef = useRef(widgets);
+  const deferredCommitRef = useRef<WidgetData[] | null>(null);
+  const pendingWidgetsRef = useRef<WidgetData[]>([]);
 
   useEffect(() => {
     widgetsRef.current = widgets;
@@ -111,62 +127,138 @@ export function WidgetGrid({
   useEffect(
     () => () => {
       if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+      if (undoRingRafRef.current) cancelAnimationFrame(undoRingRafRef.current);
     },
     [],
   );
+
+  const stopUndoRing = useCallback(() => {
+    if (undoRingRafRef.current) {
+      cancelAnimationFrame(undoRingRafRef.current);
+      undoRingRafRef.current = 0;
+    }
+  }, []);
+
+  const runUndoRing = useCallback(() => {
+    stopUndoRing();
+    const step = () => {
+      const el = undoRingRef.current;
+      if (!el) {
+        undoRingRafRef.current = 0;
+        return;
+      }
+      const remaining = Math.max(0, undoDeadlineRef.current - performance.now());
+      const frac = Math.min(1, remaining / UNDO_TOAST_MS);
+      el.style.strokeDashoffset = String(100 * (1 - frac));
+      if (frac > 0) {
+        undoRingRafRef.current = requestAnimationFrame(step);
+      } else {
+        undoRingRafRef.current = 0;
+      }
+    };
+    undoRingRafRef.current = requestAnimationFrame(step);
+  }, [stopUndoRing]);
 
   const dismissUndoToast = useCallback(() => {
     if (undoTimerRef.current) {
       clearTimeout(undoTimerRef.current);
       undoTimerRef.current = null;
     }
+    stopUndoRing();
     setUndoToastWidget(null);
-  }, []);
+  }, [stopUndoRing]);
 
   const pauseUndoTimer = useCallback(() => {
     if (undoTimerRef.current) {
       clearTimeout(undoTimerRef.current);
       undoTimerRef.current = null;
     }
-  }, []);
+    stopUndoRing();
+  }, [stopUndoRing]);
 
   const startUndoTimer = useCallback(() => {
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    undoDeadlineRef.current = performance.now() + UNDO_TOAST_MS;
     undoTimerRef.current = setTimeout(() => {
       undoTimerRef.current = null;
       setUndoToastWidget(null);
     }, UNDO_TOAST_MS);
-  }, []);
+    runUndoRing();
+  }, [runUndoRing]);
 
-  const handleAddWidget = useCallback(
-    async (type: string, dropPoint?: { x: number; y: number }) => {
+  const computeNewPosition = useCallback(
+    (type: string, dropPoint?: { x: number; y: number }): Position | null => {
       const def = getWidget(type);
-      if (!def) return;
+      if (!def) return null;
       const snappedW = snapUpW(def.minSize.w);
       const snappedH = snapUpH(def.minSize.h);
-      const position: Position = dropPoint
-        ? {
-            x: Math.max(0, snapX(dropPoint.x)),
-            y: Math.max(0, snapY(dropPoint.y)),
-            w: snappedW,
-            h: snappedH,
-          }
-        : (() => {
-            const slot = findFreeGridSlot(widgets, snappedW, snappedH);
-            return { x: slot.x, y: slot.y, w: snappedW, h: snappedH };
-          })();
+      if (dropPoint) {
+        return {
+          x: Math.max(0, snapX(dropPoint.x)),
+          y: Math.max(0, snapY(dropPoint.y)),
+          w: snappedW,
+          h: snappedH,
+        };
+      }
+      // include widgets that are persisted but not yet revealed so rapid
+      // successive adds don't predict the same slot
+      const occupied = [...widgetsRef.current, ...pendingWidgetsRef.current];
+      const slot = findFreeGridSlot(occupied, snappedW, snappedH);
+      return { x: slot.x, y: slot.y, w: snappedW, h: snappedH };
+    },
+    [],
+  );
+
+  const handleAddWidget = useCallback(
+    async (
+      type: string,
+      dropPoint?: { x: number; y: number },
+      opts?: { deferCommit?: boolean },
+    ): Promise<Position | null> => {
+      const def = getWidget(type);
+      const position = computeNewPosition(type, dropPoint);
+      if (!def || !position) return null;
       await api.createWidget(type, def.defaultConfig, position, tabId);
       const data = await api.fetchWidgets(tabId);
       const normalized = normalizeLayout(data);
+      if (opts?.deferCommit) {
+        deferredCommitRef.current = normalized;
+        const knownIds = new Set(widgetsRef.current.map((w) => w.id));
+        pendingWidgetsRef.current = normalized.filter((w) => !knownIds.has(w.id));
+        return position;
+      }
       setWidgets(normalized);
       saveCache(cacheKey, normalized);
+      return position;
     },
-    [widgets, tabId, cacheKey],
+    [computeNewPosition, tabId, cacheKey],
   );
 
   useEffect(() => {
     onAddWidgetRef(tabId, handleAddWidget);
   }, [handleAddWidget, onAddWidgetRef, tabId]);
+
+  const predictAddPosition = useCallback(
+    (type: string) => computeNewPosition(type),
+    [computeNewPosition],
+  );
+
+  useEffect(() => {
+    if (onPredictAddRef) onPredictAddRef(tabId, predictAddPosition);
+  }, [predictAddPosition, onPredictAddRef, tabId]);
+
+  const revealDeferredCommit = useCallback(() => {
+    const next = deferredCommitRef.current;
+    if (!next) return;
+    deferredCommitRef.current = null;
+    pendingWidgetsRef.current = [];
+    setWidgets(next);
+    saveCache(cacheKey, next);
+  }, [cacheKey]);
+
+  useEffect(() => {
+    if (onRevealRef) onRevealRef(tabId, revealDeferredCommit);
+  }, [revealDeferredCommit, onRevealRef, tabId]);
 
   const checkPlacement = useCallback(
     (x: number, y: number, w: number, h: number) =>
@@ -539,6 +631,21 @@ export function WidgetGrid({
             onMouseEnter={pauseUndoTimer}
             onMouseLeave={startUndoTimer}
           >
+            <svg className="pointer-events-none absolute inset-0 h-full w-full">
+              <rect
+                ref={undoRingRef}
+                x="0.75"
+                y="0.75"
+                rx="6"
+                fill="none"
+                stroke="#3b82f6"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                pathLength={100}
+                strokeDasharray={100}
+                style={{ width: 'calc(100% - 1.5px)', height: 'calc(100% - 1.5px)', strokeDashoffset: 0 }}
+              />
+            </svg>
             <FiTrash2 size={14} className="shrink-0 text-gray-500" />
             <span className="whitespace-nowrap text-sm text-gray-300">
               Deleted{' '}

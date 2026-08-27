@@ -1,4 +1,5 @@
 import { memo, useState, useCallback } from 'react';
+import { LuHistory } from 'react-icons/lu';
 
 interface CalculatorConfig {
   history?: string[];
@@ -26,6 +27,7 @@ export const CalculatorWidget = memo(function CalculatorWidget({ config, onConfi
   const [prevValue, setPrevValue] = useState('');
   const [operator, setOperator] = useState('');
   const [waitingForOperand, setWaitingForOperand] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   const inputDigit = useCallback((digit: string) => {
     if (waitingForOperand) {
@@ -81,6 +83,8 @@ export const CalculatorWidget = memo(function CalculatorWidget({ config, onConfi
     setWaitingForOperand(false);
   }, []);
 
+  const toggleHistory = useCallback(() => setShowHistory((s) => !s), []);
+
   return (
     <div className="flex h-full flex-col gap-2">
       <div className="flex-1 flex flex-col items-end justify-end rounded bg-gray-700 p-2">
@@ -88,7 +92,14 @@ export const CalculatorWidget = memo(function CalculatorWidget({ config, onConfi
       </div>
 
       <div className="grid grid-cols-4 gap-1.5">
-        {btn('C', clear, 'bg-red-900/30 hover:bg-red-900/50 text-red-400')}
+        <button
+          type="button"
+          onClick={toggleHistory}
+          className="rounded bg-gray-700 hover:bg-gray-600 text-gray-200 active:scale-95 transition-transform flex items-center justify-center"
+          title="History"
+        >
+          <LuHistory size={18} />
+        </button>
         {btn('\u00B1', () => setDisplay((p) => String(-Number(p))), 'bg-gray-700 hover:bg-gray-600 text-gray-200')}
         {btn('%', () => setDisplay((p) => String(Number(p) / 100)), 'bg-gray-700 hover:bg-gray-600 text-gray-200')}
         {btn('\u00F7', () => handleOperator('/'), 'bg-blue-900/30 hover:bg-blue-900/50 text-blue-400')}
@@ -113,15 +124,24 @@ export const CalculatorWidget = memo(function CalculatorWidget({ config, onConfi
         {btn('=', handleEquals, 'bg-blue-600 text-white hover:bg-blue-500')}
       </div>
 
-      {history.length > 0 && (
-        <details className="text-xs text-gray-500">
-          <summary className="cursor-pointer">History ({history.length})</summary>
-          <div className="mt-1 max-h-20 overflow-y-auto space-y-0.5">
+      {showHistory && history.length > 0 && (
+        <div className="absolute top-10 left-1/2 -translate-x-1/2 w-48 bg-gray-800 rounded border border-gray-600 p-2 text-xs text-gray-300 max-h-80 overflow-y-auto z-20">
+          <div className="flex items-center justify-between mb-1">
+            <span>History ({history.length})</span>
+            <button
+              type="button"
+              onClick={toggleHistory}
+              className="text-gray-400 hover:text-gray-200 p-1 rounded"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="space-y-0.5 max-h-40">
             {history.map((entry) => (
-              <div key={entry} className="text-gray-500">{entry}</div>
+              <div key={entry} className="text-gray-300">{entry}</div>
             ))}
           </div>
-        </details>
+        </div>
       )}
     </div>
   );

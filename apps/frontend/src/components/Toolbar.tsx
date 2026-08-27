@@ -1,18 +1,29 @@
 import { Suspense, useState, useRef, useEffect } from 'react';
 import { getAllWidgets, getWidget, type WidgetDefinition } from '../widgets/registry';
+import type { Position } from '../widgets/types';
 import { FiPlus, FiTrash2, FiMoreVertical } from 'react-icons/fi';
 import { createRoot, type Root } from 'react-dom/client';
 import { snapUpW, snapUpH } from '../widgets/grid-utils';
 
 interface ToolbarProps {
-  onAddWidget: (type: string) => void;
+  onAddWidget: (type: string) => Promise<Position | null>;
+  onAddWidgetDeferred: (type: string) => Promise<Position | null>;
+  onPredictAdd: (type: string) => Position | null;
+  onRevealWidgets: () => void;
   onCheckPlacement: (clientX: number, clientY: number, w: number, h: number) => boolean | null;
   onOpenTrash: () => void;
 }
 
+function getActiveDropArea(): HTMLElement | null {
+  const areas = document.querySelectorAll<HTMLElement>('[data-dashboard-tab-id]');
+  for (const area of areas) {
+    if (area.getClientRects().length > 0) return area;
+  }
+  return null;
+}
+
 function isInsideDashboard(clientX: number, clientY: number): boolean {
-  const area = document.getElementById('dashboard-drop-area');
-  const r = area?.getBoundingClientRect();
+  const r = getActiveDropArea()?.getBoundingClientRect();
   if (!r) return false;
   return (
     clientX >= r.left && clientX <= r.right &&
@@ -20,7 +31,14 @@ function isInsideDashboard(clientX: number, clientY: number): boolean {
   );
 }
 
-export function Toolbar({ onAddWidget, onCheckPlacement, onOpenTrash }: ToolbarProps) {
+export function Toolbar({
+  onAddWidget,
+  onAddWidgetDeferred,
+  onPredictAdd,
+  onRevealWidgets,
+  onCheckPlacement,
+  onOpenTrash,
+}: ToolbarProps) {
   const availableWidgets = getAllWidgets();
   const [menuOpen, setMenuOpen] = useState(false);
   const ghostRef = useRef<{
@@ -45,7 +63,7 @@ export function Toolbar({ onAddWidget, onCheckPlacement, onOpenTrash }: ToolbarP
     if (!ghost || ghost.mode !== 'widget') return;
     const w = snapUpW(ghost.def.minSize.w);
     const h = snapUpH(ghost.def.minSize.h);
-    const area = document.getElementById('dashboard-drop-area');
+    const area = getActiveDropArea();
     if (!area) return;
     const rect = area.getBoundingClientRect();
     const x = clientX - rect.left - w / 2;
@@ -133,6 +151,68 @@ export function Toolbar({ onAddWidget, onCheckPlacement, onOpenTrash }: ToolbarP
     moveGhost(e.clientX, e.clientY);
   };
 
+  const flyToDashboard = (fromRect: DOMRect, def: WidgetDefinition, pos: Position) => {
+    return new Promise<void>((resolve) => {
+      const area = getActiveDropArea();
+      if (!area) {
+        resolve();
+        return;
+      }
+      const areaRect = area.getBoundingClientRect();
+
+      const el = document.createElement('div');
+      el.style.cssText = `position:fixed;left:${fromRect.left + fromRect.width / 2}px;top:${
+        fromRect.top + fromRect.height / 2
+      }px;width:${Math.max(fromRect.width, 40)}px;height:${fromRect.height}px;transform:translate(-50%,-50%);z-index:9998;pointer-events:none;border-radius:4px;overflow:hidden;opacity:0.95;box-shadow:0 18px 44px rgba(0,0,0,0.6);transition:all 0.45s cubic-bezier(0.4,0,0.2,1);`;
+      document.body.appendChild(el);
+      const root = createRoot(el);
+      root.render(renderButtonGhost(def));
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          el.style.left = `${areaRect.left + pos.x + pos.w / 2}px`;
+          el.style.top = `${areaRect.top + pos.y + pos.h / 2}px`;
+          el.style.width = `${pos.w}px`;
+          el.style.height = `${pos.h}px`;
+          el.style.border = '1px solid rgba(59,130,246,0.5)';
+        });
+      });
+
+      setTimeout(() => {
+        resolve();
+        el.style.opacity = '0';
+        setTimeout(() => {
+          root.unmount();
+          el.remove();
+        }, 250);
+      }, 460);
+    });
+  };
+
+  const handleMenuAdd = async (e: React.MouseEvent<HTMLButtonElement>, type: string) => {
+    const fromRect = e.currentTarget.getBoundingClientRect();
+    const def = getWidget(type);
+    if (!def) return;
+
+    // predict the landing slot locally so the flight starts immediately,
+    // then reveal the real widget only once the ghost has landed
+    const predictedPos = onPredictAdd(type);
+    if (predictedPos) {
+      const flight = flyToDashboard(fromRect, def, predictedPos);
+      try {
+        await onAddWidgetDeferred(type);
+      } finally {
+        await flight;
+        onRevealWidgets();
+      }
+      return;
+    }
+
+    const pos = await onAddWidget(type);
+    if (!pos) return;
+    void flyToDashboard(fromRect, def, pos);
+  };
+
   return (
     <div className="sticky top-0 z-40 flex items-center gap-2 border-b border-gray-700/60 bg-gray-900/90 px-4 py-2 backdrop-blur-sm">
       <div className="relative">
@@ -141,7 +221,7 @@ export function Toolbar({ onAddWidget, onCheckPlacement, onOpenTrash }: ToolbarP
           onClick={() => setMenuOpen((o) => !o)}
           aria-label="Add widget"
           aria-expanded={menuOpen}
-          className={`flex items-center justify-center border border-transparent py-1.5 transition-all duration-300 ${
+          className={`flex items-center justify-center border border-transparent py-1.5 transition-all duration-300 active:scale-90 ${
             menuOpen || Object.keys(availableWidgets).length === 0
               ? 'text-blue-400 drop-shadow-[0_0_5px_rgba(59,130,246,1)]'
               : 'text-gray-400 hover:text-blue-400 hover:drop-shadow-[0_0_5px_rgba(59,130,246,1)]'
@@ -181,8 +261,8 @@ export function Toolbar({ onAddWidget, onCheckPlacement, onOpenTrash }: ToolbarP
                 applyPlacementTint(e.clientX, e.clientY);
               }}
               onDragEnd={destroyGhost}
-              onClick={() => onAddWidget(type)}
-              className="group flex items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-[4px] border border-gray-700/80 bg-gray-800/80 py-1.5 pl-1.5 pr-3 text-sm shadow-lg transition-colors hover:border-blue-500/40 hover:bg-blue-500/10"
+              onClick={(e) => handleMenuAdd(e, type)}
+              className="group flex items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-[4px] border border-gray-700/80 bg-gray-800/80 py-1.5 pl-1.5 pr-3 text-sm shadow-lg transition-all duration-150 hover:border-blue-500/40 hover:bg-blue-500/10 active:scale-90"
               style={{
                 ['--i' as string]: i,
                 animation: menuOpen
@@ -202,7 +282,7 @@ export function Toolbar({ onAddWidget, onCheckPlacement, onOpenTrash }: ToolbarP
         <button
           type="button"
           onClick={onOpenTrash}
-          className="rounded-md border border-gray-600 px-2.5 py-1 text-sm text-gray-400 hover:bg-gray-700 hover:text-gray-200"
+          className="rounded-md border border-gray-600 px-2.5 py-1 text-sm text-gray-400 transition-all duration-150 hover:bg-gray-700 hover:text-gray-200 active:scale-90"
           title="Open trash"
         >
           <FiTrash2 size={15} className="inline-block -mt-0.5" />

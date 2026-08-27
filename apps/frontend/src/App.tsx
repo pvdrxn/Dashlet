@@ -5,6 +5,7 @@ import { TabBar } from './components/TabBar';
 import { TrashWindow } from './components/TrashWindow';
 import * as tabsApi from './api/tabs';
 import type { TabDto } from '@widget-master/shared';
+import type { Position } from './widgets/types';
 import {
   beginDragSession,
   clearDragSession,
@@ -23,7 +24,18 @@ function App() {
   );
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [widgetDragActive, setWidgetDragActive] = useState(false);
-  const addWidgetRefs = useRef(new Map<string, (type: string) => void>());
+  const addWidgetRefs = useRef(
+    new Map<
+      string,
+      (
+        type: string,
+        dropPoint?: { x: number; y: number },
+        opts?: { deferCommit?: boolean },
+      ) => Promise<Position | null>
+    >(),
+  );
+  const predictAddRefs = useRef(new Map<string, (type: string) => Position | null>());
+  const revealAddRefs = useRef(new Map<string, () => void>());
   const checkPlacementRefs = useRef(
     new Map<string, (x: number, y: number, w: number, h: number) => boolean>(),
   );
@@ -133,9 +145,12 @@ function App() {
     tabsApi.reorderTabs(orderedIds).catch(() => {});
   }, []);
 
-  const registerAddWidgetRef = useCallback((tabId: string, fn: (type: string) => void) => {
-    addWidgetRefs.current.set(tabId, fn);
-  }, []);
+  const registerAddWidgetRef = useCallback(
+    (tabId: string, fn: (type: string) => Promise<Position | null>) => {
+      addWidgetRefs.current.set(tabId, fn);
+    },
+    [],
+  );
 
   const registerCheckPlacementRef = useCallback(
     (tabId: string, fn: (x: number, y: number, w: number, h: number) => boolean) => {
@@ -171,12 +186,47 @@ function App() {
   }, []);
 
   const handleAddWidget = useCallback(
-    (type: string) => {
-      if (!activeTabId) return;
-      addWidgetRefs.current.get(activeTabId)?.(type);
+    (type: string): Promise<Position | null> => {
+      if (!activeTabId) return Promise.resolve(null);
+      return addWidgetRefs.current.get(activeTabId)?.(type) ?? Promise.resolve(null);
     },
     [activeTabId],
   );
+
+  const handleAddWidgetDeferred = useCallback(
+    (type: string): Promise<Position | null> => {
+      if (!activeTabId) return Promise.resolve(null);
+      return (
+        addWidgetRefs.current.get(activeTabId)?.(type, undefined, { deferCommit: true }) ??
+        Promise.resolve(null)
+      );
+    },
+    [activeTabId],
+  );
+
+  const registerPredictAddRef = useCallback(
+    (tabId: string, fn: (type: string) => Position | null) => {
+      predictAddRefs.current.set(tabId, fn);
+    },
+    [],
+  );
+
+  const registerRevealRef = useCallback((tabId: string, fn: () => void) => {
+    revealAddRefs.current.set(tabId, fn);
+  }, []);
+
+  const handlePredictAdd = useCallback(
+    (type: string): Position | null => {
+      if (!activeTabId) return null;
+      return predictAddRefs.current.get(activeTabId)?.(type) ?? null;
+    },
+    [activeTabId],
+  );
+
+  const handleRevealWidgets = useCallback(() => {
+    if (!activeTabId) return;
+    revealAddRefs.current.get(activeTabId)?.();
+  }, [activeTabId]);
 
   const handleRestoreComplete = useCallback(() => {
     refreshWidgetsRefs.current.forEach((fn) => fn());
@@ -206,6 +256,9 @@ function App() {
       <div ref={toolbarRef}>
         <Toolbar
           onAddWidget={handleAddWidget}
+          onAddWidgetDeferred={handleAddWidgetDeferred}
+          onPredictAdd={handlePredictAdd}
+          onRevealWidgets={handleRevealWidgets}
           onCheckPlacement={handleCheckPlacement}
           onOpenTrash={() => setTrashOpen(true)}
         />
@@ -229,6 +282,8 @@ function App() {
             <WidgetGrid
               tabId={tab.id}
               onAddWidgetRef={registerAddWidgetRef}
+              onPredictAddRef={registerPredictAddRef}
+              onRevealRef={registerRevealRef}
               onCheckPlacementRef={registerCheckPlacementRef}
               onRefreshRef={registerRefreshRef}
               onTransferRef={registerTransferRef}
