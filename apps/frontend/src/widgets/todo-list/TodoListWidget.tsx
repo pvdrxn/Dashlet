@@ -36,6 +36,7 @@ interface TodoItem {
   completedAt?: number;
   parentId?: string | null;
   collapsed?: boolean;
+  urgency: 1 | 2 | 3;
 }
 
 interface TaskRowProps {
@@ -46,6 +47,7 @@ interface TaskRowProps {
   toggleItem: (id: string) => void;
   removeItem: (id: string) => void;
   editItem: (id: string, text: string) => void;
+  onEditUrgency: (id: string) => void;
   toggleIndent: (id: string) => void;
   toggleCollapse: (id: string) => void;
 }
@@ -81,6 +83,7 @@ function ensureUniqueIds(items: TodoItem[]): TodoItem[] {
         completedAt: item?.completedAt ?? undefined,
         parentId: item?.parentId ?? undefined,
         collapsed: Boolean(item?.collapsed),
+        urgency: item?.urgency,
       };
     }
     seen.add(item.id);
@@ -191,6 +194,23 @@ function AutoGrowInput({
   );
 }
 
+const urgencyLabels = ['Low', 'Medium', 'High'];
+
+function getUrgencyClass(urgency: 1 | 2 | 3): string {
+  switch (urgency) {
+    case 1:
+      return 'bg-gray-600/50 text-gray-400';
+    case 2:
+      return 'bg-orange-400/20 text-orange-400';
+    case 3:
+      return 'bg-red-400/20 text-red-400';
+  }
+}
+
+function getUrgencyLabel(urgency: 1 | 2 | 3): string {
+  return urgencyLabels[urgency - 1];
+}
+
 const TaskRowContent = memo(function TaskRowContent({
   item,
   level,
@@ -201,6 +221,7 @@ const TaskRowContent = memo(function TaskRowContent({
   toggleItem,
   removeItem,
   editItem,
+  onEditUrgency,
   toggleIndent,
   toggleCollapse,
 }: {
@@ -213,6 +234,7 @@ const TaskRowContent = memo(function TaskRowContent({
   toggleItem: (id: string) => void;
   removeItem: (id: string) => void;
   editItem: (id: string, text: string) => void;
+  onEditUrgency: (id: string) => void;
   toggleIndent: (id: string) => void;
   toggleCollapse: (id: string) => void;
 }) {
@@ -255,53 +277,68 @@ const TaskRowContent = memo(function TaskRowContent({
         aria-label={`Mark "${item.text}" as completed`}
       />
       {editing ? (
-        <AutoGrowInput
-          inputRef={editInputRef}
-          value={editText}
-          minWidth={48}
-          maxWidth="calc(100% - 4rem)"
-          onChange={(e) => setEditText(e.target.value)}
-          onBlur={() => {
-            if (editText.trim() !== item.text) {
-              editItem(item.id, editText.trim());
-            }
-            onEditingChange(false);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
+        <>
+          <AutoGrowInput
+            inputRef={editInputRef}
+            value={editText}
+            minWidth={48}
+            maxWidth="calc(100% - 5rem)"
+            onChange={(e) => setEditText(e.target.value)}
+            onBlur={() => {
               if (editText.trim() !== item.text) {
                 editItem(item.id, editText.trim());
               }
               onEditingChange(false);
-            }
-            if (e.key === 'Escape') {
-              setEditText(item.text);
-              onEditingChange(false);
-            }
-          }}
-          className="rounded border border-blue-500 bg-gray-800 px-1 py-0.5 text-sm text-gray-200 outline-none"
-          aria-label="Edit task text"
-        />
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                if (editText.trim() !== item.text) {
+                  editItem(item.id, editText.trim());
+                }
+                onEditingChange(false);
+              }
+              if (e.key === 'Escape') {
+                setEditText(item.text);
+                onEditingChange(false);
+              }
+            }}
+            className="rounded border border-blue-500 bg-gray-800 px-1 py-0.5 text-sm text-gray-200 outline-none"
+            aria-label="Edit task text"
+          />
+        </>
       ) : (
-        <button
-          type="button"
-          onClick={() => {
-            setEditText(item.text);
-            onEditingChange(true);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
+        <>
+          <button
+            type="button"
+            onClick={() => {
               setEditText(item.text);
               onEditingChange(true);
-            }
-          }}
-          className={`min-w-0 flex-1 cursor-text break-words bg-transparent p-0 text-left text-sm ${
-            item.completed ? 'text-gray-500 line-through' : 'text-gray-300'
-          }`}
-        >
-          {item.text}
-        </button>
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setEditText(item.text);
+                onEditingChange(true);
+              }
+            }}
+            className={`min-w-0 flex-1 cursor-text break-words bg-transparent p-0 text-left text-sm ${
+              item.completed ? 'text-gray-500 line-through' : 'text-gray-300'
+            }`}
+          >
+            {item.text}
+          </button>
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onEditUrgency(item.id);
+            }}
+            className={`inline-flex items-center rounded px-1 text-xs font-medium ${getUrgencyClass(item.urgency)} cursor-pointer hover:opacity-80 shrink-0`}
+          >
+            {getUrgencyLabel(item.urgency)}
+          </button>
+        </>
       )}
       <div className="ml-auto flex items-center gap-1.5">
         {childCount > 0 && (
@@ -344,6 +381,7 @@ const SortableItem = memo(function SortableItem({
   toggleItem,
   removeItem,
   editItem,
+  onEditUrgency,
   toggleIndent,
   toggleCollapse,
   activeId,
@@ -405,6 +443,7 @@ const SortableItem = memo(function SortableItem({
         toggleItem={toggleItem}
         removeItem={removeItem}
         editItem={editItem}
+        onEditUrgency={onEditUrgency}
         toggleIndent={toggleIndent}
         toggleCollapse={toggleCollapse}
       />
@@ -420,6 +459,7 @@ const StaticItemRow = memo(function StaticItemRow({
   toggleItem,
   removeItem,
   editItem,
+  onEditUrgency,
   toggleIndent,
   toggleCollapse,
 }: TaskRowProps) {
@@ -440,6 +480,7 @@ const StaticItemRow = memo(function StaticItemRow({
         toggleItem={toggleItem}
         removeItem={removeItem}
         editItem={editItem}
+        onEditUrgency={onEditUrgency}
         toggleIndent={toggleIndent}
         toggleCollapse={toggleCollapse}
       />
@@ -450,6 +491,7 @@ const StaticItemRow = memo(function StaticItemRow({
 export const TodoListWidget = memo(function TodoListWidget({ config, onConfigChange }: TodoListWidgetProps) {
   const { items: rawItems = [] } = (config ?? {}) as TodoListConfig;
   const [newText, setNewText] = useState('');
+  const [newUrgency, setNewUrgency] = useState<1 | 2 | 3>(3);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [completedExpanded, setCompletedExpanded] = useState(true);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -497,6 +539,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
       id: genId('todo'),
       text: trimmed,
       completed: false,
+      urgency: newUrgency,
     };
 
     onConfigChange({
@@ -504,7 +547,8 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
       items: [...items, newItem],
     });
     setNewText('');
-  }, [newText, config, items, onConfigChange]);
+    setNewUrgency(3);
+  }, [newText, newUrgency, config, items, onConfigChange]);
 
   const toggleItem = useCallback((id: string) => {
     const item = items.find((i) => i.id === id);
@@ -625,6 +669,17 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
     });
   }, [config, items, onConfigChange]);
 
+  const onEditUrgency = useCallback((id: string) => {
+    onConfigChange({
+      ...config,
+      items: items.map((item) => {
+        if (item.id !== id) return item;
+        const next = item.urgency >= 3 ? 1 : (item.urgency + 1) as 1 | 2 | 3;
+        return { ...item, urgency: next };
+      }),
+    });
+  }, [config, items, onConfigChange]);
+
   const handleDragStart = useCallback((event: DragStartEvent) => {
     setActiveId(String(event.active.id));
   }, []);
@@ -693,6 +748,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
             toggleItem={toggleItem}
             removeItem={removeItem}
             editItem={editItem}
+            onEditUrgency={onEditUrgency}
             toggleIndent={toggleIndent}
             toggleCollapse={toggleCollapse}
             {...(Row === SortableItem
@@ -735,7 +791,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
         : null,
       completedCount,
     };
-  }, [items, childrenMap, toggleItem, removeItem, editItem, toggleIndent, toggleCollapse, completedExpanded]);
+  }, [items, childrenMap, toggleItem, removeItem, editItem, onEditUrgency, toggleIndent, toggleCollapse, completedExpanded]);
 
   return (
     <div className="relative flex h-full flex-col gap-2">
@@ -797,6 +853,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
                   toggleItem={toggleItem}
                   removeItem={removeItem}
                   editItem={editItem}
+                  onEditUrgency={() => {}}
                   toggleIndent={toggleIndent}
                   toggleCollapse={toggleCollapse}
                 />
@@ -820,6 +877,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
                       toggleItem={toggleItem}
                       removeItem={removeItem}
                       editItem={editItem}
+                      onEditUrgency={() => {}}
                       toggleIndent={toggleIndent}
                       toggleCollapse={toggleCollapse}
                     />
@@ -843,6 +901,15 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
           className="rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-200 outline-none placeholder-gray-500 focus:border-blue-400"
           aria-label="New task text"
         />
+        <select
+          value={newUrgency}
+          onChange={(e) => setNewUrgency(Number(e.target.value))}
+          className="rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-200 outline-none focus:border-blue-400 w-20"
+        >
+          <option value={1}>Low</option>
+          <option value={2}>Medium</option>
+          <option value={3}>High</option>
+        </select>
         <button
           type="submit"
           title="Add task"
