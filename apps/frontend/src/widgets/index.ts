@@ -43,8 +43,8 @@ registerWidget('calculator', {
   label: 'Calculator',
   icon: LuCalculator,
   defaultConfig: { title: 'Calculator', history: [], lastResult: '' },
-  defaultSize: { w: 260, h: 360 },
-  minSize: { w: 220, h: 310 },
+  defaultSize: { w: 260, h: 380 },
+  minSize: { w: 220, h: 340 },
 });
 
 registerWidget('habit-tracker', {

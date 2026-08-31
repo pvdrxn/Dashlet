@@ -1,6 +1,6 @@
 import { memo, useState, useEffect, useCallback, useRef } from 'react';
 import { FaHeading } from 'react-icons/fa6';
-import { FiAlignCenter, FiAlignLeft, FiAlignRight, FiBold, FiChevronDown, FiItalic, FiLink, FiList, FiUnderline } from 'react-icons/fi';
+import { FiAlignCenter, FiAlignLeft, FiAlignRight, FiBold, FiChevronDown, FiItalic, FiLink, FiList, FiMic, FiUnderline } from 'react-icons/fi';
 
 interface NotesConfig {
   title?: string;
@@ -52,6 +52,88 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
   const [linkUrl, setLinkUrl] = useState('');
   const [listMenuOpen, setListMenuOpen] = useState(false);
   const [align, setAlign] = useState(0);
+  const [activeHeading, setActiveHeading] = useState('p');
+  const [isRecording, setIsRecording] = useState(false);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+
+  const scheduleSave = useCallback(
+    (newContent: string) => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        onConfigChange({
+          title,
+          content: newContent,
+          lastModified: new Date().toISOString(),
+        });
+      }, 500);
+    },
+    [onConfigChange, title],
+  );
+
+  const toggleRecording = useCallback(() => {
+    const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognitionAPI) {
+      alert('Speech recognition is not supported in this browser.');
+      return;
+    }
+
+    if (isRecording && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsRecording(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognitionAPI();
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.lang = 'es-ES';
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      editor.focus();
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          const transcript = event.results[i][0].transcript;
+          const selection = window.getSelection();
+          if (selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            const textNode = document.createTextNode(transcript);
+            range.deleteContents();
+            range.insertNode(textNode);
+            range.setStartAfter(textNode);
+            range.setEndAfter(textNode);
+            selection.removeAllRanges();
+            selection.addRange(range);
+          } else {
+            editor.appendChild(document.createTextNode(transcript));
+          }
+          scheduleSave(editor.innerHTML);
+        }
+      }
+    };
+
+    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      console.error('Speech recognition error:', event.error);
+      setIsRecording(false);
+    };
+
+    recognition.onend = () => {
+      setIsRecording(false);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsRecording(true);
+  }, [isRecording, scheduleSave]);
+
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.abort();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (editingRef.current || linkMenu) return;
@@ -68,109 +150,236 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
     }
   }, [content, linkMenu, title, onConfigChange]);
 
-  const scheduleSave = useCallback(
-    (newContent: string) => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        onConfigChange({
-          title,
-          content: newContent,
-          lastModified: new Date().toISOString(),
-        });
-      }, 500);
-    },
-    [onConfigChange, title],
-  );
-
   const handleInput = useCallback(() => {
     if (editorRef.current) scheduleSave(editorRef.current.innerHTML);
   }, [scheduleSave]);
 
+  const isCaretAtBlockStart = useCallback((container: Node, offset: number): boolean => {
+    if (container instanceof Text && offset === 0) {
+      const prev = container.previousSibling;
+      if (!prev) {
+        const parent = container.parentElement;
+        if (!parent) return true;
+        const block = parent.closest('h1, h2, h3, p, li');
+        if (!block || block === parent) return true;
+        return false;
+      }
+      return false;
+    }
+    if (container instanceof HTMLElement && offset === 0) {
+      return !container.previousSibling;
+    }
+    return false;
+  }, []);
+
   const handleEditorKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key !== 'Delete') return;
       const editor = editorRef.current;
       if (!editor) return;
       const selection = window.getSelection();
       if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) return;
-      const caret = selection.getRangeAt(0);
-      const node = caret.startContainer;
+      const range = selection.getRangeAt(0);
+      const node = range.startContainer;
+      const offset = range.startOffset;
 
-      const li = (() => {
-        if (!(node instanceof HTMLElement || node instanceof Text)) return null;
-        const container = node instanceof HTMLElement ? node : node.parentElement;
-        const insideLi = container?.closest('li');
-        if (insideLi) return insideLi;
-        const list = container?.closest('ul, ol');
+      const getBlock = (): HTMLElement | null => {
+        if (node instanceof HTMLElement) return node.closest('h1, h2, h3, p, li');
+        return node.parentElement?.closest('h1, h2, h3, p, li') ?? null;
+      };
+
+      const getListItem = (): HTMLLIElement | null => {
+        if (node instanceof HTMLElement) return node.closest('li');
+        return node.parentElement?.closest('li') ?? null;
+      };
+
+      const isAtStart = isCaretAtBlockStart(node, offset);
+
+      const replaceBlockWith = (tag: string) => {
+        const block = getBlock();
+        if (!block || block.tagName.toLowerCase() === tag) return false;
+        const newEl = document.createElement(tag);
+        newEl.innerHTML = block.innerHTML;
+        block.replaceWith(newEl);
+        const r = document.createRange();
+        r.selectNodeContents(newEl);
+        r.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(r);
+        return true;
+      };
+
+      const removeListAndCreateParagraph = (li: HTMLLIElement) => {
+        const list = li.closest('ul, ol');
+        const text = li.textContent || '';
+        const p = document.createElement('p');
+        p.textContent = text;
         if (list) {
-          const listStart = document.createRange();
-          listStart.selectNodeContents(list);
-          listStart.collapse(true);
-          if (caret.compareBoundaryPoints(Range.START_TO_START, listStart) === 0) {
-            return list.querySelector(':scope > li');
-          }
-          const items = Array.from(list.children) as HTMLLIElement[];
-          for (const item of items) {
-            const itemStart = document.createRange();
-            itemStart.selectNodeContents(item);
-            itemStart.collapse(true);
-            if (caret.compareBoundaryPoints(Range.START_TO_START, itemStart) === 0) {
-              return item;
+          list.replaceWith(p);
+        } else {
+          li.replaceWith(p);
+        }
+        const r = document.createRange();
+        r.selectNodeContents(p);
+        r.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(r);
+      };
+
+      if (e.key === 'Enter' && !e.shiftKey) {
+        const block = getBlock();
+        const tag = block?.tagName.toLowerCase();
+
+        if (tag && ['h1', 'h2', 'h3'].includes(tag)) {
+          e.preventDefault();
+          const p = document.createElement('p');
+          p.innerHTML = '<br>';
+          block!.after(p);
+          const r = document.createRange();
+          r.selectNodeContents(p);
+          r.collapse(false);
+          selection.removeAllRanges();
+          selection.addRange(r);
+          scheduleSave(editor.innerHTML);
+          return;
+        }
+
+        const li = getListItem();
+        if (li && !li.textContent?.trim()) {
+          e.preventDefault();
+          removeListAndCreateParagraph(li);
+          scheduleSave(editor.innerHTML);
+          return;
+        }
+      }
+
+      if (e.key === 'Backspace' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+        const li = getListItem();
+        if (li && isAtStart) {
+          e.preventDefault();
+          if (!li.textContent?.trim()) {
+            removeListAndCreateParagraph(li);
+          } else {
+            const prevLi = li.previousElementSibling as HTMLLIElement | null;
+            if (prevLi) {
+              const prevText = prevLi.textContent || '';
+              const thisText = li.textContent || '';
+              prevLi.textContent = prevText + thisText;
+              li.remove();
+              const list = prevLi.closest('ul, ol');
+              if (list && !list.querySelector('li')) list.remove();
+              const r = document.createRange();
+              r.setStart(prevLi.childNodes[0] || prevLi, prevText.length);
+              r.collapse(true);
+              selection.removeAllRanges();
+              selection.addRange(r);
+            } else {
+              removeListAndCreateParagraph(li);
             }
           }
-          return null;
+          scheduleSave(editor.innerHTML);
+          return;
         }
-        const lists = Array.from(editor.querySelectorAll('ul, ol'));
-        for (const l of lists) {
-          const firstLi = l.querySelector(':scope > li');
-          if (!firstLi) continue;
-          const itemStart = document.createRange();
-          itemStart.selectNodeContents(firstLi);
-          itemStart.collapse(true);
-          if (caret.compareBoundaryPoints(Range.START_TO_START, itemStart) > 0) continue;
-          const between = document.createRange();
-          between.setStart(caret.startContainer, caret.startOffset);
-          between.setEnd(itemStart.startContainer, itemStart.startOffset);
-          if (!/\S/.test(between.toString())) return firstLi;
-        }
-        return null;
-      })();
 
-      if (!li) return;
-      const liStart = document.createRange();
-      liStart.selectNodeContents(li);
-      liStart.collapse(true);
-      const before = document.createRange();
-      before.setStart(liStart.startContainer, liStart.startOffset);
-      before.setEnd(caret.startContainer, caret.startOffset);
-      if (!/\S/.test(before.toString())) {
-        e.preventDefault();
-        const div = document.createElement('div');
-        div.innerHTML = li.innerHTML;
-        li.replaceWith(div);
-        const list = li.closest('ul, ol');
-        if (list && list.children.length === 0) list.remove();
-        const caretRange = document.createRange();
-        caretRange.selectNodeContents(div);
-        caretRange.collapse(false);
-        selection.removeAllRanges();
-        selection.addRange(caretRange);
-        scheduleSave(editor.innerHTML);
-        return;
+        const block = getBlock();
+        if (block && block.tagName.toLowerCase() !== 'p' && isAtStart) {
+          e.preventDefault();
+          replaceBlockWith('p');
+          scheduleSave(editor.innerHTML);
+          return;
+        }
+
+        if (block?.tagName.toLowerCase() === 'p' && isAtStart) {
+          const prev = block.previousElementSibling;
+          if (prev && prev instanceof HTMLElement) {
+            e.preventDefault();
+            const prevText = prev.textContent || '';
+            const thisText = block.textContent || '';
+            if (prev.tagName === 'P' || prev.tagName.match(/^H[1-3]$/)) {
+              prev.textContent = prevText + thisText;
+              block.remove();
+              const r = document.createRange();
+              r.setStart(prev.childNodes[0] || prev, prevText.length);
+              r.collapse(true);
+              selection.removeAllRanges();
+              selection.addRange(r);
+            } else {
+              const li = prev.closest('li');
+              if (li) {
+                li.textContent = prevText + thisText;
+                const list = li.closest('ul, ol');
+                block.remove();
+                if (list && !list.querySelector('li')) list.remove();
+                const r = document.createRange();
+                r.setStart(li.childNodes[0] || li, prevText.length);
+                r.collapse(true);
+                selection.removeAllRanges();
+                selection.addRange(r);
+              }
+            }
+            scheduleSave(editor.innerHTML);
+            return;
+          }
+        }
       }
-      const liEnd = document.createRange();
-      liEnd.selectNodeContents(li);
-      liEnd.collapse(false);
-      const after = document.createRange();
-      after.setStart(caret.startContainer, caret.startOffset);
-      after.setEnd(liEnd.startContainer, liEnd.startOffset);
-      if (!/\S/.test(after.toString())) {
+
+      if (e.key === 'Delete' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+        const li = getListItem();
+        if (li) {
+          const liEnd = document.createRange();
+          liEnd.selectNodeContents(li);
+          liEnd.collapse(false);
+          const after = document.createRange();
+          after.setStart(node, offset);
+          after.setEnd(liEnd.startContainer, liEnd.startOffset);
+          if (!/\S/.test(after.toString())) {
+            e.preventDefault();
+            document.execCommand('delete');
+            scheduleSave(editor.innerHTML);
+            return;
+          }
+        }
+      }
+
+      if (e.key === 'Tab') {
         e.preventDefault();
-        document.execCommand('delete');
-        scheduleSave(editor.innerHTML);
+        const li = getListItem();
+        if (li) {
+          if (e.shiftKey) {
+            const nestedList = li.querySelector(':scope > ul, :scope > ol');
+            if (nestedList) {
+              const fragment = document.createDocumentFragment();
+              while (nestedList.firstChild) fragment.appendChild(nestedList.firstChild);
+              nestedList.remove();
+              li.after(...Array.from(fragment.childNodes));
+            } else {
+              const parentList = li.closest('ul, ol');
+              const parentLi = parentList?.closest('li');
+              if (parentLi) {
+                const parentParentList = parentLi.closest('ul, ol');
+                parentParentList?.insertBefore(li, parentLi.nextSibling);
+              }
+            }
+          } else {
+            const prevLi = li.previousElementSibling;
+            if (prevLi && prevLi instanceof HTMLLIElement) {
+              let subList = prevLi.querySelector(':scope > ul, :scope > ol') as HTMLElement;
+              if (!subList) {
+                subList = document.createElement(li.parentElement?.tagName === 'OL' ? 'ol' : 'ul');
+                prevLi.appendChild(subList);
+              }
+              subList.appendChild(li);
+            }
+          }
+          const r = document.createRange();
+          r.selectNodeContents(li);
+          r.collapse(false);
+          selection.removeAllRanges();
+          selection.addRange(r);
+          scheduleSave(editor.innerHTML);
+        }
       }
     },
-    [scheduleSave],
+    [scheduleSave, isCaretAtBlockStart],
   );
 
   useEffect(() => {
@@ -207,19 +416,40 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
     (type: 'ul' | 'dash' | 'ol') => {
       if (!editorRef.current) return;
       editorRef.current.focus();
-      if (type === 'ol') {
-        document.execCommand('insertOrderedList');
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return;
+      const node = selection.getRangeAt(0).startContainer;
+      const li = node instanceof HTMLElement
+        ? node.closest('li')
+        : node.parentElement?.closest('li');
+      const existingList = li?.closest('ul, ol');
+      const isAlreadySameType =
+        existingList &&
+        ((type === 'ol' && existingList.tagName === 'OL') ||
+          (type !== 'ol' && existingList.tagName === 'UL'));
+      if (isAlreadySameType) {
+        const items = Array.from(existingList.querySelectorAll(':scope > li'));
+        const fragment = document.createDocumentFragment();
+        items.forEach((item) => {
+          const p = document.createElement('p');
+          p.innerHTML = item.innerHTML;
+          fragment.appendChild(p);
+        });
+        existingList.replaceWith(fragment);
       } else {
-        document.execCommand('insertUnorderedList');
-        if (type === 'dash') {
-          const selection = window.getSelection();
-          const node = selection?.anchorNode;
-          const li =
-            node && node instanceof HTMLElement
-              ? node.closest('li')
-              : node?.parentElement?.closest('li');
-          const ul = li?.closest('ul');
-          if (ul) ul.classList.add('dash-list');
+        if (type === 'ol') {
+          document.execCommand('insertOrderedList');
+        } else {
+          document.execCommand('insertUnorderedList');
+          if (type === 'dash') {
+            const sel = window.getSelection();
+            const n = sel?.anchorNode;
+            const liEl = n && n instanceof HTMLElement
+              ? n.closest('li')
+              : n?.parentElement?.closest('li');
+            const ul = liEl?.closest('ul');
+            if (ul) ul.classList.add('dash-list');
+          }
         }
       }
       scheduleSave(editorRef.current.innerHTML);
@@ -242,7 +472,15 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
     (tag: string) => {
       if (!editorRef.current) return;
       editorRef.current.focus();
-      document.execCommand('formatBlock', false, `<${tag}>`);
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return;
+      const node = selection.getRangeAt(0).startContainer;
+      const block = node instanceof HTMLElement
+        ? node.closest('h1, h2, h3, p')
+        : node.parentElement?.closest('h1, h2, h3, p');
+      const currentTag = block?.tagName.toLowerCase() || 'p';
+      document.execCommand('formatBlock', false, `<${currentTag === tag ? 'p' : tag}>`);
+      setActiveHeading(currentTag === tag ? 'p' : tag);
       scheduleSave(editorRef.current.innerHTML);
       setMenuOpen(false);
     },
@@ -267,6 +505,21 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
     };
     document.addEventListener('selectionchange', updateFormats);
     return () => document.removeEventListener('selectionchange', updateFormats);
+  }, []);
+
+  useEffect(() => {
+    const updateActiveHeading = () => {
+      if (!editingRef.current) return;
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return;
+      const node = selection.getRangeAt(0).startContainer;
+      const block = node instanceof HTMLElement
+        ? node.closest('h1, h2, h3, p')
+        : node.parentElement?.closest('h1, h2, h3, p');
+      setActiveHeading(block ? block.tagName.toLowerCase() : 'p');
+    };
+    document.addEventListener('selectionchange', updateActiveHeading);
+    return () => document.removeEventListener('selectionchange', updateActiveHeading);
   }, []);
 
   const execFormat = useCallback(
@@ -353,7 +606,9 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
                     type="button"
                     role="menuitem"
                     onClick={() => applyHeading(h.tag)}
-                    className={`block w-full px-3 py-1.5 text-left text-gray-200 hover:bg-gray-700 ${
+                    className={`block w-full px-3 py-1.5 text-left hover:bg-gray-700 ${
+                      activeHeading === h.tag ? 'bg-gray-700 text-white' : 'text-gray-200'
+                    } ${
                       h.tag === 'h1' ? 'text-2xl' : h.tag === 'h2' ? 'text-xl' : h.tag === 'h3' ? 'text-lg' : 'text-sm'
                     }`}
                   >
@@ -448,6 +703,20 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
               ) : (
                 <FiAlignRight size={14} />
               )}
+            </button>
+          </div>
+          <div className="ml-1 flex items-center gap-0.5 border-l border-gray-700 pl-1">
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={toggleRecording}
+              className={`rounded p-1 hover:bg-gray-700 ${
+                isRecording ? 'bg-red-600 text-white animate-pulse' : 'text-gray-400 hover:text-gray-200'
+              }`}
+              aria-label={isRecording ? 'Stop recording' : 'Start voice dictation'}
+              title={isRecording ? 'Stop recording' : 'Voice dictation'}
+            >
+              <FiMic size={14} />
             </button>
           </div>
         </div>
