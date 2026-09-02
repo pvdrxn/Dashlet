@@ -61,7 +61,7 @@ export interface TodoItemDto {
   text: string;
   completed: boolean;
   order: number;
-  urgency: 1 | 2 | 3;
+  urgency: 0 | 1 | 2 | 3;
 }
 
 export type WidgetType =

@@ -1,6 +1,6 @@
 import { memo, useState, useEffect, useCallback, useRef } from 'react';
 import { FaHeading } from 'react-icons/fa6';
-import { FiAlignCenter, FiAlignLeft, FiAlignRight, FiBold, FiChevronDown, FiItalic, FiLink, FiList, FiMic, FiUnderline } from 'react-icons/fi';
+import { FiAlignCenter, FiAlignLeft, FiAlignRight, FiBold, FiChevronDown, FiItalic, FiLink, FiList, FiSearch, FiUnderline, FiX } from 'react-icons/fi';
 
 interface NotesConfig {
   title?: string;
@@ -53,8 +53,13 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
   const [listMenuOpen, setListMenuOpen] = useState(false);
   const [align, setAlign] = useState(0);
   const [activeHeading, setActiveHeading] = useState('p');
-  const [isRecording, setIsRecording] = useState(false);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchCount, setSearchCount] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const contentRef = useRef('');
+  const highlightOverlayRef = useRef<HTMLDivElement>(null);
+  const editorContainerRef = useRef<HTMLDivElement>(null);
 
   const scheduleSave = useCallback(
     (newContent: string) => {
@@ -70,88 +75,90 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
     [onConfigChange, title],
   );
 
-  const toggleRecording = useCallback(() => {
-    const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognitionAPI) {
-      alert('Speech recognition is not supported in this browser.');
-      return;
-    }
-
-    if (isRecording && recognitionRef.current) {
-      recognitionRef.current.stop();
-      setIsRecording(false);
-      return;
-    }
-
-    const recognition = new SpeechRecognitionAPI();
-    recognition.continuous = true;
-    recognition.interimResults = false;
-    recognition.lang = 'es-ES';
-
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const editor = editorRef.current;
-      if (!editor) return;
-      editor.focus();
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        if (event.results[i].isFinal) {
-          const transcript = event.results[i][0].transcript;
-          const selection = window.getSelection();
-          if (selection && selection.rangeCount > 0) {
-            const range = selection.getRangeAt(0);
-            const textNode = document.createTextNode(transcript);
-            range.deleteContents();
-            range.insertNode(textNode);
-            range.setStartAfter(textNode);
-            range.setEndAfter(textNode);
-            selection.removeAllRanges();
-            selection.addRange(range);
-          } else {
-            editor.appendChild(document.createTextNode(transcript));
-          }
-          scheduleSave(editor.innerHTML);
-        }
-      }
-    };
-
-    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-      console.error('Speech recognition error:', event.error);
-      setIsRecording(false);
-    };
-
-    recognition.onend = () => {
-      setIsRecording(false);
-    };
-
-    recognitionRef.current = recognition;
-    recognition.start();
-    setIsRecording(true);
-  }, [isRecording, scheduleSave]);
-
   useEffect(() => {
     return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.abort();
-      }
+      if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, []);
 
   useEffect(() => {
-    if (editingRef.current || linkMenu) return;
+    if (searchOpen && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [searchOpen]);
+
+  useEffect(() => {
+    if (editingRef.current || linkMenu || searchOpen) return;
     const editor = editorRef.current;
     if (!editor) return;
     const clean = sanitizeContent(content);
     if (editor.innerHTML !== clean) {
       editor.innerHTML = clean;
+      contentRef.current = clean;
       onConfigChange({
         title,
         content: clean,
         lastModified: new Date().toISOString(),
       });
     }
-  }, [content, linkMenu, title, onConfigChange]);
+  }, [content, linkMenu, title, onConfigChange, searchOpen]);
+
+  useEffect(() => {
+    const overlay = highlightOverlayRef.current;
+    const editor = editorRef.current;
+    if (!overlay || !editor) return;
+
+    if (!searchOpen || !searchQuery.trim()) {
+      overlay.innerHTML = '';
+      setSearchCount(0);
+      return;
+    }
+
+    const escaped = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(${escaped})`, 'gi');
+    const walk = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+    const textNodes: Text[] = [];
+    let node: Text | null;
+    while ((node = walk.nextNode() as Text | null)) {
+      textNodes.push(node);
+    }
+
+    let count = 0;
+    const frag = document.createDocumentFragment();
+    for (const textNode of textNodes) {
+      const text = textNode.textContent || '';
+      if (!regex.test(text)) {
+        frag.appendChild(document.createTextNode(text));
+        regex.lastIndex = 0;
+        continue;
+      }
+      regex.lastIndex = 0;
+      let lastIndex = 0;
+      let match: RegExpExecArray | null;
+      while ((match = regex.exec(text)) !== null) {
+        if (match.index > lastIndex) {
+          frag.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+        }
+        count++;
+        const mark = document.createElement('mark');
+        mark.textContent = match[0];
+        frag.appendChild(mark);
+        lastIndex = regex.lastIndex;
+      }
+      if (lastIndex < text.length) {
+        frag.appendChild(document.createTextNode(text.slice(lastIndex)));
+      }
+    }
+    overlay.innerHTML = '';
+    overlay.appendChild(frag);
+    setSearchCount(count);
+  }, [searchQuery, searchOpen]);
 
   const handleInput = useCallback(() => {
-    if (editorRef.current) scheduleSave(editorRef.current.innerHTML);
+    if (editorRef.current) {
+      contentRef.current = editorRef.current.innerHTML;
+      scheduleSave(editorRef.current.innerHTML);
+    }
   }, [scheduleSave]);
 
   const isCaretAtBlockStart = useCallback((container: Node, offset: number): boolean => {
@@ -709,44 +716,93 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
             <button
               type="button"
               onMouseDown={(e) => e.preventDefault()}
-              onClick={toggleRecording}
+              onClick={() => {
+                setSearchOpen((v) => !v);
+                if (searchOpen) setSearchQuery('');
+              }}
               className={`rounded p-1 hover:bg-gray-700 ${
-                isRecording ? 'bg-red-600 text-white animate-pulse' : 'text-gray-400 hover:text-gray-200'
+                searchOpen ? 'bg-gray-700 text-gray-200' : 'text-gray-400 hover:text-gray-200'
               }`}
-              aria-label={isRecording ? 'Stop recording' : 'Start voice dictation'}
-              title={isRecording ? 'Stop recording' : 'Voice dictation'}
+              aria-label="Search in note"
+              title="Search"
             >
-              <FiMic size={14} />
+              <FiSearch size={14} />
             </button>
           </div>
         </div>
       </div>
-      <div
-        ref={editorRef}
-        contentEditable
-        suppressContentEditableWarning
-        onFocus={() => (editingRef.current = true)}
-        onBlur={() => (editingRef.current = false)}
-        onInput={handleInput}
-        onKeyDown={handleEditorKeyDown}
-        onClick={(e) => {
-          const el = e.target as HTMLElement;
-          const anchor = el.closest('a') as HTMLAnchorElement | null;
-          if (anchor?.href) {
-            e.preventDefault();
-            const url = anchor.href;
-            const win = window.open(url, '_blank', 'noopener,noreferrer');
-            if (!win) {
-              window.location.href = url;
+      {searchOpen && (
+        <div className="flex shrink-0 items-center gap-1 rounded border border-blue-500/50 bg-gray-800 px-2 py-1">
+          <FiSearch size={12} className="shrink-0 text-gray-400" />
+          <input
+            ref={searchInputRef}
+            autoFocus
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setSearchOpen(false);
+                setSearchQuery('');
+              }
+            }}
+            placeholder="Search..."
+            className="flex-1 bg-transparent text-xs text-gray-200 outline-none placeholder-gray-500"
+            aria-label="Search in note"
+          />
+          {searchQuery && (
+            <span className="shrink-0 text-xs text-gray-500">
+              {searchCount > 0 ? `${searchCount} found` : 'No matches'}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              setSearchOpen(false);
+              setSearchQuery('');
+            }}
+            className="shrink-0 rounded p-0.5 text-gray-400 hover:text-gray-200"
+            aria-label="Close search"
+          >
+            <FiX size={12} />
+          </button>
+        </div>
+      )}
+      <div ref={editorContainerRef} className="relative flex-1 overflow-auto rounded border border-gray-600 bg-gray-800" style={{ minHeight: '120px' }}>
+        {searchOpen && searchQuery.trim() && (
+          <div
+            ref={highlightOverlayRef}
+            className="pointer-events-none absolute inset-0 p-2 text-sm leading-[1.4] text-transparent whitespace-pre-wrap break-words [font-family:inherit] [&_mark]:visible [&_mark]:bg-blue-500/30 [&_mark]:text-blue-100 [&_mark]:rounded-sm"
+            aria-hidden="true"
+          />
+        )}
+        <div
+          ref={editorRef}
+          contentEditable
+          suppressContentEditableWarning
+          onFocus={() => (editingRef.current = true)}
+          onBlur={() => (editingRef.current = false)}
+          onInput={handleInput}
+          onKeyDown={handleEditorKeyDown}
+          onClick={(e) => {
+            const el = e.target as HTMLElement;
+            const anchor = el.closest('a') as HTMLAnchorElement | null;
+            if (anchor?.href) {
+              e.preventDefault();
+              const url = anchor.href;
+              const win = window.open(url, '_blank', 'noopener,noreferrer');
+              if (!win) {
+                window.location.href = url;
+              }
             }
-          }
-        }}
-        spellCheck={false}
-        data-placeholder="Write your notes here..."
-        className="relative flex-1 overflow-auto rounded border border-gray-600 bg-gray-800 p-2 text-sm text-gray-200 outline-none focus:border-blue-400 [&_h1]:my-1 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-gray-100 [&_h2]:my-1 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-gray-100 [&_h3]:my-0.5 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-gray-100 [&_a]:text-blue-400 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul.dash-list]:list-none [&_ul.dash-list_li]:relative [&_ul.dash-list_li]:pl-4 [&_ul.dash-list_li:before]:absolute [&_ul.dash-list_li:before]:left-0 [&_ul.dash-list_li:before]:content-['-'] [&:empty:before]:pointer-events-none [&:empty:before]:absolute [&:empty:before]:content-[attr(data-placeholder)] [&:empty:before]:text-gray-500"
-        style={{ minHeight: '120px' }}
-        aria-label="Note content"
-      />
+          }}
+          spellCheck={false}
+          data-placeholder="Write your notes here..."
+          className="relative z-[1] p-2 text-sm leading-[1.4] text-gray-200 outline-none [font-family:inherit] [&_h1]:my-1 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-gray-100 [&_h2]:my-1 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-gray-100 [&_h3]:my-0.5 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-gray-100 [&_a]:text-blue-400 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul.dash-list]:list-none [&_ul.dash-list_li]:relative [&_ul.dash-list_li]:pl-4 [&_ul.dash-list_li:before]:absolute [&_ul.dash-list_li:before]:left-0 [&_ul.dash-list_li:before]:content-['-'] [&:empty:before]:pointer-events-none [&:empty:before]:absolute [&:empty:before]:content-[attr(data-placeholder)] [&:empty:before]:text-gray-500"
+          style={{ minHeight: '120px' }}
+          aria-label="Note content"
+        />
+      </div>
       {linkMenu && (
         <div
           ref={linkMenuRef}

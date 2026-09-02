@@ -36,7 +36,7 @@ interface TodoItem {
   completedAt?: number;
   parentId?: string | null;
   collapsed?: boolean;
-  urgency: 1 | 2 | 3;
+  urgency: 0 | 1 | 2 | 3;
 }
 
 interface TaskRowProps {
@@ -194,10 +194,12 @@ function AutoGrowInput({
   );
 }
 
-const urgencyLabels = ['Low', 'Medium', 'High'];
+const urgencyLabels = ['None', 'Low', 'Medium', 'High'];
 
-function getUrgencyClass(urgency: 1 | 2 | 3): string {
+function getUrgencyClass(urgency: 0 | 1 | 2 | 3): string {
   switch (urgency) {
+    case 0:
+      return 'bg-transparent text-gray-500';
     case 1:
       return 'bg-gray-600/50 text-gray-400';
     case 2:
@@ -207,8 +209,8 @@ function getUrgencyClass(urgency: 1 | 2 | 3): string {
   }
 }
 
-function getUrgencyLabel(urgency: 1 | 2 | 3): string {
-  return urgencyLabels[urgency - 1];
+function getUrgencyLabel(urgency: 0 | 1 | 2 | 3): string {
+  return urgencyLabels[urgency];
 }
 
 const TaskRowContent = memo(function TaskRowContent({
@@ -491,7 +493,7 @@ const StaticItemRow = memo(function StaticItemRow({
 export const TodoListWidget = memo(function TodoListWidget({ config, onConfigChange }: TodoListWidgetProps) {
   const { items: rawItems = [] } = (config ?? {}) as TodoListConfig;
   const [newText, setNewText] = useState('');
-  const [newUrgency, setNewUrgency] = useState<1 | 2 | 3>(3);
+  const [newUrgency, setNewUrgency] = useState<0 | 1 | 2 | 3>(0);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [completedExpanded, setCompletedExpanded] = useState(true);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -547,7 +549,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
       items: [...items, newItem],
     });
     setNewText('');
-    setNewUrgency(3);
+    setNewUrgency(0);
   }, [newText, newUrgency, config, items, onConfigChange]);
 
   const toggleItem = useCallback((id: string) => {
@@ -674,7 +676,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
       ...config,
       items: items.map((item) => {
         if (item.id !== id) return item;
-        const next = item.urgency >= 3 ? 1 : (item.urgency + 1) as 1 | 2 | 3;
+        const next = item.urgency >= 3 ? 0 : (item.urgency + 1) as 0 | 1 | 2 | 3;
         return { ...item, urgency: next };
       }),
     });
@@ -906,6 +908,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
           onChange={(e) => setNewUrgency(Number(e.target.value))}
           className="rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-200 outline-none focus:border-blue-400 w-20"
         >
+          <option value={0}>None</option>
           <option value={1}>Low</option>
           <option value={2}>Medium</option>
           <option value={3}>High</option>
