@@ -1,6 +1,7 @@
 import { memo, useCallback, useRef, useEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { FiArrowLeft, FiPause, FiPlay, FiRotateCcw, FiSettings, FiCheck, FiX } from 'react-icons/fi';
+import { FiArrowLeft, FiPause, FiPlay, FiRotateCcw, FiSettings, FiCheck, FiX, FiClock, FiEdit } from 'react-icons/fi';
+import { widgetBus } from '../widget-bus';
 
 let audioCtx: AudioContext | null = null;
 
@@ -95,11 +96,16 @@ interface PomodoroConfig {
   elapsedSeconds: number;
   cycleCount: number;
   phase: 'work' | 'break';
+  linkedTaskId?: string;
+  linkedTaskName?: string;
+  timerIndex?: number;
+  title?: string;
 }
 
 interface PomodoroWidgetProps {
   config: Record<string, unknown>;
   onConfigChange: (config: Record<string, unknown>) => void;
+  widgetId?: string;
 }
 
 function formatTimeShort(seconds: number): string {
@@ -117,7 +123,7 @@ function formatTimeCountup(seconds: number): string {
   return `${m}m ${String(s).padStart(2, '0')}s`;
 }
 
-type Technique = 'pomodoro' | 'pomodoro-ext' | '52-17' | 'countup';
+type Technique = 'pomodoro' | 'custom' | '52-17' | 'countup';
 
 interface TechniquePreset {
   label: string;
@@ -127,13 +133,13 @@ interface TechniquePreset {
 }
 
 const TECHNIQUES: Record<Technique, TechniquePreset> = {
-  'pomodoro':      { label: 'Pomodoro',  workMinutes: 25, restMinutes: 5,  longRestMinutes: 15 },
-  'pomodoro-ext':  { label: 'Ext.',      workMinutes: 50, restMinutes: 10, longRestMinutes: 20 },
-  '52-17':         { label: '52/17',     workMinutes: 52, restMinutes: 17, longRestMinutes: 17 },
-  'countup':       { label: 'Flow',      workMinutes: 0,  restMinutes: 0,  longRestMinutes: 0 },
+  'pomodoro':  { label: 'Pomodoro', workMinutes: 25, restMinutes: 5,  longRestMinutes: 15 },
+  'custom':    { label: 'Custom',   workMinutes: 30, restMinutes: 10, longRestMinutes: 20 },
+  '52-17':     { label: '52/17',    workMinutes: 52, restMinutes: 17, longRestMinutes: 17 },
+  'countup':   { label: 'Flow',     workMinutes: 0,  restMinutes: 0,  longRestMinutes: 0 },
 };
 
-const TECHNIQUE_KEYS: Technique[] = ['pomodoro', 'pomodoro-ext', '52-17', 'countup'];
+const TECHNIQUE_KEYS: Technique[] = ['pomodoro', 'custom', '52-17', 'countup'];
 
 function normalizeConfig(config: Record<string, unknown>): PomodoroConfig {
   const technique = TECHNIQUE_KEYS.includes(config.technique as Technique)
@@ -157,6 +163,10 @@ function normalizeConfig(config: Record<string, unknown>): PomodoroConfig {
         : (typeof config.workMinutes === 'number' ? config.workMinutes : preset.workMinutes) * 60,
     elapsedSeconds: typeof config.elapsedSeconds === 'number' ? config.elapsedSeconds : 0,
     cycleCount: typeof config.cycleCount === 'number' ? config.cycleCount : 0,
+    linkedTaskId: typeof config.linkedTaskId === 'string' ? config.linkedTaskId : undefined,
+    linkedTaskName: typeof config.linkedTaskName === 'string' ? config.linkedTaskName : undefined,
+    timerIndex: typeof config.timerIndex === 'number' ? config.timerIndex : undefined,
+    title: typeof config.title === 'string' ? config.title : undefined,
   };
 }
 
@@ -164,9 +174,9 @@ const RING_RADIUS = 58;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 const RING_SIZE = 140;
 
-export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigChange }: PomodoroWidgetProps) {
+export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigChange, widgetId }: PomodoroWidgetProps) {
   const c = normalizeConfig(config);
-  const { technique, workMinutes, restMinutes, longRestMinutes, alarmSound, state, remainingSeconds, elapsedSeconds, cycleCount, phase } = c;
+  const { technique, workMinutes, restMinutes, longRestMinutes, alarmSound, state, remainingSeconds, elapsedSeconds, cycleCount, phase, linkedTaskId, linkedTaskName } = c;
 
   const [view, setView] = useState<'main' | 'settings'>('main');
   const [editingField, setEditingField] = useState<string | null>(null);
@@ -200,6 +210,39 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
   }, [alarmOpen]);
 
   useEffect(() => {
+    const offSelect = widgetBus.on('task:select', (data) => {
+      if (data.targetWidgetId && data.targetWidgetId !== widgetId) return;
+      const workMin = data.estimatedMinutes ?? configRef.current.workMinutes;
+      onConfigChangeRef.current({
+        ...configRef.current,
+        linkedTaskId: data.taskId,
+        linkedTaskName: data.taskName,
+        workMinutes: workMin,
+        state: 'idle',
+        phase: 'work',
+        remainingSeconds: workMin * 60,
+        elapsedSeconds: 0,
+        cycleCount: 0,
+      });
+    });
+    return () => { offSelect(); };
+  }, [widgetId]);
+
+  useEffect(() => {
+    if (!widgetId) return;
+    widgetBus.emit('request-timer-index', { widgetId });
+    const offIdx = widgetBus.on('timer-index', (data) => {
+      if (data.widgetId !== widgetId) return;
+      onConfigChangeRef.current({
+        ...configRef.current,
+        timerIndex: data.timerIndex,
+        title: `Timer ${data.timerIndex}`,
+      });
+    });
+    return () => { offIdx(); };
+  }, [widgetId]);
+
+  useEffect(() => {
     const blob = new Blob([
       `let i = null; onmessage = function(e) {
         if (e.data.t === 'start' && !i) { i = setInterval(() => postMessage('t'), 1000); }
@@ -214,6 +257,9 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
       if (curCfg.technique === 'countup') {
         const newElapsed = curCfg.elapsedSeconds + 1;
         onConfigChangeRef.current({ ...curCfg, elapsedSeconds: newElapsed });
+        if (curCfg.linkedTaskId) {
+          widgetBus.emit('timer:tick', { taskId: curCfg.linkedTaskId, elapsed: newElapsed, remaining: 0 });
+        }
         return;
       }
 
@@ -225,6 +271,9 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
         w.postMessage({ t: 'stop' });
         playSound(curCfg.alarmSound);
         sendNotification();
+        if (curCfg.linkedTaskId) {
+          widgetBus.emit('timer:complete', { taskId: curCfg.linkedTaskId });
+        }
         if (curCfg.phase === 'work') {
           const newCycle = curCfg.cycleCount + 1;
           const isLongRest = newCycle % 4 === 0;
@@ -249,6 +298,9 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
 
       remainingRef.current = newRemaining;
       onConfigChangeRef.current({ ...curCfg, remainingSeconds: newRemaining });
+      if (curCfg.linkedTaskId) {
+        widgetBus.emit('timer:tick', { taskId: curCfg.linkedTaskId, elapsed: totalSecs - newRemaining, remaining: newRemaining });
+      }
     };
     workerRef.current = w;
     return () => w.terminate();
@@ -275,6 +327,9 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
         ...config,
         state: 'running',
       });
+      if (linkedTaskId) {
+        widgetBus.emit('timer:start', { taskId: linkedTaskId, taskName: linkedTaskName ?? '', technique });
+      }
       return;
     }
     const isBreak = phase === 'break' || state === 'break';
@@ -287,24 +342,18 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
       remainingSeconds: init,
       phase: isBreak ? 'break' : 'work',
     });
-  }, [state, phase, technique, remainingSeconds, workMinutes, restMinutes, config, onConfigChange]);
+    if (linkedTaskId) {
+      widgetBus.emit('timer:start', { taskId: linkedTaskId, taskName: linkedTaskName ?? '', technique });
+    }
+  }, [state, phase, technique, remainingSeconds, workMinutes, restMinutes, linkedTaskId, linkedTaskName, config, onConfigChange]);
 
   const pause = useCallback(() => {
     workerRef.current?.postMessage({ t: 'stop' });
     onConfigChange({ ...config, state: 'paused' });
-  }, [config, onConfigChange]);
-
-  const reset = useCallback(() => {
-    workerRef.current?.postMessage({ t: 'stop' });
-    onConfigChange({
-      ...config,
-      state: 'idle',
-      phase: 'work',
-      remainingSeconds: workMinutes * 60,
-      elapsedSeconds: 0,
-      cycleCount: 0,
-    });
-  }, [workMinutes, config, onConfigChange]);
+    if (linkedTaskId) {
+      widgetBus.emit('timer:pause', { taskId: linkedTaskId });
+    }
+  }, [config, linkedTaskId, onConfigChange]);
 
   const goSettings = useCallback(() => {
     workerRef.current?.postMessage({ t: 'stop' });
@@ -371,13 +420,33 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
   }, [config, state, onConfigChange]);
 
   const isRunning = state === 'running';
-  const isPaused = state === 'paused';
   const isCountup = technique === 'countup';
   const totalSeconds = phase === 'break' ? restMinutes * 60 : workMinutes * 60;
   const progress = isCountup ? 0 : totalSeconds > 0 ? ((totalSeconds - remainingSeconds) / totalSeconds) * 100 : 0;
   const dashOffset = RING_CIRCUMFERENCE * (1 - Math.min(progress, 100) / 100);
 
   const ringColor = phase === 'break' ? '#22c55e' : '#22d3ee';
+
+  const openTaskPicker = useCallback(() => {
+    widgetBus.emit('open-task-picker', {});
+  }, []);
+
+  const unlinkTask = useCallback(() => {
+    workerRef.current?.postMessage({ t: 'stop' });
+    onConfigChange({
+      ...config,
+      linkedTaskId: undefined,
+      linkedTaskName: undefined,
+      state: 'idle',
+      phase: 'work',
+      remainingSeconds: workMinutes * 60,
+      elapsedSeconds: 0,
+      cycleCount: 0,
+    });
+    if (linkedTaskId) {
+      widgetBus.emit('timer:reset', { taskId: linkedTaskId });
+    }
+  }, [config, workMinutes, linkedTaskId, onConfigChange]);
 
   const cycleDots = useMemo(() => {
     const dots = [];
@@ -406,47 +475,57 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
         </button>
 
         <div className="flex-1 space-y-4 overflow-y-auto pr-2" onPointerDown={(e) => e.stopPropagation()}>
-            {[
-              { key: 'workMinutes', label: 'FOCUS', value: workMinutes, suffix: 'min' },
-              ...(!isCountup ? [
-                { key: 'restMinutes', label: 'BREAK', value: restMinutes, suffix: 'min' },
-                { key: 'longRestMinutes', label: 'REST', value: longRestMinutes, suffix: 'min' },
-              ] : []),
-            ].map((item) => (
+            {(() => {
+              const isCustomOrCountup = technique === 'custom' || technique === 'countup';
+              const prefix = isCustomOrCountup ? 'Custom ' : '';
+              return [
+                { key: 'workMinutes', label: `${prefix}FOCUS`, value: workMinutes, suffix: 'min', editable: isCustomOrCountup },
+                ...(!isCountup ? [
+                  { key: 'restMinutes', label: `${prefix}BREAK`, value: restMinutes, suffix: 'min', editable: isCustomOrCountup },
+                  { key: 'longRestMinutes', label: `${prefix}REST`, value: longRestMinutes, suffix: 'min', editable: isCustomOrCountup },
+                ] : []),
+              ];
+            })().map((item) => (
               <div key={item.key} className="px-1">
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
                   {item.label}
                 </div>
-                {editingField === item.key ? (
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    min={1}
-                    max={120}
-                    defaultValue={item.value}
-                    autoFocus
-                    onBlur={(e) => {
-                      const v = Math.max(1, Math.min(120, Number(e.target.value) || item.value));
-                      updateField(item.key, v);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        const v = Math.max(1, Math.min(120, Number((e.target as HTMLInputElement).value) || item.value));
+                {item.editable ? (
+                  editingField === item.key ? (
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      min={1}
+                      max={120}
+                      defaultValue={item.value}
+                      autoFocus
+                      onBlur={(e) => {
+                        const v = Math.max(1, Math.min(120, Number(e.target.value) || item.value));
                         updateField(item.key, v);
-                      }
-                      if (e.key === 'Escape') setEditingField(null);
-                    }}
-                    className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-sm text-gray-200 outline-none focus:ring-1 focus:ring-cyan-400"
-                  />
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const v = Math.max(1, Math.min(120, Number((e.target as HTMLInputElement).value) || item.value));
+                          updateField(item.key, v);
+                        }
+                        if (e.key === 'Escape') setEditingField(null);
+                      }}
+                      className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-sm text-gray-200 outline-none focus:ring-1 focus:ring-cyan-400"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setEditingField(item.key)}
+                      className="mt-0.5 flex w-full items-center justify-between rounded bg-gray-800 px-2 py-1.5 text-sm text-gray-200 hover:bg-white/5 transition-colors"
+                    >
+                      <span>{item.value} {item.suffix}</span>
+                    </button>
+                  )
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => setEditingField(item.key)}
-                    className="mt-0.5 flex w-full items-center justify-between rounded bg-gray-800 px-2 py-1.5 text-sm text-gray-200 hover:bg-white/5 transition-colors"
-                  >
+                  <div className="mt-0.5 flex w-full items-center justify-between rounded bg-gray-800/50 px-2 py-1.5 text-sm text-gray-400">
                     <span>{item.value} {item.suffix}</span>
-                  </button>
+                  </div>
                 )}
               </div>
             ))}
@@ -516,19 +595,26 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
             type="button"
             onClick={() => selectTechnique(tech)}
             className={`flex-1 rounded px-1.5 py-1 text-[10px] font-medium transition-colors ${
-              technique === tech
+              !linkedTaskId && technique === tech
                 ? 'bg-gray-600 text-gray-100'
                 : 'text-gray-500 hover:text-gray-300'
             }`}
+            title={tech === 'custom' ? 'Custom' : TECHNIQUES[tech].label}
           >
-            {TECHNIQUES[tech].label}
+            {tech === 'custom' ? <FiEdit size={12} className="mx-auto" /> : TECHNIQUES[tech].label}
           </button>
         ))}
       </div>
 
-      <div className="mt-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-        {isCountup ? 'FLOW' : phase === 'break' ? 'BREAK' : 'FOCUS'}
-      </div>
+      {linkedTaskId ? (
+        <div className="mt-2 text-sm font-medium text-cyan-400 truncate max-w-[200px]">
+          {linkedTaskName}
+        </div>
+      ) : (
+        <div className="mt-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+          {isCountup ? 'FLOW' : phase === 'break' ? 'BREAK' : 'FOCUS'}
+        </div>
+      )}
 
       <div className="relative my-2 flex items-center justify-center">
         {isCountup ? (
@@ -582,6 +668,19 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
       )}
 
       <div className="mt-2 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={linkedTaskId ? unlinkTask : openTaskPicker}
+          className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
+            linkedTaskId
+              ? 'bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500/25'
+              : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-gray-200'
+          }`}
+          title={linkedTaskId ? `Unlink: ${linkedTaskName}` : 'Link task'}
+        >
+          <FiClock size={16} />
+        </button>
+
         <button
           type="button"
           onClick={goBackAndReset}

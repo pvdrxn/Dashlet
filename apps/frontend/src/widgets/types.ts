@@ -21,6 +21,7 @@ export interface WidgetData {
 interface WidgetComponentProps {
   config: Record<string, unknown>;
   onConfigChange: (config: Record<string, unknown>) => void;
+  widgetId?: string;
 }
 
 export type ComponentType = ReactComponentType<WidgetComponentProps> | LazyExoticComponent<JSXElementConstructor<WidgetComponentProps>>;

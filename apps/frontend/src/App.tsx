@@ -3,7 +3,10 @@ import { WidgetGrid } from './widgets';
 import { Toolbar } from './components/Toolbar';
 import { TabBar } from './components/TabBar';
 import { TrashWindow } from './components/TrashWindow';
+import { TaskPickerModal } from './components/TaskPickerModal';
+import { widgetBus } from './widgets/widget-bus';
 import * as tabsApi from './api/tabs';
+import * as widgetsApi from './api/widgets';
 import type { TabDto } from '@widget-master/shared';
 import type { Position } from './widgets/types';
 import {
@@ -17,6 +20,7 @@ const ACTIVE_TAB_KEY = 'dashlet-active-tab';
 
 function App() {
   const [trashOpen, setTrashOpen] = useState(false);
+  const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const [tabs, setTabs] = useState<TabDto[]>([]);
   const [tabsLoaded, setTabsLoaded] = useState(false);
   const [activeTabId, setActiveTabId] = useState<string | null>(() =>
@@ -79,6 +83,23 @@ function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const off = widgetBus.on('open-task-picker', () => setTaskPickerOpen(true));
+    return () => { off(); };
+  }, []);
+
+  useEffect(() => {
+    const off = widgetBus.on('request-timer-index', async () => {
+      if (!activeTabId) return;
+      const widgets = await widgetsApi.fetchWidgets(activeTabId);
+      const timers = widgets.filter((w) => w.type === 'pomodoro');
+      timers.forEach((t, i) => {
+        widgetBus.emit('timer-index', { widgetId: t.id, timerIndex: timers.length - i });
+      });
+    });
+    return () => { off(); };
+  }, [activeTabId]);
 
   useEffect(() => {
     if (activeTabId) localStorage.setItem(ACTIVE_TAB_KEY, activeTabId);
@@ -204,6 +225,36 @@ function App() {
     [activeTabId],
   );
 
+  useEffect(() => {
+    const off = widgetBus.on('request-task-link', async (data) => {
+      if (!activeTabId) return;
+
+      const widgets = await widgetsApi.fetchWidgets(activeTabId);
+      const timers = widgets.filter((w) => w.type === 'pomodoro');
+
+      const alreadyLinked = timers.find((t) => t.config.linkedTaskId === data.taskId);
+      if (alreadyLinked) {
+        widgetBus.emit('timer-highlight', { widgetId: alreadyLinked.id });
+        return;
+      }
+
+      const freeTimer = timers.find((t) => !t.config.linkedTaskId);
+
+      if (!freeTimer) {
+        const prevIds = new Set(timers.map((t) => t.id));
+        await handleAddWidget('pomodoro');
+        await new Promise((r) => setTimeout(r, 150));
+        const updatedWidgets = await widgetsApi.fetchWidgets(activeTabId);
+        const newTimers = updatedWidgets.filter((w) => w.type === 'pomodoro');
+        const newestTimer = newTimers.find((t) => !prevIds.has(t.id));
+        widgetBus.emit('task:select', { ...data, targetWidgetId: newestTimer?.id });
+      } else {
+        widgetBus.emit('task:select', { ...data, targetWidgetId: freeTimer.id });
+      }
+    });
+    return () => { off(); };
+  }, [activeTabId, handleAddWidget]);
+
   const registerPredictAddRef = useCallback(
     (tabId: string, fn: (type: string) => Position | null) => {
       predictAddRefs.current.set(tabId, fn);
@@ -299,6 +350,11 @@ function App() {
         <TrashWindow
           onClose={() => setTrashOpen(false)}
           onRestoreComplete={handleRestoreComplete}
+        />
+      )}
+      {taskPickerOpen && (
+        <TaskPickerModal
+          onClose={() => setTaskPickerOpen(false)}
         />
       )}
     </main>

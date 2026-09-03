@@ -6,12 +6,12 @@ import {
   useRef,
   useEffect,
   useMemo,
-  type ComponentType,
   type InputHTMLAttributes,
   type ReactNode,
   type RefObject,
 } from 'react';
-import { FiChevronDown, FiChevronRight, FiCornerDownRight, FiPlus, FiTrash2 } from 'react-icons/fi';
+import { FiChevronDown, FiChevronRight, FiCornerDownRight, FiPlus, FiTrash2, FiClock } from 'react-icons/fi';
+import { widgetBus } from '../widget-bus';
 import {
   DndContext,
   closestCenter,
@@ -46,11 +46,13 @@ interface TaskRowProps {
   level: number;
   childCount: number;
   completedChildCount: number;
+  isActive: boolean;
   toggleItem: (id: string) => void;
   removeItem: (id: string) => void;
   editItem: (id: string, text: string) => void;
   onEditUrgency: (id: string) => void;
   onEditEstimatedTime: (id: string, time: number | undefined, unit: 'min' | 'hr' | undefined) => void;
+  onLinkTask: (id: string, text: string, estimatedTime?: number, estimatedTimeUnit?: 'min' | 'hr') => void;
   toggleIndent: (id: string) => void;
   toggleCollapse: (id: string) => void;
 }
@@ -58,6 +60,7 @@ interface TaskRowProps {
 interface TodoListConfig {
   title?: string;
   items?: TodoItem[];
+  activeTaskId?: string;
 }
 
 interface TodoListWidgetProps {
@@ -223,11 +226,13 @@ const TaskRowContent = memo(function TaskRowContent({
   completedChildCount,
   editing,
   onEditingChange,
+  isActive,
   toggleItem,
   removeItem,
   editItem,
   onEditUrgency,
   onEditEstimatedTime,
+  onLinkTask,
   toggleIndent,
   toggleCollapse,
 }: {
@@ -237,11 +242,13 @@ const TaskRowContent = memo(function TaskRowContent({
   completedChildCount: number;
   editing: boolean;
   onEditingChange: (editing: boolean) => void;
+  isActive: boolean;
   toggleItem: (id: string) => void;
   removeItem: (id: string) => void;
   editItem: (id: string, text: string) => void;
   onEditUrgency: (id: string) => void;
   onEditEstimatedTime: (id: string, time: number | undefined, unit: 'min' | 'hr' | undefined) => void;
+  onLinkTask: (id: string, text: string, estimatedTime?: number, estimatedTimeUnit?: 'min' | 'hr') => void;
   toggleIndent: (id: string) => void;
   toggleCollapse: (id: string) => void;
 }) {
@@ -385,6 +392,21 @@ const TaskRowContent = memo(function TaskRowContent({
         )}
         <button
           type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onLinkTask(item.id, item.text, item.estimatedTime, item.estimatedTimeUnit);
+          }}
+          className={`invisible text-base group-hover/item:visible shrink-0 ${
+            isActive ? 'text-cyan-400' : 'text-gray-500 hover:text-cyan-400'
+          }`}
+          title={isActive ? 'Active task' : 'Start timer for this task'}
+          aria-label={`Start timer for ${item.text}`}
+        >
+          <FiClock size={13} />
+        </button>
+        <button
+          type="button"
           onClick={() => removeItem(item.id)}
           className="invisible mr-1 text-base text-gray-500 group-hover/item:visible hover:text-red-400"
           aria-label={`Delete task ${item.text}`}
@@ -401,11 +423,13 @@ const SortableItem = memo(function SortableItem({
   level,
   childCount,
   completedChildCount,
+  isActive,
   toggleItem,
   removeItem,
   editItem,
   onEditUrgency,
   onEditEstimatedTime,
+  onLinkTask,
   toggleIndent,
   toggleCollapse,
   activeId,
@@ -424,12 +448,12 @@ const SortableItem = memo(function SortableItem({
   });
 
   if (activeId) {
-    transformMapRef.set(item.id, transform);
+    transformMapRef.current.set(item.id, transform);
   }
 
   const isDescendantOfActive = useMemo(() => {
     if (!activeId || activeId === item.id) return false;
-    let currentId: string | undefined = item.parentId;
+    let currentId: string | undefined = item.parentId ?? undefined;
     while (currentId) {
       if (currentId === activeId) return true;
       currentId = parentMap.get(currentId);
@@ -439,13 +463,13 @@ const SortableItem = memo(function SortableItem({
 
   const effectiveTransform = useMemo(() => {
     if (isDescendantOfActive && activeId) {
-      return transformMapRef.get(activeId) ?? transform;
+      return transformMapRef.current.get(activeId) ?? transform;
     }
     return transform;
   }, [isDescendantOfActive, activeId, transform, transformMapRef]);
 
   const style = {
-    transform: CSS.Transform.toString(effectiveTransform),
+    transform: CSS.Transform.toString(effectiveTransform as any),
     transition,
     opacity: isDragging || isDescendantOfActive ? 0.4 : 1,
   };
@@ -455,7 +479,9 @@ const SortableItem = memo(function SortableItem({
       ref={setNodeRef}
       {...listeners}
       style={{ ...style, paddingLeft: 21 + level * 20 }}
-      className="group/item mx-0.5 relative flex cursor-grab touch-none items-center gap-1.5 rounded py-0.5 hover:bg-gray-700/50 active:cursor-grabbing"
+      className={`group/item mx-0.5 relative flex cursor-grab touch-none items-center gap-1.5 rounded py-0.5 hover:bg-gray-700/50 active:cursor-grabbing ${
+        isActive ? 'border-l-2 border-cyan-400 bg-cyan-400/5' : ''
+      }`}
     >
       <TaskRowContent
         item={item}
@@ -464,11 +490,13 @@ const SortableItem = memo(function SortableItem({
         completedChildCount={completedChildCount}
         editing={editing}
         onEditingChange={setEditing}
+        isActive={isActive}
         toggleItem={toggleItem}
         removeItem={removeItem}
         editItem={editItem}
         onEditUrgency={onEditUrgency}
         onEditEstimatedTime={onEditEstimatedTime}
+        onLinkTask={onLinkTask}
         toggleIndent={toggleIndent}
         toggleCollapse={toggleCollapse}
       />
@@ -481,11 +509,13 @@ const StaticItemRow = memo(function StaticItemRow({
   level,
   childCount,
   completedChildCount,
+  isActive,
   toggleItem,
   removeItem,
   editItem,
   onEditUrgency,
   onEditEstimatedTime,
+  onLinkTask,
   toggleIndent,
   toggleCollapse,
 }: TaskRowProps) {
@@ -494,7 +524,9 @@ const StaticItemRow = memo(function StaticItemRow({
   return (
     <div
       style={{ paddingLeft: 21 + level * 20 }}
-      className="group/item mx-0.5 relative flex cursor-default items-center gap-1.5 rounded py-0.5 hover:bg-gray-700/50"
+      className={`group/item mx-0.5 relative flex cursor-default items-center gap-1.5 rounded py-0.5 hover:bg-gray-700/50 ${
+        isActive ? 'border-l-2 border-cyan-400 bg-cyan-400/5' : ''
+      }`}
     >
       <TaskRowContent
         item={item}
@@ -503,11 +535,13 @@ const StaticItemRow = memo(function StaticItemRow({
         completedChildCount={completedChildCount}
         editing={editing}
         onEditingChange={setEditing}
+        isActive={isActive}
         toggleItem={toggleItem}
         removeItem={removeItem}
         editItem={editItem}
         onEditUrgency={onEditUrgency}
         onEditEstimatedTime={onEditEstimatedTime}
+        onLinkTask={onLinkTask}
         toggleIndent={toggleIndent}
         toggleCollapse={toggleCollapse}
       />
@@ -516,7 +550,7 @@ const StaticItemRow = memo(function StaticItemRow({
 });
 
 export const TodoListWidget = memo(function TodoListWidget({ config, onConfigChange }: TodoListWidgetProps) {
-  const { items: rawItems = [] } = (config ?? {}) as TodoListConfig;
+  const { items: rawItems = [], activeTaskId } = (config ?? {}) as TodoListConfig;
   const [newText, setNewText] = useState('');
   const [newUrgency, setNewUrgency] = useState<'' | '1' | '2' | '3'>('');
   const [newTimeInput, setNewTimeInput] = useState('');
@@ -529,10 +563,15 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
   const childrenMap = useMemo(() => buildChildrenMap(items), [items]);
   const parentMap = useMemo(() => {
     const map = new Map<string, string | undefined>();
-    for (const item of items) map.set(item.id, item.parentId);
+    for (const item of items) map.set(item.id, item.parentId ?? undefined);
     return map;
   }, [items]);
-  const transformMapRef = useRef(new Map<string, { x: number; y: number } | null>());
+  const transformMapRef = useRef(new Map<string, { x: number; y: number; scaleX: number; scaleY: number } | null>());
+  const configRef = useRef(config);
+  const onConfigChangeRef = useRef(onConfigChange);
+
+  configRef.current = config;
+  onConfigChangeRef.current = onConfigChange;
 
   const activeItem = activeId ? items.find((i) => i.id === activeId) ?? null : null;
   const activeChildren = activeItem ? (childrenMap.get(activeItem.id) ?? []) : [];
@@ -556,6 +595,26 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
     }
   }, [items, rawItems, config, onConfigChange]);
 
+  useEffect(() => {
+    const offStart = widgetBus.on('timer:start', (data) => {
+      onConfigChangeRef.current({ ...configRef.current, activeTaskId: data.taskId });
+    });
+    const offPause = widgetBus.on('timer:pause', () => {});
+    const offReset = widgetBus.on('timer:reset', (data) => {
+      const cfg = configRef.current;
+      if (cfg.activeTaskId === data.taskId) {
+        onConfigChangeRef.current({ ...cfg, activeTaskId: undefined });
+      }
+    });
+    const offComplete = widgetBus.on('timer:complete', (data) => {
+      const cfg = configRef.current;
+      if (cfg.activeTaskId === data.taskId) {
+        onConfigChangeRef.current({ ...cfg, activeTaskId: undefined });
+      }
+    });
+    return () => { offStart(); offPause(); offReset(); offComplete(); };
+  }, []);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
@@ -574,7 +633,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
 
     const timeValue = newTimeInput.trim();
     if (timeValue && !isNaN(Number(timeValue)) && Number(timeValue) > 0) {
-      newItem.estimatedTime = Number(timeValue);
+      newItem.estimatedTime = Math.trunc(Number(timeValue));
       newItem.estimatedTimeUnit = newTimeUnit;
     }
 
@@ -727,6 +786,18 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
     });
   }, [config, items, onConfigChange]);
 
+  const onLinkTask = useCallback((id: string, text: string, estimatedTime?: number, estimatedTimeUnit?: 'min' | 'hr') => {
+    const estimatedMinutes = estimatedTime != null
+      ? estimatedTimeUnit === 'hr' ? estimatedTime * 60 : estimatedTime
+      : undefined;
+    widgetBus.emit('request-task-link', {
+      taskId: id,
+      taskName: text,
+      estimatedMinutes,
+      widgetId: (config as Record<string, unknown>).id as string ?? '',
+    });
+  }, [config]);
+
   const handleDragStart = useCallback((event: DragStartEvent) => {
     setActiveId(String(event.active.id));
   }, []);
@@ -779,10 +850,12 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
 
     const excludedIds = getCompletedItemIds(items, childrenMap);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const renderNode = (
       node: TodoItem,
       level: number,
-      Row: ComponentType<TaskRowProps>,
+      Row: any,
+      isSortable = false,
     ): ReactNode => {
       const children = childrenMap.get(node.id) ?? [];
       return (
@@ -792,14 +865,16 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
             level={level}
             childCount={children.length}
             completedChildCount={children.filter((child) => child.completed).length}
+            isActive={activeTaskId === node.id}
             toggleItem={toggleItem}
             removeItem={removeItem}
             editItem={editItem}
             onEditUrgency={onEditUrgency}
             onEditEstimatedTime={onEditEstimatedTime}
+            onLinkTask={onLinkTask}
             toggleIndent={toggleIndent}
             toggleCollapse={toggleCollapse}
-            {...(Row === SortableItem
+            {...(isSortable
               ? { activeId, parentMap, transformMapRef }
               : {})}
           />
@@ -833,9 +908,9 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
 
     return {
       sortableIds: items.filter((i) => !excludedIds.has(i.id)).map((i) => i.id),
-      activeTree: activeRoots.map((root) => renderNode(root, 0, SortableItem)),
+      activeTree: activeRoots.map((root) => renderNode(root, 0, SortableItem, true)),
       completedTree: completedExpanded
-        ? completedRoots.map((root) => renderNode(root, 0, StaticItemRow))
+        ? completedRoots.map((root) => renderNode(root, 0, StaticItemRow, false))
         : null,
       completedCount,
     };
@@ -898,18 +973,20 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
                   completedChildCount={activeChildren.filter((c) => c.completed).length}
                   editing={false}
                   onEditingChange={() => {}}
+                  isActive={activeTaskId === activeItem.id}
                   toggleItem={toggleItem}
                   removeItem={removeItem}
                   editItem={editItem}
                   onEditUrgency={() => {}}
                   onEditEstimatedTime={() => {}}
+                  onLinkTask={() => {}}
                   toggleIndent={toggleIndent}
                   toggleCollapse={toggleCollapse}
                 />
               </div>
               {activeDescendants.map((desc) => {
                 let descLevel = 0;
-                let cur: string | undefined = desc.parentId;
+                let cur: string | undefined = desc.parentId ?? undefined;
                 while (cur && cur !== activeItem.id) {
                   descLevel++;
                   cur = parentMap.get(cur);
@@ -923,11 +1000,13 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
                       completedChildCount={(childrenMap.get(desc.id) ?? []).filter((c) => c.completed).length}
                       editing={false}
                       onEditingChange={() => {}}
+                      isActive={false}
                       toggleItem={toggleItem}
                       removeItem={removeItem}
                       editItem={editItem}
                       onEditUrgency={() => {}}
                       onEditEstimatedTime={() => {}}
+                      onLinkTask={() => {}}
                       toggleIndent={toggleIndent}
                       toggleCollapse={toggleCollapse}
                     />
@@ -957,7 +1036,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
             inputMode="numeric"
             value={newTimeInput}
             placeholder="Time"
-            onChange={(e) => setNewTimeInput(e.target.value)}
+            onChange={(e) => setNewTimeInput(e.target.value.replace(/[^0-9]/g, ''))}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();

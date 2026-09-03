@@ -2,6 +2,7 @@ import { memo, useState, useCallback, useRef, useEffect, Suspense } from 'react'
 import { useDraggable } from '@dnd-kit/core';
 import { FiChevronUp, FiChevronDown, FiX, FiMoreVertical, FiLayers } from 'react-icons/fi';
 import { snapUpW, snapUpH } from './grid-utils';
+import { widgetBus } from './widget-bus';
 import type { ComponentType } from './types';
 
 interface WidgetFrameProps {
@@ -33,6 +34,7 @@ export const WidgetFrame = memo(function WidgetFrame({
 }: WidgetFrameProps) {
   const [size, setSize] = useState({ w: position.w, h: position.h });
   const [isResizing, setIsResizing] = useState(false);
+  const [highlighted, setHighlighted] = useState(false);
   const resizeStateRef = useRef({ w: position.w, h: position.h });
   const collapsed = (config.collapsed as boolean) ?? false;
 
@@ -223,11 +225,22 @@ export const WidgetFrame = memo(function WidgetFrame({
     [id, onConfigChange],
   );
 
+  useEffect(() => {
+    const off = widgetBus.on('timer-highlight', (data) => {
+      if (data.widgetId !== id) return;
+      setHighlighted(true);
+      setTimeout(() => setHighlighted(false), 1500);
+    });
+    return () => { off(); };
+  }, [id]);
+
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className="group border border-gray-700 bg-gray-800 shadow-lg overflow-hidden rounded-[4px]"
+      className={`group border bg-gray-800 shadow-lg overflow-hidden rounded-[4px] transition-all duration-300 ${
+        highlighted ? 'border-cyan-400 ring-2 ring-cyan-400/50' : 'border-gray-700'
+      }`}
       onWheel={(e) => e.stopPropagation()}
     >
       <div
@@ -335,7 +348,7 @@ export const WidgetFrame = memo(function WidgetFrame({
             onLostPointerCapture={clearHoldTimer}
           >
             <Suspense fallback={<div className="text-xs text-gray-500">Loading...</div>}>
-              <WidgetComponent config={config} onConfigChange={handleConfigChangeWrapped} />
+              <WidgetComponent config={config} onConfigChange={handleConfigChangeWrapped} widgetId={id} />
             </Suspense>
           </div>
 
