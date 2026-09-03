@@ -36,7 +36,9 @@ interface TodoItem {
   completedAt?: number;
   parentId?: string | null;
   collapsed?: boolean;
-  urgency: 0 | 1 | 2 | 3;
+  urgency?: 1 | 2 | 3;
+  estimatedTime?: number;
+  estimatedTimeUnit?: 'min' | 'hr';
 }
 
 interface TaskRowProps {
@@ -48,6 +50,7 @@ interface TaskRowProps {
   removeItem: (id: string) => void;
   editItem: (id: string, text: string) => void;
   onEditUrgency: (id: string) => void;
+  onEditEstimatedTime: (id: string, time: number | undefined, unit: 'min' | 'hr' | undefined) => void;
   toggleIndent: (id: string) => void;
   toggleCollapse: (id: string) => void;
 }
@@ -84,6 +87,8 @@ function ensureUniqueIds(items: TodoItem[]): TodoItem[] {
         parentId: item?.parentId ?? undefined,
         collapsed: Boolean(item?.collapsed),
         urgency: item?.urgency,
+        estimatedTime: item?.estimatedTime,
+        estimatedTimeUnit: item?.estimatedTimeUnit,
       };
     }
     seen.add(item.id);
@@ -194,12 +199,10 @@ function AutoGrowInput({
   );
 }
 
-const urgencyLabels = ['None', 'Low', 'Medium', 'High'];
+const urgencyLabels: Record<number, string> = { 1: 'Low', 2: 'Medium', 3: 'High' };
 
-function getUrgencyClass(urgency: 0 | 1 | 2 | 3): string {
+function getUrgencyClass(urgency: 1 | 2 | 3): string {
   switch (urgency) {
-    case 0:
-      return 'bg-transparent text-gray-500';
     case 1:
       return 'bg-gray-600/50 text-gray-400';
     case 2:
@@ -209,7 +212,7 @@ function getUrgencyClass(urgency: 0 | 1 | 2 | 3): string {
   }
 }
 
-function getUrgencyLabel(urgency: 0 | 1 | 2 | 3): string {
+function getUrgencyLabel(urgency: 1 | 2 | 3): string {
   return urgencyLabels[urgency];
 }
 
@@ -224,6 +227,7 @@ const TaskRowContent = memo(function TaskRowContent({
   removeItem,
   editItem,
   onEditUrgency,
+  onEditEstimatedTime,
   toggleIndent,
   toggleCollapse,
 }: {
@@ -237,6 +241,7 @@ const TaskRowContent = memo(function TaskRowContent({
   removeItem: (id: string) => void;
   editItem: (id: string, text: string) => void;
   onEditUrgency: (id: string) => void;
+  onEditEstimatedTime: (id: string, time: number | undefined, unit: 'min' | 'hr' | undefined) => void;
   toggleIndent: (id: string) => void;
   toggleCollapse: (id: string) => void;
 }) {
@@ -329,17 +334,33 @@ const TaskRowContent = memo(function TaskRowContent({
           >
             {item.text}
           </button>
-          <button
-            type="button"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onEditUrgency(item.id);
-            }}
-            className={`inline-flex items-center rounded px-1 text-xs font-medium ${getUrgencyClass(item.urgency)} cursor-pointer hover:opacity-80 shrink-0`}
-          >
-            {getUrgencyLabel(item.urgency)}
-          </button>
+          {item.urgency != null && (
+            <button
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onEditUrgency(item.id);
+              }}
+              className={`inline-flex items-center rounded px-1 text-xs font-medium ${getUrgencyClass(item.urgency)} cursor-pointer hover:opacity-80 shrink-0`}
+            >
+              {getUrgencyLabel(item.urgency)}
+            </button>
+          )}
+          {item.estimatedTime != null && item.estimatedTime > 0 && (
+            <button
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onEditEstimatedTime(item.id, undefined, undefined);
+              }}
+              className="inline-flex items-center rounded bg-gray-600/40 px-1 text-xs text-gray-400 cursor-pointer hover:bg-gray-600/60 shrink-0"
+              title="Click to remove time estimate"
+            >
+              {item.estimatedTime} {item.estimatedTimeUnit}
+            </button>
+          )}
         </>
       )}
       <div className="ml-auto flex items-center gap-1.5">
@@ -384,6 +405,7 @@ const SortableItem = memo(function SortableItem({
   removeItem,
   editItem,
   onEditUrgency,
+  onEditEstimatedTime,
   toggleIndent,
   toggleCollapse,
   activeId,
@@ -446,6 +468,7 @@ const SortableItem = memo(function SortableItem({
         removeItem={removeItem}
         editItem={editItem}
         onEditUrgency={onEditUrgency}
+        onEditEstimatedTime={onEditEstimatedTime}
         toggleIndent={toggleIndent}
         toggleCollapse={toggleCollapse}
       />
@@ -462,6 +485,7 @@ const StaticItemRow = memo(function StaticItemRow({
   removeItem,
   editItem,
   onEditUrgency,
+  onEditEstimatedTime,
   toggleIndent,
   toggleCollapse,
 }: TaskRowProps) {
@@ -483,6 +507,7 @@ const StaticItemRow = memo(function StaticItemRow({
         removeItem={removeItem}
         editItem={editItem}
         onEditUrgency={onEditUrgency}
+        onEditEstimatedTime={onEditEstimatedTime}
         toggleIndent={toggleIndent}
         toggleCollapse={toggleCollapse}
       />
@@ -493,7 +518,9 @@ const StaticItemRow = memo(function StaticItemRow({
 export const TodoListWidget = memo(function TodoListWidget({ config, onConfigChange }: TodoListWidgetProps) {
   const { items: rawItems = [] } = (config ?? {}) as TodoListConfig;
   const [newText, setNewText] = useState('');
-  const [newUrgency, setNewUrgency] = useState<0 | 1 | 2 | 3>(0);
+  const [newUrgency, setNewUrgency] = useState<'' | '1' | '2' | '3'>('');
+  const [newTimeInput, setNewTimeInput] = useState('');
+  const [newTimeUnit, setNewTimeUnit] = useState<'min' | 'hr'>('min');
   const [activeId, setActiveId] = useState<string | null>(null);
   const [completedExpanded, setCompletedExpanded] = useState(true);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -541,16 +568,24 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
       id: genId('todo'),
       text: trimmed,
       completed: false,
-      urgency: newUrgency,
     };
+
+    if (newUrgency) newItem.urgency = Number(newUrgency) as 1 | 2 | 3;
+
+    const timeValue = newTimeInput.trim();
+    if (timeValue && !isNaN(Number(timeValue)) && Number(timeValue) > 0) {
+      newItem.estimatedTime = Number(timeValue);
+      newItem.estimatedTimeUnit = newTimeUnit;
+    }
 
     onConfigChange({
       ...config,
       items: [...items, newItem],
     });
     setNewText('');
-    setNewUrgency(0);
-  }, [newText, newUrgency, config, items, onConfigChange]);
+    setNewUrgency('');
+    setNewTimeInput('');
+  }, [newText, newUrgency, newTimeInput, newTimeUnit, config, items, onConfigChange]);
 
   const toggleItem = useCallback((id: string) => {
     const item = items.find((i) => i.id === id);
@@ -676,8 +711,18 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
       ...config,
       items: items.map((item) => {
         if (item.id !== id) return item;
-        const next = item.urgency >= 3 ? 0 : (item.urgency + 1) as 0 | 1 | 2 | 3;
+        const next = item.urgency == null ? 1 : item.urgency >= 3 ? undefined : (item.urgency + 1) as 1 | 2 | 3;
         return { ...item, urgency: next };
+      }),
+    });
+  }, [config, items, onConfigChange]);
+
+  const onEditEstimatedTime = useCallback((id: string, time: number | undefined, unit: 'min' | 'hr' | undefined) => {
+    onConfigChange({
+      ...config,
+      items: items.map((item) => {
+        if (item.id !== id) return item;
+        return { ...item, estimatedTime: time, estimatedTimeUnit: unit };
       }),
     });
   }, [config, items, onConfigChange]);
@@ -751,6 +796,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
             removeItem={removeItem}
             editItem={editItem}
             onEditUrgency={onEditUrgency}
+            onEditEstimatedTime={onEditEstimatedTime}
             toggleIndent={toggleIndent}
             toggleCollapse={toggleCollapse}
             {...(Row === SortableItem
@@ -793,7 +839,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
         : null,
       completedCount,
     };
-  }, [items, childrenMap, toggleItem, removeItem, editItem, onEditUrgency, toggleIndent, toggleCollapse, completedExpanded]);
+  }, [items, childrenMap, toggleItem, removeItem, editItem, onEditUrgency, onEditEstimatedTime, toggleIndent, toggleCollapse, completedExpanded]);
 
   return (
     <div className="relative flex h-full flex-col gap-2">
@@ -856,6 +902,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
                   removeItem={removeItem}
                   editItem={editItem}
                   onEditUrgency={() => {}}
+                  onEditEstimatedTime={() => {}}
                   toggleIndent={toggleIndent}
                   toggleCollapse={toggleCollapse}
                 />
@@ -880,6 +927,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
                       removeItem={removeItem}
                       editItem={editItem}
                       onEditUrgency={() => {}}
+                      onEditEstimatedTime={() => {}}
                       toggleIndent={toggleIndent}
                       toggleCollapse={toggleCollapse}
                     />
@@ -903,16 +951,52 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
           className="rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-200 outline-none placeholder-gray-500 focus:border-blue-400"
           aria-label="New task text"
         />
-        <select
-          value={newUrgency}
-          onChange={(e) => setNewUrgency(Number(e.target.value))}
-          className="rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-200 outline-none focus:border-blue-400 w-20"
-        >
-          <option value={0}>None</option>
-          <option value={1}>Low</option>
-          <option value={2}>Medium</option>
-          <option value={3}>High</option>
-        </select>
+        <div className="relative flex w-[4.5rem] shrink-0 items-center">
+          <input
+            type="text"
+            inputMode="numeric"
+            value={newTimeInput}
+            placeholder="Time"
+            onChange={(e) => setNewTimeInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                addItem();
+              }
+            }}
+            className="no-spinner w-full rounded border border-gray-600 bg-gray-700 px-2 py-1 pr-9 text-xs text-gray-200 outline-none placeholder-gray-500 focus:border-blue-400"
+            aria-label="Estimated time"
+          />
+          <button
+            type="button"
+            onClick={() => setNewTimeUnit((u) => (u === 'min' ? 'hr' : 'min'))}
+            className="absolute right-1 rounded px-1 text-[10px] font-medium text-gray-400 hover:bg-gray-600/60 hover:text-gray-200"
+            aria-label="Toggle time unit"
+          >
+            {newTimeUnit}
+          </button>
+        </div>
+        <div className="flex rounded border border-gray-600 bg-gray-700 text-xs">
+          {(['1', '2', '3'] as const).map((val) => {
+            const labels = { '1': 'Low', '2': 'Med', '3': 'High' };
+            const colors = {
+              '1': 'text-gray-400',
+              '2': 'text-orange-400',
+              '3': 'text-red-400',
+            };
+            const active = newUrgency === val;
+            return (
+              <button
+                key={val}
+                type="button"
+                onClick={() => setNewUrgency(active ? '' : val)}
+                className={`px-2 py-1 transition-colors ${active ? `bg-gray-600 ${colors[val]}` : 'text-gray-500 hover:text-gray-300'}`}
+              >
+                {labels[val]}
+              </button>
+            );
+          })}
+        </div>
         <button
           type="submit"
           title="Add task"
