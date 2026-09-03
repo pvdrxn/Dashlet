@@ -1,6 +1,6 @@
 import { memo, useCallback, useRef, useEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { FiArrowLeft, FiPause, FiPlay, FiRotateCcw, FiSettings } from 'react-icons/fi';
+import { FiArrowLeft, FiPause, FiPlay, FiRotateCcw, FiSettings, FiCheck, FiX } from 'react-icons/fi';
 
 let audioCtx: AudioContext | null = null;
 
@@ -85,12 +85,14 @@ function sendNotification() {
 }
 
 interface PomodoroConfig {
+  technique: Technique;
   workMinutes: number;
   restMinutes: number;
   longRestMinutes: number;
   alarmSound: string;
   state: 'idle' | 'running' | 'paused' | 'break';
   remainingSeconds: number;
+  elapsedSeconds: number;
   cycleCount: number;
   phase: 'work' | 'break';
 }
@@ -107,11 +109,42 @@ function formatTimeShort(seconds: number): string {
   return `${m}m ${String(s).padStart(2, '0')}s`;
 }
 
+function formatTimeCountup(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}h ${m}m ${String(s).padStart(2, '0')}s`;
+  return `${m}m ${String(s).padStart(2, '0')}s`;
+}
+
+type Technique = 'pomodoro' | 'pomodoro-ext' | '52-17' | 'countup';
+
+interface TechniquePreset {
+  label: string;
+  workMinutes: number;
+  restMinutes: number;
+  longRestMinutes: number;
+}
+
+const TECHNIQUES: Record<Technique, TechniquePreset> = {
+  'pomodoro':      { label: 'Pomodoro',  workMinutes: 25, restMinutes: 5,  longRestMinutes: 15 },
+  'pomodoro-ext':  { label: 'Ext.',      workMinutes: 50, restMinutes: 10, longRestMinutes: 20 },
+  '52-17':         { label: '52/17',     workMinutes: 52, restMinutes: 17, longRestMinutes: 17 },
+  'countup':       { label: 'Flow',      workMinutes: 0,  restMinutes: 0,  longRestMinutes: 0 },
+};
+
+const TECHNIQUE_KEYS: Technique[] = ['pomodoro', 'pomodoro-ext', '52-17', 'countup'];
+
 function normalizeConfig(config: Record<string, unknown>): PomodoroConfig {
+  const technique = TECHNIQUE_KEYS.includes(config.technique as Technique)
+    ? (config.technique as Technique)
+    : 'pomodoro';
+  const preset = TECHNIQUES[technique];
   return {
-    workMinutes: typeof config.workMinutes === 'number' ? config.workMinutes : 25,
-    restMinutes: typeof config.restMinutes === 'number' ? config.restMinutes : 5,
-    longRestMinutes: typeof config.longRestMinutes === 'number' ? config.longRestMinutes : 30,
+    technique,
+    workMinutes: typeof config.workMinutes === 'number' ? config.workMinutes : preset.workMinutes,
+    restMinutes: typeof config.restMinutes === 'number' ? config.restMinutes : preset.restMinutes,
+    longRestMinutes: typeof config.longRestMinutes === 'number' ? config.longRestMinutes : preset.longRestMinutes,
     alarmSound: typeof config.alarmSound === 'string' ? config.alarmSound : 'ding',
     state:
       config.state === 'running' || config.state === 'paused' || config.state === 'break'
@@ -121,7 +154,8 @@ function normalizeConfig(config: Record<string, unknown>): PomodoroConfig {
     remainingSeconds:
       typeof config.remainingSeconds === 'number'
         ? config.remainingSeconds
-        : (typeof config.workMinutes === 'number' ? config.workMinutes : 25) * 60,
+        : (typeof config.workMinutes === 'number' ? config.workMinutes : preset.workMinutes) * 60,
+    elapsedSeconds: typeof config.elapsedSeconds === 'number' ? config.elapsedSeconds : 0,
     cycleCount: typeof config.cycleCount === 'number' ? config.cycleCount : 0,
   };
 }
@@ -132,13 +166,14 @@ const RING_SIZE = 140;
 
 export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigChange }: PomodoroWidgetProps) {
   const c = normalizeConfig(config);
-  const { workMinutes, restMinutes, longRestMinutes, alarmSound, state, remainingSeconds, cycleCount, phase } = c;
+  const { technique, workMinutes, restMinutes, longRestMinutes, alarmSound, state, remainingSeconds, elapsedSeconds, cycleCount, phase } = c;
 
   const [view, setView] = useState<'main' | 'settings'>('main');
   const [editingField, setEditingField] = useState<string | null>(null);
   const [alarmOpen, setAlarmOpen] = useState(false);
   const alarmBtnRef = useRef<HTMLButtonElement>(null);
   const [alarmPos, setAlarmPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [pendingTechnique, setPendingTechnique] = useState<Technique | null>(null);
 
   const startTimeRef = useRef(0);
   const configRef = useRef(c);
@@ -175,6 +210,13 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
     w.onmessage = () => {
       if (!isRunningRef.current) return;
       const curCfg = configRef.current;
+
+      if (curCfg.technique === 'countup') {
+        const newElapsed = curCfg.elapsedSeconds + 1;
+        onConfigChangeRef.current({ ...curCfg, elapsedSeconds: newElapsed });
+        return;
+      }
+
       const totalSecs = curCfg.phase === 'break' ? curCfg.restMinutes * 60 : curCfg.workMinutes * 60;
       const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
       const newRemaining = Math.max(0, totalSecs - elapsed);
@@ -214,16 +256,27 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
 
   useEffect(() => {
     if (state === 'running') {
-      const totalSecs = phase === 'break' ? restMinutes * 60 : workMinutes * 60;
-      const alreadyElapsed = totalSecs - remainingSeconds;
-      startTimeRef.current = Date.now() - alreadyElapsed * 1000;
+      if (technique === 'countup') {
+        startTimeRef.current = Date.now() - elapsedSeconds * 1000;
+      } else {
+        const totalSecs = phase === 'break' ? restMinutes * 60 : workMinutes * 60;
+        const alreadyElapsed = totalSecs - remainingSeconds;
+        startTimeRef.current = Date.now() - alreadyElapsed * 1000;
+      }
       workerRef.current?.postMessage({ t: 'start' });
     } else {
       workerRef.current?.postMessage({ t: 'stop' });
     }
-  }, [state, workMinutes, restMinutes, phase]);
+  }, [state, workMinutes, restMinutes, phase, technique, elapsedSeconds]);
 
   const start = useCallback(() => {
+    if (technique === 'countup') {
+      onConfigChange({
+        ...config,
+        state: 'running',
+      });
+      return;
+    }
     const isBreak = phase === 'break' || state === 'break';
     const totalSecs = isBreak ? restMinutes * 60 : workMinutes * 60;
     const init = state === 'paused' ? remainingSeconds : totalSecs;
@@ -234,7 +287,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
       remainingSeconds: init,
       phase: isBreak ? 'break' : 'work',
     });
-  }, [state, phase, remainingSeconds, workMinutes, restMinutes, config, onConfigChange]);
+  }, [state, phase, technique, remainingSeconds, workMinutes, restMinutes, config, onConfigChange]);
 
   const pause = useCallback(() => {
     workerRef.current?.postMessage({ t: 'stop' });
@@ -248,6 +301,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
       state: 'idle',
       phase: 'work',
       remainingSeconds: workMinutes * 60,
+      elapsedSeconds: 0,
       cycleCount: 0,
     });
   }, [workMinutes, config, onConfigChange]);
@@ -271,6 +325,40 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
     setEditingField(null);
   }, [workMinutes, config, onConfigChange]);
 
+  const selectTechnique = useCallback((tech: Technique) => {
+    if (tech === technique) return;
+    const isActive = state === 'running' || state === 'paused';
+    if (isActive) {
+      setPendingTechnique(tech);
+      return;
+    }
+    applyTechnique(tech);
+  }, [technique, state, config, onConfigChange]);
+
+  const applyTechnique = useCallback((tech: Technique) => {
+    const preset = TECHNIQUES[tech];
+    workerRef.current?.postMessage({ t: 'stop' });
+    onConfigChange({
+      ...config,
+      technique: tech,
+      workMinutes: preset.workMinutes,
+      restMinutes: preset.restMinutes,
+      longRestMinutes: preset.longRestMinutes,
+      state: 'idle',
+      phase: 'work',
+      remainingSeconds: preset.workMinutes * 60,
+      elapsedSeconds: 0,
+      cycleCount: 0,
+    });
+  }, [config, onConfigChange]);
+
+  const confirmTechniqueChange = useCallback(() => {
+    if (pendingTechnique) {
+      applyTechnique(pendingTechnique);
+      setPendingTechnique(null);
+    }
+  }, [pendingTechnique, applyTechnique]);
+
   const updateField = useCallback((field: string, value: number | string) => {
     const patch: Record<string, unknown> = { [field]: value };
     if (field === 'workMinutes' && state !== 'running') {
@@ -284,8 +372,9 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
 
   const isRunning = state === 'running';
   const isPaused = state === 'paused';
+  const isCountup = technique === 'countup';
   const totalSeconds = phase === 'break' ? restMinutes * 60 : workMinutes * 60;
-  const progress = totalSeconds > 0 ? ((totalSeconds - remainingSeconds) / totalSeconds) * 100 : 0;
+  const progress = isCountup ? 0 : totalSeconds > 0 ? ((totalSeconds - remainingSeconds) / totalSeconds) * 100 : 0;
   const dashOffset = RING_CIRCUMFERENCE * (1 - Math.min(progress, 100) / 100);
 
   const ringColor = phase === 'break' ? '#22c55e' : '#22d3ee';
@@ -319,8 +408,10 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
         <div className="flex-1 space-y-4 overflow-y-auto pr-2" onPointerDown={(e) => e.stopPropagation()}>
             {[
               { key: 'workMinutes', label: 'FOCUS', value: workMinutes, suffix: 'min' },
-              { key: 'restMinutes', label: 'BREAK', value: restMinutes, suffix: 'min' },
-              { key: 'longRestMinutes', label: 'REST', value: longRestMinutes, suffix: 'min' },
+              ...(!isCountup ? [
+                { key: 'restMinutes', label: 'BREAK', value: restMinutes, suffix: 'min' },
+                { key: 'longRestMinutes', label: 'REST', value: longRestMinutes, suffix: 'min' },
+              ] : []),
             ].map((item) => (
               <div key={item.key} className="px-1">
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
@@ -418,48 +509,77 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
 
   return (
     <div className="flex h-full flex-col items-center justify-center">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-        {phase === 'break' ? 'BREAK' : 'FOCUS'}
+      <div className="flex w-full justify-center gap-0.5 rounded border border-gray-700 bg-gray-800 p-0.5">
+        {TECHNIQUE_KEYS.map((tech) => (
+          <button
+            key={tech}
+            type="button"
+            onClick={() => selectTechnique(tech)}
+            className={`flex-1 rounded px-1.5 py-1 text-[10px] font-medium transition-colors ${
+              technique === tech
+                ? 'bg-gray-600 text-gray-100'
+                : 'text-gray-500 hover:text-gray-300'
+            }`}
+          >
+            {TECHNIQUES[tech].label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+        {isCountup ? 'FLOW' : phase === 'break' ? 'BREAK' : 'FOCUS'}
       </div>
 
       <div className="relative my-2 flex items-center justify-center">
-        <svg width={RING_SIZE} height={RING_SIZE} className="-rotate-90">
-          <circle
-            cx={RING_SIZE / 2}
-            cy={RING_SIZE / 2}
-            r={RING_RADIUS}
-            fill="none"
-            stroke="rgba(255,255,255,0.06)"
-            strokeWidth="5"
-          />
-          <circle
-            cx={RING_SIZE / 2}
-            cy={RING_SIZE / 2}
-            r={RING_RADIUS}
-            fill="none"
-            stroke={ringColor}
-            strokeWidth="5"
-            strokeDasharray={RING_CIRCUMFERENCE}
-            strokeDashoffset={dashOffset}
-            strokeLinecap="round"
-            className="transition-[stroke-dashoffset] duration-1000 ease-linear"
-          />
-        </svg>
-        <span className="absolute text-xl font-semibold tracking-wide text-gray-100 tabular-nums">
-          {formatTimeShort(remainingSeconds)}
-        </span>
+        {isCountup ? (
+          <div className="flex h-[140px] w-[140px] items-center justify-center">
+            <span className="text-xl font-semibold tracking-wide text-gray-100 tabular-nums">
+              {formatTimeCountup(elapsedSeconds)}
+            </span>
+          </div>
+        ) : (
+          <>
+            <svg width={RING_SIZE} height={RING_SIZE} className="-rotate-90">
+              <circle
+                cx={RING_SIZE / 2}
+                cy={RING_SIZE / 2}
+                r={RING_RADIUS}
+                fill="none"
+                stroke="rgba(255,255,255,0.06)"
+                strokeWidth="5"
+              />
+              <circle
+                cx={RING_SIZE / 2}
+                cy={RING_SIZE / 2}
+                r={RING_RADIUS}
+                fill="none"
+                stroke={ringColor}
+                strokeWidth="5"
+                strokeDasharray={RING_CIRCUMFERENCE}
+                strokeDashoffset={dashOffset}
+                strokeLinecap="round"
+                className="transition-[stroke-dashoffset] duration-1000 ease-linear"
+              />
+            </svg>
+            <span className="absolute text-xl font-semibold tracking-wide text-gray-100 tabular-nums">
+              {formatTimeShort(remainingSeconds)}
+            </span>
+          </>
+        )}
       </div>
 
-      <div className="flex items-center gap-1.5 py-1">
-        {cycleDots.map((filled, i) => (
-          <span
-            key={i}
-            className={`h-1.5 w-1.5 rounded-full transition-colors ${
-              filled ? 'bg-cyan-400' : 'bg-white/15'
-            }`}
-          />
-        ))}
-      </div>
+      {!isCountup && (
+        <div className="flex items-center gap-1.5 py-1">
+          {cycleDots.map((filled, i) => (
+            <span
+              key={i}
+              className={`h-1.5 w-1.5 rounded-full transition-colors ${
+                filled ? 'bg-cyan-400' : 'bg-white/15'
+              }`}
+            />
+          ))}
+        </div>
+      )}
 
       <div className="mt-2 flex items-center gap-3">
         <button
@@ -489,6 +609,37 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
           <FiSettings size={16} />
         </button>
       </div>
+
+      {pendingTechnique && (
+        <div className="absolute -inset-3 z-10 flex items-center justify-center rounded bg-black/70 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Change technique"
+            className="w-full max-w-52 rounded-lg border border-gray-600 bg-gray-800 p-3 shadow-xl"
+          >
+            <p className="text-sm text-gray-200">
+              Change technique? Current timer will be reset.
+            </p>
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingTechnique(null)}
+                className="flex items-center gap-1 rounded bg-gray-600 px-2.5 py-1 text-xs text-white hover:bg-gray-500"
+              >
+                <FiX size={12} /> Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmTechniqueChange}
+                className="flex items-center gap-1 rounded bg-cyan-600 px-2.5 py-1 text-xs text-white hover:bg-cyan-500"
+              >
+                <FiCheck size={12} /> Change
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 });

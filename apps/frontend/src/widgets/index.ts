@@ -24,7 +24,7 @@ registerWidget('pomodoro', {
   component: PomodoroWidget,
   label: 'Timer',
   icon: FiClock,
-  defaultConfig: { title: 'Timer', workMinutes: 25, restMinutes: 5, state: 'idle', remainingSeconds: 1500, cycleCount: 0 },
+  defaultConfig: { title: 'Timer', technique: 'pomodoro', workMinutes: 25, restMinutes: 5, state: 'idle', remainingSeconds: 1500, elapsedSeconds: 0, cycleCount: 0 },
   defaultSize: { w: 280, h: 340 },
   minSize: { w: 220, h: 305 },
 });
