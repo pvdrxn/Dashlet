@@ -15,6 +15,10 @@ interface HabitItem {
   id: string;
   name: string;
   completedDates: string[];
+  mode?: 'binary' | 'quantitative';
+  unit?: string;
+  targetValue?: number;
+  completions?: Record<string, number>;
 }
 
 interface HabitTrackerConfig {
@@ -34,19 +38,17 @@ function formatDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-function computeStreak(completedDates: string[]): number {
-  const dates = new Set(completedDates);
+function computeStreak(habit: HabitItem): number {
   const today = formatDate(new Date());
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
 
-  if (!dates.has(today) && !dates.has(formatDate(yesterday))) return 0;
+  if (!isDayCompleted(habit, today) && !isDayCompleted(habit, formatDate(yesterday))) return 0;
 
   let streak = 0;
   const d = new Date();
   while (true) {
-    const key = formatDate(d);
-    if (dates.has(key)) {
+    if (isDayCompleted(habit, formatDate(d))) {
       streak++;
       d.setDate(d.getDate() - 1);
     } else {
@@ -63,6 +65,26 @@ function genId(prefix = 'habit'): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 }
 
+function isDayCompleted(habit: HabitItem, date: string): boolean {
+  if (habit.mode === 'quantitative') {
+    const target = habit.targetValue ?? 1;
+    const value = habit.completions?.[date] ?? 0;
+    return value >= target;
+  }
+  return habit.completedDates.includes(date);
+}
+
+function syncCompletedDatesForDate(
+  habit: HabitItem,
+  date: string,
+  newCompletions: Record<string, number>,
+): string[] {
+  const completed = (newCompletions[date] ?? 0) >= (habit.targetValue ?? 1);
+  return completed
+    ? [...new Set([...habit.completedDates, date])]
+    : habit.completedDates.filter((d) => d !== date);
+}
+
 function ensureUniqueIds(habits: HabitItem[]): HabitItem[] {
   const seen = new Set<string>();
   let hasDuplicates = false;
@@ -74,6 +96,10 @@ function ensureUniqueIds(habits: HabitItem[]): HabitItem[] {
         id: genId('habit'),
         name: habit?.name ?? '',
         completedDates: Array.isArray(habit?.completedDates) ? habit.completedDates : [],
+        mode: habit?.mode,
+        unit: habit?.unit,
+        targetValue: habit?.targetValue,
+        completions: habit?.completions,
       };
     }
     seen.add(habit.id);
@@ -109,18 +135,22 @@ function getMonthGrid(): { date: string; day: number; empty: boolean }[][] {
   return rows;
 }
 
+const MONTH_GRID = getMonthGrid();
+
 const SortableHabit = memo(function SortableHabit({
   habit,
   toggleToday,
   toggleDate,
   editHabit,
   removeHabit,
+  logValue,
 }: {
   habit: HabitItem;
   toggleToday: (id: string) => void;
   toggleDate: (id: string, date: string) => void;
   editHabit: (id: string, name: string) => void;
   removeHabit: (id: string) => void;
+  logValue: (id: string, date: string, value: number) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: habit.id,
@@ -138,10 +168,12 @@ const SortableHabit = memo(function SortableHabit({
     if (editing && editInputRef.current) editInputRef.current.focus();
   }, [editing]);
   const today = useMemo(() => formatDate(new Date()), []);
-  const isCompletedToday = habit.completedDates.includes(today);
-  const streak = useMemo(() => computeStreak(habit.completedDates), [habit.completedDates]);
-  const completedSet = useMemo(() => new Set(habit.completedDates), [habit.completedDates]);
-  const monthGrid = useMemo(() => getMonthGrid(), []);
+  const isCompletedToday = isDayCompleted(habit, today);
+  const streak = useMemo(
+    () => computeStreak(habit),
+    [habit.completedDates, habit.completions, habit.mode, habit.targetValue],
+  );
+  const monthGrid = MONTH_GRID;
 
   return (
     <div
@@ -152,14 +184,35 @@ const SortableHabit = memo(function SortableHabit({
       className="group/item cursor-grab active:cursor-grabbing rounded px-0.5 py-1 hover:bg-gray-700/50"
     >
       <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          checked={isCompletedToday}
-          onChange={() => toggleToday(habit.id)}
-          className="ml-1 h-5 w-5 shrink-0 cursor-pointer appearance-none rounded border border-gray-500 bg-gray-700 transition-colors checked:border-blue-600 checked:bg-blue-600 checked:bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2016%2016%27%20fill=%27none%27%20stroke=%27white%27%20stroke-width=%272.5%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%3E%3Cpath%20d=%27M3.5%208.5l3%203%206-7%27/%3E%3C/svg%3E')] checked:bg-center checked:bg-no-repeat checked:bg-[length:14px_14px] hover:border-gray-400"
-          aria-label={`Mark "${habit.name}" as completed`}
-        />
-        <div className="flex-1 flex items-center gap-2 min-w-0">
+        {habit.mode === 'quantitative' ? (
+          <div className="ml-1 flex items-center gap-1 shrink-0">
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={habit.completions?.[today] ?? ''}
+              placeholder={String(habit.targetValue ?? 1)}
+              onChange={(e) => {
+                const val = e.target.value === '' ? 0 : Number(e.target.value);
+                logValue(habit.id, today, val);
+              }}
+              className="w-8 rounded border border-gray-600 bg-gray-700 px-1 py-0.5 text-xs text-gray-200 outline-none focus:border-blue-400 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              aria-label={`Log value for "${habit.name}"`}
+            />
+            {habit.unit && (
+              <span className="text-xs text-gray-400">{habit.unit}</span>
+            )}
+          </div>
+        ) : (
+          <input
+            type="checkbox"
+            checked={isCompletedToday}
+            onChange={() => toggleToday(habit.id)}
+            className="ml-1 h-5 w-5 shrink-0 cursor-pointer appearance-none rounded border border-gray-500 bg-gray-700 transition-colors checked:border-blue-600 checked:bg-blue-600 checked:bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2016%2016%27%20fill=%27none%27%20stroke=%27white%27%20stroke-width=%272.5%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%3E%3Cpath%20d=%27M3.5%208.5l3%203%206-7%27/%3E%3C/svg%3E')] checked:bg-center checked:bg-no-repeat checked:bg-[length:14px_14px] hover:border-gray-400"
+            aria-label={`Mark "${habit.name}" as completed`}
+          />
+        )}
+        <div className="flex-1 flex items-center gap-2 min-w-0 overflow-hidden">
           {editing ? (
             <input
               ref={editInputRef}
@@ -180,7 +233,7 @@ const SortableHabit = memo(function SortableHabit({
                   setEditing(false);
                 }
               }}
-              className="flex-1 rounded border border-blue-500 bg-gray-800 px-1 py-0.5 text-sm text-gray-200 outline-none min-w-0"
+              className="flex-1 rounded border border-blue-500 bg-gray-800 px-1 py-0.5 text-sm text-gray-200 outline-none min-w-0 truncate"
               aria-label="Edit habit name"
             />
           ) : (
@@ -235,28 +288,38 @@ const SortableHabit = memo(function SortableHabit({
         const rowIndex = expanded ? ri : monthGrid.indexOf(row);
         return (
           <div key={rowIndex} className="flex items-center gap-1 pl-6 mt-0.5">
-            {row.map((cell) =>
-              cell.empty ? (
-                <div key={`e${rowIndex}${cell.day}`} className="w-5 h-5" />
-              ) : (
+            {row.map((cell) => {
+              if (cell.empty) {
+                return <div key={`e${rowIndex}${cell.day}`} className="w-5 h-5" />;
+              }
+              const completed = isDayCompleted(habit, cell.date);
+              return (
                 <button
                   type="button"
                   key={cell.date}
-                  onClick={() => toggleDate(habit.id, cell.date)}
+                  onClick={() => {
+                    if (habit.mode === 'quantitative') {
+                      const current = habit.completions?.[cell.date] ?? 0;
+                      const target = habit.targetValue ?? 1;
+                      logValue(habit.id, cell.date, current >= target ? 0 : target);
+                    } else {
+                      toggleDate(habit.id, cell.date);
+                    }
+                  }}
                   className={`flex items-center justify-center w-5 h-5 rounded-sm text-[10px] cursor-pointer select-none ${
                     cell.date === today ? 'ring-1 ring-green-500' : ''
                   } ${
-                    completedSet.has(cell.date)
+                    completed
                       ? 'bg-green-600 text-white hover:bg-green-500'
                       : 'bg-gray-700 text-gray-500 hover:bg-gray-600 hover:text-gray-300'
                   }`}
                   title={cell.date}
-                  aria-label={`${cell.date} - ${completedSet.has(cell.date) ? 'completed' : 'not completed'}`}
+                  aria-label={`${cell.date} - ${completed ? 'completed' : 'not completed'}`}
                 >
                   {cell.day}
                 </button>
-              ),
-            )}
+              );
+            })}
           </div>
         );
       })}
@@ -270,6 +333,9 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({
 }: HabitTrackerWidgetProps) {
   const { habits: rawHabits = [] } = (config ?? {}) as HabitTrackerConfig;
   const [newName, setNewName] = useState('');
+  const [newMode, setNewMode] = useState<'binary' | 'quantitative'>('binary');
+  const [newUnit, setNewUnit] = useState('');
+  const [newTarget, setNewTarget] = useState(1);
 
   const habits = useMemo(() => ensureUniqueIds(rawHabits), [rawHabits]);
 
@@ -283,28 +349,49 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({
 
   const addHabit = useCallback(() => {
     if (!newName.trim()) return;
+    const newHabit: HabitItem = {
+      id: genId(),
+      name: newName.trim(),
+      completedDates: [],
+    };
+    if (newMode === 'quantitative') {
+      newHabit.mode = 'quantitative';
+      newHabit.unit = newUnit.trim() || undefined;
+      newHabit.targetValue = newTarget >= 1 ? newTarget : 1;
+      newHabit.completions = {};
+    }
     onConfigChange({
       ...config,
-      habits: [...habits, { id: genId(), name: newName.trim(), completedDates: [] }],
+      habits: [...habits, newHabit],
     });
     setNewName('');
-  }, [newName, config, habits, onConfigChange]);
+    setNewUnit('');
+    setNewTarget(1);
+  }, [newName, newMode, newUnit, newTarget, config, habits, onConfigChange]);
 
   const toggleToday = useCallback(
     (id: string) => {
       const today = formatDate(new Date());
       onConfigChange({
         ...config,
-        habits: habits.map((h) =>
-          h.id === id
-            ? {
-                ...h,
-                completedDates: h.completedDates.includes(today)
-                  ? h.completedDates.filter((d) => d !== today)
-                  : [...h.completedDates, today],
-              }
-            : h,
-        ),
+        habits: habits.map((h) => {
+          if (h.id !== id) return h;
+          if (h.mode === 'quantitative') {
+            const target = h.targetValue ?? 1;
+            const current = h.completions?.[today] ?? 0;
+            const newVal = current >= target ? 0 : target;
+            const newCompletions = { ...h.completions, [today]: newVal };
+            if (newVal === 0) delete newCompletions[today];
+            const newCompletedDates = syncCompletedDatesForDate(h, today, newCompletions);
+            return { ...h, completions: newCompletions, completedDates: newCompletedDates };
+          }
+          return {
+            ...h,
+            completedDates: h.completedDates.includes(today)
+              ? h.completedDates.filter((d) => d !== today)
+              : [...h.completedDates, today],
+          };
+        }),
       });
     },
     [config, habits, onConfigChange],
@@ -314,16 +401,40 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({
     (id: string, date: string) => {
       onConfigChange({
         ...config,
-        habits: habits.map((h) =>
-          h.id === id
-            ? {
-                ...h,
-                completedDates: h.completedDates.includes(date)
-                  ? h.completedDates.filter((d) => d !== date)
-                  : [...h.completedDates, date],
-              }
-            : h,
-        ),
+        habits: habits.map((h) => {
+          if (h.id !== id) return h;
+          if (h.mode === 'quantitative') {
+            const target = h.targetValue ?? 1;
+            const current = h.completions?.[date] ?? 0;
+            const newVal = current >= target ? 0 : target;
+            const newCompletions = { ...h.completions, [date]: newVal };
+            if (newVal === 0) delete newCompletions[date];
+            const newCompletedDates = syncCompletedDatesForDate(h, date, newCompletions);
+            return { ...h, completions: newCompletions, completedDates: newCompletedDates };
+          }
+          return {
+            ...h,
+            completedDates: h.completedDates.includes(date)
+              ? h.completedDates.filter((d) => d !== date)
+              : [...h.completedDates, date],
+          };
+        }),
+      });
+    },
+    [config, habits, onConfigChange],
+  );
+
+  const logValue = useCallback(
+    (id: string, date: string, value: number) => {
+      onConfigChange({
+        ...config,
+        habits: habits.map((h) => {
+          if (h.id !== id || h.mode !== 'quantitative') return h;
+          const newCompletions = { ...h.completions, [date]: value };
+          if (value === 0) delete newCompletions[date];
+          const newCompletedDates = syncCompletedDatesForDate(h, date, newCompletions);
+          return { ...h, completions: newCompletions, completedDates: newCompletedDates };
+        }),
       });
     },
     [config, habits, onConfigChange],
@@ -386,6 +497,7 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({
                 toggleDate={toggleDate}
                 editHabit={editHabit}
                 removeHabit={removeHabit}
+                logValue={logValue}
               />
             ))}
           </div>
@@ -397,20 +509,52 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({
           e.preventDefault();
           addHabit();
         }}
-        className="flex gap-1 border-t border-gray-700 pt-1"
+        className="border-t border-gray-700 pt-1 flex items-center gap-1"
       >
         <input
           value={newName}
           spellCheck={false}
           onChange={(e) => setNewName(e.target.value)}
           placeholder="Add a habit..."
-          className="flex-1 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-200 outline-none focus:border-blue-400 placeholder-gray-500"
+          className="flex-1 min-w-0 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-200 outline-none focus:border-blue-400 placeholder-gray-500"
           aria-label="New habit name"
         />
         <button
+          type="button"
+          onClick={() => setNewMode(newMode === 'binary' ? 'quantitative' : 'binary')}
+          className={`shrink-0 rounded px-1.5 py-1 text-[9px] font-medium transition-colors ${
+            newMode === 'quantitative'
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+          }`}
+        >
+          {newMode === 'binary' ? 'Bin' : 'Num'}
+        </button>
+        {newMode === 'quantitative' && (
+          <>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={newTarget}
+              onChange={(e) => setNewTarget(Number(e.target.value) || 1)}
+              className="w-10 shrink-0 rounded border border-gray-600 bg-gray-700 px-1 py-1 text-[9px] text-gray-200 outline-none focus:border-blue-400 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              aria-label="Target value"
+            />
+            <input
+              value={newUnit}
+              spellCheck={false}
+              onChange={(e) => setNewUnit(e.target.value)}
+              placeholder="unit"
+              className="w-12 shrink-0 rounded border border-gray-600 bg-gray-700 px-1 py-1 text-[9px] text-gray-200 outline-none focus:border-blue-400 placeholder-gray-500"
+              aria-label="Unit"
+            />
+          </>
+        )}
+        <button
           type="submit"
           title="Add habit"
-          className="rounded bg-blue-600 p-1 text-white hover:bg-blue-500 disabled:opacity-50"
+          className="shrink-0 rounded bg-blue-600 p-1 text-white hover:bg-blue-500 disabled:opacity-50"
           disabled={!newName.trim()}
           aria-label="Add habit"
         >
