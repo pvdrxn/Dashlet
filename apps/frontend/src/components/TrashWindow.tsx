@@ -30,9 +30,14 @@ function formatDaysLeft(days: number): string {
 export function TrashWindow({ onClose, onRestoreComplete }: TrashWindowProps) {
   const [items, setItems] = useState<WidgetData[]>([]);
   const [trashedTabs, setTrashedTabs] = useState<TabDto[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(() => {
-    api.fetchTrashedWidgets().then(setItems).catch(() => {});
+    api
+      .fetchTrashedWidgets()
+      .then(setItems)
+      .catch(() => {})
+      .finally(() => setLoaded(true));
     tabsApi.fetchTrashedTabs().then(setTrashedTabs).catch(() => {});
   }, []);
 
@@ -87,7 +92,7 @@ export function TrashWindow({ onClose, onRestoreComplete }: TrashWindowProps) {
 
   return (
     <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/60 p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -128,7 +133,7 @@ export function TrashWindow({ onClose, onRestoreComplete }: TrashWindowProps) {
                       <button
                         type="button"
                         onClick={() => handleRestoreTab(tab.id)}
-                        className="rounded-md border border-blue-500/60 px-2.5 py-1 text-xs text-blue-400 hover:bg-blue-500/20 hover:text-blue-300"
+                        className="rounded-md border border-blue-500/60 px-2.5 py-1 text-xs text-blue-400 hover:bg-blue-500/15 hover:text-blue-300"
                         title="Restore tab with all its widgets"
                       >
                         <FiRotateCcw size={13} className="inline-block mr-1 -mt-0.5" />
@@ -148,11 +153,19 @@ export function TrashWindow({ onClose, onRestoreComplete }: TrashWindowProps) {
               </ul>
             </div>
           )}
-          {items.length === 0 && trashedTabs.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-gray-500">
-              <FiTrash2 size={32} className="mb-3" />
-              <p className="text-sm">The trash is empty</p>
-              <p className="mt-1 text-xs">Deleted widgets stay here for 30 days before being permanently removed</p>
+          {!loaded ? (
+            <div className="flex flex-col gap-2.5 p-3" aria-hidden="true">
+              <div className="skeleton h-11 w-full rounded-md" />
+              <div className="skeleton h-11 w-full rounded-md" />
+              <div className="skeleton h-11 w-2/3 rounded-md" />
+            </div>
+          ) : items.length === 0 && trashedTabs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+              <FiTrash2 size={32} className="mb-3 text-gray-600" />
+              <p className="text-sm text-gray-300">The trash is empty</p>
+              <p className="mt-1 max-w-[24rem] text-center text-xs text-gray-400">
+                Deleted widgets stay here for 30 days before being permanently removed
+              </p>
             </div>
           ) : items.length > 0 ? (
             <ul className="flex flex-col gap-2">
@@ -176,7 +189,7 @@ export function TrashWindow({ onClose, onRestoreComplete }: TrashWindowProps) {
                       <button
                         type="button"
                         onClick={() => handleRestore(widget.id)}
-                        className="rounded-md border border-blue-500/60 px-2.5 py-1 text-xs text-blue-400 hover:bg-blue-500/20 hover:text-blue-300"
+                        className="rounded-md border border-blue-500/60 px-2.5 py-1 text-xs text-blue-400 hover:bg-blue-500/15 hover:text-blue-300"
                         title="Restore widget"
                       >
                         <FiRotateCcw size={13} className="inline-block mr-1 -mt-0.5" />
@@ -199,7 +212,7 @@ export function TrashWindow({ onClose, onRestoreComplete }: TrashWindowProps) {
         </div>
 
         {items.length > 0 && trashedTabs.length === 0 && (
-          <div className="border-t border-gray-700 px-4 py-2 text-xs text-gray-500">
+          <div className="border-t border-gray-700 px-4 py-2 text-xs text-gray-400">
             Widgets are permanently deleted 30 days after being trashed
           </div>
         )}

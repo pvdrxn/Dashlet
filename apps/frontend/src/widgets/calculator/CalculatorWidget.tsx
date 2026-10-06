@@ -159,8 +159,10 @@ export const CalculatorWidget = memo(function CalculatorWidget({ config, onConfi
       </div>
 
       <div className="flex flex-col items-end justify-end px-3 pb-2 min-h-[70px]">
-        <div className="text-xs text-gray-400 h-4 truncate max-w-full">{expression}</div>
-        <div className="text-3xl font-light text-white truncate max-w-full text-right">
+        <div className="text-xs text-gray-400 h-4 truncate max-w-full tabular-nums">
+          {expression}
+        </div>
+        <div className="text-3xl font-light text-white truncate max-w-full text-right tabular-nums">
           {formatDisplay(display)}
         </div>
       </div>

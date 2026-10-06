@@ -233,7 +233,7 @@ const SortableHabit = memo(function SortableHabit({
                   setEditing(false);
                 }
               }}
-              className="flex-1 rounded border border-blue-500 bg-gray-800 px-1 py-0.5 text-sm text-gray-200 outline-none min-w-0 truncate"
+              className="flex-1 rounded border border-blue-500 bg-gray-800 px-1 py-0.5 text-sm text-gray-200 outline-none focus-visible:ring-1 focus-visible:ring-blue-500/60 min-w-0 truncate"
               aria-label="Edit habit name"
             />
           ) : (
@@ -256,13 +256,15 @@ const SortableHabit = memo(function SortableHabit({
             </button>
           )}
           {streak >= 2 && (
-            <span className="shrink-0 text-sm font-bold text-orange-400">&#x1F525;{streak}</span>
+            <span className="shrink-0 text-sm font-bold text-orange-400 tabular-nums">
+              &#x1F525;{streak}
+            </span>
           )}
         </div>
         <button
           type="button"
           onClick={() => removeHabit(habit.id)}
-          className="invisible group-hover/item:visible text-xs text-gray-500 hover:text-red-400 mr-1"
+          className="invisible group-hover/item:visible text-xs text-gray-400 hover:text-red-400 mr-1"
         >
           &#x2715;
         </button>
@@ -276,7 +278,7 @@ const SortableHabit = memo(function SortableHabit({
         <button
           type="button"
           onClick={() => setExpanded(!expanded)}
-          className="ml-1 text-xs text-gray-500 hover:text-gray-300"
+          className="ml-1 text-xs text-gray-400 hover:text-gray-300"
         >
           {expanded ? '\u25B2' : '\u25BC'}
         </button>
@@ -311,7 +313,7 @@ const SortableHabit = memo(function SortableHabit({
                   } ${
                     completed
                       ? 'bg-green-600 text-white hover:bg-green-500'
-                      : 'bg-gray-700 text-gray-500 hover:bg-gray-600 hover:text-gray-300'
+                      : 'bg-gray-700 text-gray-400 hover:bg-gray-600 hover:text-gray-100'
                   }`}
                   title={cell.date}
                   aria-label={`${cell.date} - ${completed ? 'completed' : 'not completed'}`}

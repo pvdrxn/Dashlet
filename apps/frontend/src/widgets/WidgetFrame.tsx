@@ -51,6 +51,17 @@ export const WidgetFrame = memo(function WidgetFrame({
 
   const HEADER_HEIGHT = 25;
 
+/*
+ * Bandas de z-index para las capas de widget. Ver la escala en index.css.
+ * Un widget en reposo vive en la banda baja (Z_BASE) y "bring to front" lo
+ * mueve a la banda alta (Z_TOP), de modo que sus capas nunca alcancen al
+ * chrome (sticky en 1000, modales en 3000).
+ */
+const Z_BASE = 0;
+const Z_TOP = 100;
+const Z_MAX = 999;
+const Z_DRAG = 900;
+
   const isHoldTargetInteractive = useCallback((target: EventTarget | null): boolean => {
     if (!(target instanceof HTMLElement)) return true;
     if (
@@ -167,17 +178,27 @@ export const WidgetFrame = memo(function WidgetFrame({
     };
   }, []);
 
+  /*
+   * width/height se animan con transition solo cuando el cambio NO viene de un
+   * resize en curso. Durante el arrastre del tirador, una transition sobre
+   * width/height pelea con el raton: el widget persigue al cursor con retardo y
+   * cada frame recalcula layout. Con la transition desactivada el resize es
+   * directo y solo se paga el layout inevitable del reflujo del contenido.
+   *
+   * La posicion (left/top) nunca se anima: el drag usa transform, que va por
+   * compositor y no dispara layout.
+   */
   const style: React.CSSProperties = {
     position: 'absolute',
     left: position.x,
     top: position.y,
     width: size.w,
     height: collapsed ? HEADER_HEIGHT : size.h,
-    zIndex: isDragging ? 999 : ((config.zIndex as number) ?? zIndex),
+    zIndex: isDragging ? Z_DRAG : ((config.zIndex as number) ?? zIndex ?? Z_BASE),
     opacity: isDragging ? 0.25 : 1,
     pointerEvents: isDragging ? 'none' : undefined,
     transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined,
-    transition: 'width 0.15s ease-in-out, height 0.15s ease-in-out',
+    transition: isResizing ? 'none' : 'width 0.15s ease-in-out, height 0.15s ease-in-out',
   };
 
   const handleResizeStart = useCallback(
@@ -190,20 +211,39 @@ export const WidgetFrame = memo(function WidgetFrame({
       const startW = size.w;
       const startH = size.h;
 
+      let raf = 0;
+      let pending: { x: number; y: number } | null = null;
+
+      // El contenido de un widget tiene que reflujo cuando cambia su tamano, asi que
+      // no se puede evitar el layout en esta operacion. Lo que si se evita es disparar
+      // mas de un layout por frame: mousemove llega mas seguido que la pantalla.
+      // requestAnimationFrame coalesce los eventos y aplica solo el ultimo de cada frame.
+      const applyPending = () => {
+        raf = 0;
+        if (!pending) return;
+        const { x, y } = pending;
+        pending = null;
+        const newW = snapUpW(Math.max(minSize.w, startW + x - startX));
+        const newH = snapUpH(Math.max(minSize.h, startH + y - startY));
+        resizeStateRef.current = { w: newW, h: newH };
+        setSize({ w: newW, h: newH });
+      };
+
       const handleMouseMove = (me: MouseEvent) => {
         if ((me.buttons & 1) === 0) {
           handleMouseUp();
           return;
         }
-        let newW = Math.max(minSize.w, startW + me.clientX - startX);
-        let newH = Math.max(minSize.h, startH + me.clientY - startY);
-        newW = snapUpW(newW);
-        newH = snapUpH(newH);
-        resizeStateRef.current = { w: newW, h: newH };
-        setSize({ w: newW, h: newH });
+        pending = { x: me.clientX, y: me.clientY };
+        if (!raf) raf = requestAnimationFrame(applyPending);
       };
 
       const handleMouseUp = () => {
+        if (raf) {
+          cancelAnimationFrame(raf);
+          raf = 0;
+        }
+        applyPending();
         setIsResizing(false);
         document.removeEventListener('mousemove', handleMouseMove);
         document.removeEventListener('mouseup', handleMouseUp);
@@ -238,8 +278,10 @@ export const WidgetFrame = memo(function WidgetFrame({
     <div
       ref={setNodeRef}
       style={style}
-      className={`group border bg-gray-800 shadow-lg overflow-hidden rounded-[4px] transition-all duration-300 ${
-        highlighted ? 'border-cyan-400 ring-2 ring-cyan-400/50' : 'border-gray-700'
+      className={`group overflow-hidden rounded-lg border transition-all duration-300 ${
+        highlighted
+          ? 'border-cyan-400 shadow-[0_8px_28px_-6px_rgba(34,211,238,0.25),inset_0_1px_0_rgba(255,255,255,0.07)]'
+          : 'border-gray-700/80 bg-gray-800/90 shadow-[0_4px_16px_-4px_rgba(5,8,14,0.65),inset_0_1px_0_rgba(255,255,255,0.045)]'
       }`}
       onWheel={(e) => e.stopPropagation()}
     >
@@ -281,11 +323,11 @@ export const WidgetFrame = memo(function WidgetFrame({
             e.stopPropagation();
             handleHoldPointerUp(e);
           }}
-          className="flex-1 min-w-0 bg-transparent border-transparent outline-none text-base text-white truncate cursor-text"
+          className="flex-1 min-w-0 rounded-sm border border-transparent bg-transparent text-sm font-medium tracking-[-0.01em] text-white truncate cursor-text focus:outline-none focus-visible:border-blue-500/70 focus-visible:bg-blue-500/5 focus-visible:ring-1 focus-visible:ring-blue-500/40"
           placeholder={label}
           aria-label="Widget title"
         />
-        <div className="flex items-center shrink-0 ml-1 rounded-md bg-gray-800/50 ring-1 ring-gray-600/40 divide-x divide-gray-700/60">
+        <div className="flex items-center shrink-0 ml-1 rounded bg-gray-800/50 ring-1 ring-gray-600/40 divide-x divide-gray-700/60">
           {(() => {
             const isLayered = (config.layered as boolean) ?? false;
             return (
@@ -293,13 +335,16 @@ export const WidgetFrame = memo(function WidgetFrame({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
+                  const nextZ = isLayered
+                    ? Z_BASE
+                    : Math.min(maxZIndex + 1, Z_MAX) || Z_TOP;
                   onConfigChange(id, {
                     ...config,
-                    zIndex: isLayered ? 0 : maxZIndex + 1,
+                    zIndex: nextZ,
                     layered: !isLayered,
                   });
                 }}
-                className={`relative flex h-7 w-7 items-center justify-center transition-all duration-150 active:scale-90 after:pointer-events-auto after:absolute after:-inset-1 after:content-[''] ${isLayered ? 'bg-blue-500/10 text-blue-400' : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'}`}
+                className={`relative flex h-6 w-6 items-center justify-center transition-all duration-150 active:scale-90 after:pointer-events-auto after:absolute after:-inset-1 after:content-[''] ${isLayered ? 'bg-blue-500/10 text-blue-400' : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'}`}
                 title={isLayered ? 'Bring to back' : 'Bring to front'}
                 aria-label={isLayered ? 'Bring to back' : 'Bring to front'}
                 aria-pressed={isLayered}
@@ -314,7 +359,7 @@ export const WidgetFrame = memo(function WidgetFrame({
               e.stopPropagation();
               onConfigChange(id, { ...config, collapsed: !collapsed });
             }}
-            className={`relative flex h-7 w-7 items-center justify-center transition-all duration-150 active:scale-90 after:pointer-events-auto after:absolute after:-inset-1 after:content-[''] ${collapsed ? 'bg-blue-500/10 text-blue-400' : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'}`}
+            className={`relative flex h-6 w-6 items-center justify-center transition-all duration-150 active:scale-90 after:pointer-events-auto after:absolute after:-inset-1 after:content-[''] ${collapsed ? 'bg-blue-500/10 text-blue-400' : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'}`}
             title={collapsed ? 'Expand widget' : 'Collapse widget'}
             aria-label={collapsed ? 'Expand widget' : 'Collapse widget'}
             aria-pressed={collapsed}
@@ -327,7 +372,7 @@ export const WidgetFrame = memo(function WidgetFrame({
               e.stopPropagation();
               onDelete(id);
             }}
-            className="relative flex h-7 w-7 items-center justify-center text-gray-500 transition-all duration-150 active:scale-90 after:pointer-events-auto after:absolute after:-inset-1 after:content-[''] hover:bg-red-500/10 hover:text-red-400"
+            className="relative flex h-6 w-6 items-center justify-center text-gray-500 transition-all duration-150 active:scale-90 after:pointer-events-auto after:absolute after:-inset-1 after:content-[''] hover:bg-red-500/10 hover:text-red-400"
             title="Delete widget"
             aria-label="Delete widget"
           >
@@ -347,7 +392,15 @@ export const WidgetFrame = memo(function WidgetFrame({
             onPointerCancel={handleHoldPointerUp}
             onLostPointerCapture={clearHoldTimer}
           >
-            <Suspense fallback={<div className="text-xs text-gray-500">Loading...</div>}>
+            <Suspense
+              fallback={
+                <div className="flex flex-col gap-2" aria-hidden="true">
+                  <div className="skeleton h-3 w-3/4 rounded" />
+                  <div className="skeleton h-3 w-1/2 rounded" />
+                  <div className="skeleton h-3 w-2/3 rounded" />
+                </div>
+              }
+            >
               <WidgetComponent config={config} onConfigChange={handleConfigChangeWrapped} widgetId={id} />
             </Suspense>
           </div>

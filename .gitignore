@@ -29,6 +29,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# OpenCode skills (locales, no se comparten por git)
+.opencode/skills/
+
 # Databases
 *.db
 *.sqlite

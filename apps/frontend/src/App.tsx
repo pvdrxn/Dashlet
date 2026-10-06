@@ -295,8 +295,10 @@ function App() {
   if (!tabsLoaded) {
     return (
       <main className="min-h-screen bg-gray-900">
-        <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-          <p>Loading tabs...</p>
+        <div className="flex flex-col gap-2 px-4 py-3" aria-hidden="true">
+          <div className="skeleton h-8 w-full rounded-lg" />
+          <div className="skeleton h-8 w-56 rounded-lg" />
+          <div className="skeleton mt-4 h-56 w-80 rounded-lg" />
         </div>
       </main>
     );

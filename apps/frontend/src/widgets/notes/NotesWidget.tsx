@@ -747,11 +747,11 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
               }
             }}
             placeholder="Search..."
-            className="flex-1 bg-transparent text-xs text-gray-200 outline-none placeholder-gray-500"
+            className="flex-1 rounded-sm bg-transparent text-xs text-gray-200 focus:outline-none focus-visible:bg-white/5 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-blue-500/40 placeholder-gray-500"
             aria-label="Search in note"
           />
           {searchQuery && (
-            <span className="shrink-0 text-xs text-gray-500">
+            <span className="shrink-0 text-xs text-gray-400">
               {searchCount > 0 ? `${searchCount} found` : 'No matches'}
             </span>
           )}
@@ -798,7 +798,7 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
           }}
           spellCheck={false}
           data-placeholder="Write your notes here..."
-          className="relative z-[1] p-2 text-sm leading-[1.4] text-gray-200 outline-none [font-family:inherit] [&_h1]:my-1 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-gray-100 [&_h2]:my-1 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-gray-100 [&_h3]:my-0.5 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-gray-100 [&_a]:text-blue-400 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul.dash-list]:list-none [&_ul.dash-list_li]:relative [&_ul.dash-list_li]:pl-4 [&_ul.dash-list_li:before]:absolute [&_ul.dash-list_li:before]:left-0 [&_ul.dash-list_li:before]:content-['-'] [&:empty:before]:pointer-events-none [&:empty:before]:absolute [&:empty:before]:content-[attr(data-placeholder)] [&:empty:before]:text-gray-500"
+          className="relative z-[1] rounded-sm p-2 text-sm leading-[1.4] text-gray-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-blue-500/40 [font-family:inherit] [&_h1]:my-1 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-gray-100 [&_h2]:my-1 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-gray-100 [&_h3]:my-0.5 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-gray-100 [&_a]:text-blue-400 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul.dash-list]:list-none [&_ul.dash-list_li]:relative [&_ul.dash-list_li]:pl-4 [&_ul.dash-list_li:before]:absolute [&_ul.dash-list_li:before]:left-0 [&_ul.dash-list_li:before]:content-['-'] [&:empty:before]:pointer-events-none [&:empty:before]:absolute [&:empty:before]:content-[attr(data-placeholder)] [&:empty:before]:text-gray-500"
           style={{ minHeight: '120px' }}
           aria-label="Note content"
         />

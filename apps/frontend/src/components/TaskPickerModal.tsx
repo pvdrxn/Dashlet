@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { FiX, FiClock } from 'react-icons/fi';
+import { FiX, FiClock, FiList } from 'react-icons/fi';
 import * as api from '../api/widgets';
 import { widgetBus } from '../widgets/widget-bus';
 import type { WidgetData } from '../widgets/types';
@@ -60,7 +60,7 @@ export function TaskPickerModal({ onClose }: TaskPickerModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/60 p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -81,7 +81,13 @@ export function TaskPickerModal({ onClose }: TaskPickerModalProps) {
 
         <div className="flex-1 overflow-y-auto p-3">
           {todoLists.length === 0 && (
-            <p className="py-6 text-center text-sm text-gray-500">No todo lists found.</p>
+            <div className="flex flex-col items-center gap-2 py-8 text-center">
+              <FiList size={22} className="text-gray-600" />
+              <p className="text-sm text-gray-400">No todo lists found.</p>
+              <p className="max-w-[22rem] text-xs text-gray-400">
+                Agrega un widget Todo List en tu dashboard y sus tareas apareceran aca.
+              </p>
+            </div>
           )}
 
           {todoLists.map((widget) => {

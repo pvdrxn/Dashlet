@@ -316,7 +316,7 @@ const TaskRowContent = memo(function TaskRowContent({
                 onEditingChange(false);
               }
             }}
-            className="rounded border border-blue-500 bg-gray-800 px-1 py-0.5 text-sm text-gray-200 outline-none"
+            className="rounded border border-blue-500 bg-gray-800 px-1 py-0.5 text-sm text-gray-200 outline-none focus-visible:ring-1 focus-visible:ring-blue-500/60"
             aria-label="Edit task text"
           />
         </>
@@ -336,7 +336,7 @@ const TaskRowContent = memo(function TaskRowContent({
               }
             }}
             className={`min-w-0 flex-1 cursor-text break-words bg-transparent p-0 text-left text-sm ${
-              item.completed ? 'text-gray-500 line-through' : 'text-gray-300'
+              item.completed ? 'text-gray-400 line-through' : 'text-gray-300'
             }`}
           >
             {item.text}

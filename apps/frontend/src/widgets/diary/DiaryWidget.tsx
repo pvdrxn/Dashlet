@@ -68,7 +68,7 @@ export const DiaryWidget = memo(function DiaryWidget({ config, onConfigChange }:
         <button
           type="button"
           onClick={goPrev}
-          className={`text-lg ${isFirstPage ? 'text-gray-600 cursor-default' : 'text-gray-500 hover:text-gray-300'}`}
+          className={`text-lg ${isFirstPage ? 'text-gray-600 cursor-default' : 'text-gray-400 hover:text-gray-100'}`}
           disabled={isFirstPage}
         >
           &#x25C0;
@@ -84,12 +84,12 @@ export const DiaryWidget = memo(function DiaryWidget({ config, onConfigChange }:
           className="w-16 rounded border border-gray-600 bg-gray-700 px-2 py-0.5 text-sm text-gray-200 outline-none focus:border-blue-400 text-center"
           placeholder="Page"
         />
-        <button type="button" onClick={toggleSearch} className="text-gray-500 hover:text-gray-300" aria-label="Search entries" title="Search">
+        <button type="button" onClick={toggleSearch} className="text-gray-400 hover:text-gray-100" aria-label="Search entries" title="Search">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-5 h-5">
             <path fillRule="evenodd" d="M9.965 11.026a5 5 0 1 1 1.06-1.06l2.755 2.754a.75.75 0 1 1-1.06 1.06l-2.755-2.754ZM10.5 7a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z" clipRule="evenodd" />
           </svg>
         </button>
-        <button type="button" onClick={goNext} className="text-lg text-gray-500 hover:text-gray-300">&#x25B6;</button>
+        <button type="button" onClick={goNext} className="text-lg text-gray-400 hover:text-gray-100">&#x25B6;</button>
       </div>
       {showSearch && (
         <div className="flex flex-col gap-1">
@@ -113,7 +113,7 @@ export const DiaryWidget = memo(function DiaryWidget({ config, onConfigChange }:
                     onClick={() => goToPage(p)}
                     className="flex w-full flex-col gap-0.5 px-2 py-1.5 text-left text-sm hover:bg-gray-700 border-b border-gray-700 last:border-b-0"
                   >
-                    <span className="text-xs font-semibold text-blue-400">Page {p}</span>
+                    <span className="text-xs font-semibold text-blue-400 tabular-nums">Page {p}</span>
                     <span className="text-xs text-gray-400 truncate">{snippet(text, searchQuery)}</span>
                   </button>
                 );
@@ -121,7 +121,7 @@ export const DiaryWidget = memo(function DiaryWidget({ config, onConfigChange }:
             </div>
           )}
           {searchQuery.trim() && results.length === 0 && (
-            <p className="text-xs text-gray-500 px-1">No results found</p>
+            <p className="text-xs text-gray-400 px-1">No results found</p>
           )}
         </div>
       )}

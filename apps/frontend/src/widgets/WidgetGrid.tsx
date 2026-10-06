@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import { DndContext, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core';
 import type { DragEndEvent, DragMoveEvent, DragStartEvent } from '@dnd-kit/core';
-import { FiTrash2, FiRotateCcw, FiMoreVertical } from 'react-icons/fi';
+import { FiTrash2, FiRotateCcw, FiMoreVertical, FiGrid } from 'react-icons/fi';
 import { WidgetFrame } from './WidgetFrame';
 import { getWidget } from './registry';
 import type { WidgetData, Position } from './types';
@@ -534,7 +534,14 @@ export function WidgetGrid({
       onDragCancel={handleDragCancel}
       onDragEnd={handleDragEnd}
     >
-      <Suspense fallback={<div className="text-gray-500 text-sm">Loading widgets...</div>}>
+      <Suspense
+        fallback={
+          <div className="flex flex-col gap-3 p-4" aria-hidden="true">
+            <div className="skeleton h-8 w-48 rounded-lg" />
+            <div className="skeleton h-40 w-72 rounded-lg" />
+          </div>
+        }
+      >
         <div
           id="dashboard-drop-area"
           ref={dropAreaRef}
@@ -545,11 +552,23 @@ export function WidgetGrid({
           className={`relative ${dragOver ? 'ring-2 ring-blue-400/60 ring-inset' : ''}`}
           style={{ width: dashW, minHeight: dashH }}
         >
-          {!loaded && widgets.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-20 text-gray-500">
-              <p>Loading widgets...</p>
+          {!loaded && widgets.length === 0 ? (
+            <div className="absolute inset-0 flex flex-col gap-3 p-4" aria-hidden="true">
+              <div className="skeleton h-8 w-48 rounded-lg" />
+              <div className="skeleton h-40 w-72 rounded-lg" />
+              <div className="skeleton h-32 w-64 rounded-lg" />
             </div>
-          )}
+          ) : loaded && widgets.length === 0 ? (
+            <div className="flex h-full min-h-[320px] flex-col items-center justify-center gap-3 px-6 text-center">
+              <FiGrid size={32} className="text-gray-600" />
+              <div>
+                <p className="text-sm font-medium text-gray-300">Este dashboard esta vacio</p>
+                <p className="mt-1 text-xs text-gray-400">
+                  Usa el menu de arriba para agregar tu primer widget.
+                </p>
+              </div>
+            </div>
+          ) : null}
           <div
             className="pointer-events-none absolute left-0 top-0"
             style={{
@@ -566,7 +585,9 @@ export function WidgetGrid({
             const def = getWidget(widget.type);
             if (!def) return null;
 
-            const maxZ = widgets.reduce((m, w) => Math.max(m, (w.config.zIndex as number) ?? 0), 0);
+            // Maximo de la banda de capas de widget. Acotarlo aca evita que el valor
+// persistido crezca sin limite y alcance la banda del chrome (sticky = 1000).
+const maxZ = widgets.reduce((m, w) => Math.max(m, (w.config.zIndex as number) ?? 0), 0);
 
             return (
               <WidgetFrame
@@ -597,7 +618,9 @@ export function WidgetGrid({
               const title = (activeDrag.config.title as string) || def.label;
               return (
                 <div
-                  className={`relative overflow-hidden rounded-[4px] border bg-gray-800 shadow-2xl ${dropValid ? 'border-blue-400/40' : 'border-red-400/40'}`}
+                  className={`relative overflow-hidden rounded-lg border bg-gray-800 shadow-[0_24px_48px_-12px_rgba(5,8,14,0.8)] ${
+                      dropValid ? 'border-blue-400/40' : 'border-red-400/40'
+                    }`}
                   style={{
                     width: activeDrag.position.w,
                     height: collapsed ? 25 : activeDrag.position.h,
@@ -606,7 +629,9 @@ export function WidgetGrid({
                 >
                   <div className="flex h-[25px] shrink-0 items-center gap-1.5 border-b border-gray-700/60 px-2">
                     <FiMoreVertical size={15} className="shrink-0 text-gray-500" />
-                    <span className="truncate text-sm text-white">{title}</span>
+                    <span className="truncate text-sm font-medium tracking-[-0.01em] text-white">
+                      {title}
+                    </span>
                   </div>
                   {!collapsed && (
                     <div
@@ -627,7 +652,7 @@ export function WidgetGrid({
       {createPortal(
         undoToastWidget && (
           <div
-            className="fixed bottom-4 left-1/2 z-[1200] flex -translate-x-1/2 items-center gap-2.5 rounded-md border border-gray-700 bg-gray-800 py-2 pl-3.5 pr-1.5 shadow-2xl transition-transform duration-150 hover:scale-110"
+            className="fixed bottom-4 left-1/2 z-[var(--z-overlay)] flex -translate-x-1/2 items-center gap-2.5 rounded-md border border-gray-700 bg-gray-800 py-2 pl-3.5 pr-1.5 shadow-2xl transition-transform duration-150 hover:scale-110"
             onMouseEnter={pauseUndoTimer}
             onMouseLeave={startUndoTimer}
           >
@@ -656,7 +681,7 @@ export function WidgetGrid({
             <button
               type="button"
               onClick={handleUndoDelete}
-              className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded border border-blue-500/60 px-2 py-0.5 text-xs text-blue-400 transition-colors hover:bg-blue-500/20 hover:text-blue-300"
+              className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded border border-blue-500/60 px-2 py-0.5 text-xs text-blue-400 transition-colors hover:bg-blue-500/15 hover:text-blue-300"
             >
               <FiRotateCcw size={12} />
               Undo

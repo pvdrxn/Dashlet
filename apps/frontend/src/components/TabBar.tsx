@@ -22,6 +22,10 @@ import type { TabDto } from '@widget-master/shared';
 const HOLD_THRESHOLD = 180;
 const MOVE_THRESHOLD = 6;
 
+// Banda de capa de widget en arrastre. Debe coincidir con WidgetFrame.tsx y
+// quedar por debajo del chrome (sticky = 1000). Ver la escala en index.css.
+const Z_WIDGET_TOP = 100;
+
 function TabName({ name }: { name: string }) {
   const ref = useRef<HTMLSpanElement>(null);
   const [overflowing, setOverflowing] = useState(false);
@@ -113,7 +117,7 @@ function TabPill({
       ? CSS.Transform.toString({ ...transform, x: clampedX, y: 0, scaleX: 1, scaleY: 1 })
       : undefined,
     transition,
-    zIndex: isDragging ? 10 : undefined,
+    zIndex: isDragging ? Z_WIDGET_TOP : undefined,
   };
 
   return (
@@ -154,7 +158,7 @@ function TabPill({
             }}
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
-            className="absolute inset-0 w-full select-text bg-transparent text-sm text-white outline-none"
+            className="absolute inset-0 w-full select-text rounded-sm bg-transparent text-sm text-white focus:outline-none focus-visible:bg-blue-500/10 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-blue-500/50"
             aria-label="Tab name"
           />
         </div>
@@ -170,7 +174,7 @@ function TabPill({
             e.stopPropagation();
             onStartEdit(tab);
           }}
-          className={`rounded p-0.5 leading-none text-gray-500 transition-all duration-150 hover:bg-blue-500/10 hover:text-blue-400 active:scale-90 ${
+          className={`rounded p-0.5 leading-none text-gray-500 transition-all duration-150 hover:bg-white/5 hover:text-gray-200 active:scale-90 ${
             isActive ? 'visible' : 'invisible group-hover:visible'
           }`}
         >
@@ -293,7 +297,7 @@ export function TabBar({
 
   return (
     <div
-      className="sticky z-30 flex items-center gap-1.5 overflow-hidden border-b border-gray-700/60 bg-gray-900/90 px-3 py-2 backdrop-blur-sm"
+      className="sticky z-[var(--z-sticky)] flex items-center gap-1.5 overflow-hidden border-b border-gray-700/60 bg-gray-900/90 px-3 py-2 backdrop-blur-sm"
       style={{ top: topOffset }}
     >
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -323,7 +327,7 @@ export function TabBar({
         title="New tab"
         aria-label="New tab"
         onClick={onCreateTab}
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-gray-400 transition-all duration-150 hover:bg-blue-500/10 hover:text-blue-400 active:scale-90"
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-gray-400 transition-all duration-150 hover:bg-white/5 hover:text-gray-200 active:scale-90"
       >
         <FiPlus size={16} />
       </button>

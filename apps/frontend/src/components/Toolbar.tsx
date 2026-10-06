@@ -214,7 +214,7 @@ export function Toolbar({
   };
 
   return (
-    <div className="sticky top-0 z-40 flex items-center gap-2 border-b border-gray-700/60 bg-gray-900/90 px-4 py-2 backdrop-blur-sm">
+    <div className="sticky top-0 z-[var(--z-sticky)] flex items-center gap-2 border-b border-gray-700/60 bg-gray-900/90 px-4 py-2 backdrop-blur-sm">
       <div className="relative">
         <button
           type="button"
@@ -223,8 +223,8 @@ export function Toolbar({
           aria-expanded={menuOpen}
           className={`flex items-center justify-center border border-transparent py-1.5 transition-all duration-300 active:scale-90 ${
             menuOpen || Object.keys(availableWidgets).length === 0
-              ? 'text-blue-400 drop-shadow-[0_0_5px_rgba(59,130,246,1)]'
-              : 'text-gray-400 hover:text-blue-400 hover:drop-shadow-[0_0_5px_rgba(59,130,246,1)]'
+              ? 'text-blue-400 drop-shadow-[0_0_5px_rgba(91,157,217,0.55)]'
+              : 'text-gray-400 hover:text-gray-200 hover:drop-shadow-[0_0_5px_rgba(91,157,217,0.55)]'
           }`}
         >
           <span className="flex h-6 w-6 shrink-0 items-center justify-center">
@@ -238,7 +238,7 @@ export function Toolbar({
           </span>
         </button>
         <div
-          className="absolute left-full top-0 z-50 ml-2 flex items-center gap-1.5"
+          className="absolute left-full top-0 z-[var(--z-menu)] ml-2 flex items-center gap-1.5"
           style={{
             visibility: menuOpen ? 'visible' : 'hidden',
             transition: menuOpen ? undefined : 'visibility 0s linear 2s',
@@ -262,7 +262,7 @@ export function Toolbar({
               }}
               onDragEnd={destroyGhost}
               onClick={(e) => handleMenuAdd(e, type)}
-              className="group flex items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-[4px] border border-gray-700/80 bg-gray-800/80 py-1.5 pl-1.5 pr-3 text-sm shadow-lg transition-all duration-150 hover:border-blue-500/40 hover:bg-blue-500/10 active:scale-90"
+              className="group flex items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-[4px] border border-gray-700/80 bg-gray-800/80 py-1.5 pl-1.5 pr-3 text-sm shadow-lg transition-all duration-150 hover:border-gray-500/60 hover:bg-white/5 active:scale-90"
               style={{
                 ['--i' as string]: i,
                 animation: menuOpen
@@ -270,10 +270,10 @@ export function Toolbar({
                   : 'widget-menu-deal 0.6s cubic-bezier(0.4, 0, 0.2, 1) reverse forwards',
               }}
             >
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] bg-gray-700/80 text-gray-300 transition-colors group-hover:bg-blue-500/20 group-hover:text-blue-400">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] bg-gray-700/80 text-gray-300 transition-colors group-hover:bg-white/10 group-hover:text-gray-100">
                 <def.icon size={14} />
               </span>
-              <span className="text-gray-300 transition-colors group-hover:text-blue-300">{def.label}</span>
+              <span className="text-gray-300 transition-colors group-hover:text-gray-100">{def.label}</span>
             </button>
           ))}
         </div>

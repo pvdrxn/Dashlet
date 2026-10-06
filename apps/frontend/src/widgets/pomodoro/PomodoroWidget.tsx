@@ -487,7 +487,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
               ];
             })().map((item) => (
               <div key={item.key} className="px-1">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                   {item.label}
                 </div>
                 {item.editable ? (
@@ -531,7 +531,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
             ))}
 
             <div className="px-1">
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                 ALARM
               </div>
               <button
@@ -544,7 +544,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
                   }
                   setAlarmOpen((v) => !v);
                 }}
-                className={`mt-1 flex w-full items-center justify-between rounded bg-gray-800 px-2 py-1.5 text-sm text-gray-200 outline-none transition-colors ${
+                className={`mt-1 flex w-full items-center justify-between rounded bg-gray-800 px-2 py-1.5 text-sm text-gray-200 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-blue-500/50 ${
                   alarmOpen ? 'ring-1 ring-cyan-400' : ''
                 }`}
               >
@@ -607,11 +607,11 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
       </div>
 
       {linkedTaskId ? (
-        <div className="mt-2 text-sm font-medium text-cyan-400 truncate max-w-[200px]">
+        <div className="mt-2 text-sm font-medium text-cyan-400 truncate max-w-[200px] tabular-nums">
           {linkedTaskName}
         </div>
       ) : (
-        <div className="mt-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+        <div className="mt-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
           {isCountup ? 'FLOW' : phase === 'break' ? 'BREAK' : 'FOCUS'}
         </div>
       )}
