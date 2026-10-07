@@ -128,16 +128,27 @@ function TabPill({
       data-tab-id={tab.id}
       role="tab"
       aria-selected={isActive}
-      className={`group relative flex h-8 max-w-56 shrink-0 cursor-pointer select-none items-center overflow-hidden rounded-full border px-3.5 text-sm transition-colors ${
+      className={`group relative flex h-9 shrink-0 cursor-pointer select-none items-center px-3 text-sm transition-colors ${
         isEditing ? 'gap-0' : 'gap-1.5'
       } ${
-        isActive
-          ? 'border-gray-600 bg-gray-800 text-white shadow-lg shadow-black/30'
-          : 'border-transparent bg-gray-900/60 text-gray-400 hover:bg-gray-900 hover:text-gray-200'
-      } ${isDragging ? 'cursor-grabbing opacity-80 shadow-lg shadow-black/30' : ''}`}
+        isActive ? 'text-white' : 'text-gray-400 hover:text-gray-200'
+      } ${isDragging ? 'cursor-grabbing opacity-80' : ''}`}
       onClick={() => onActivate(tab.id)}
       {...listeners}
     >
+      {/*
+        Indicador de la tab activa: una regla de 2px en p2, no una caja.
+        La tab deja de usar `bg-gray-800`, que es la superficie de widget: con
+        relleno, radio y sombra era indistinguible de un widget. Asi la regla
+        la conecta con el contenido de abajo y con el mismo token que marca
+        "esto esta activo" (Pomodoro corriendo, widget en arrastre).
+      */}
+      {isActive && (
+        <span
+          aria-hidden="true"
+          className="absolute inset-x-0 bottom-0 h-0.5 bg-p2"
+        />
+      )}
       {isEditing ? (
         <div className="relative min-w-0">
           <span aria-hidden className="invisible whitespace-nowrap text-sm">
@@ -158,7 +169,7 @@ function TabPill({
             }}
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
-            className="absolute inset-0 w-full select-text rounded-sm bg-transparent text-sm text-white focus:outline-none focus-visible:bg-blue-500/10 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-blue-500/50"
+            className="absolute inset-0 w-full select-text rounded-sm bg-gray-700/60 px-2 text-sm text-white focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-500/50"
             aria-label="Tab name"
           />
         </div>
@@ -174,7 +185,7 @@ function TabPill({
             e.stopPropagation();
             onStartEdit(tab);
           }}
-          className={`rounded p-0.5 leading-none text-gray-500 transition-all duration-150 hover:bg-white/5 hover:text-gray-200 active:scale-90 ${
+          className={`p-0.5 leading-none text-gray-500 transition-all duration-150 hover:text-gray-200 active:scale-90 ${
             isActive ? 'visible' : 'invisible group-hover:visible'
           }`}
         >
@@ -189,7 +200,7 @@ function TabPill({
           e.stopPropagation();
           onDelete(tab.id);
         }}
-        className={`rounded p-0.5 leading-none text-gray-500 transition-all duration-150 hover:bg-red-500/10 hover:text-red-400 active:scale-90 ${
+        className={`p-0.5 leading-none text-gray-500 transition-all duration-150 hover:bg-danger/10 hover:text-danger active:scale-90 ${
           isActive ? 'visible' : 'invisible group-hover:visible'
         }`}
       >
@@ -202,7 +213,6 @@ function TabPill({
 interface TabBarProps {
   tabs: TabDto[];
   activeTabId: string | null;
-  topOffset: number;
   widgetDragActive: boolean;
   onSelectTab: (id: string) => void;
   onCreateTab: () => void;
@@ -216,7 +226,6 @@ interface TabBarProps {
 export function TabBar({
   tabs,
   activeTabId,
-  topOffset,
   widgetDragActive,
   onSelectTab,
   onCreateTab,
@@ -297,8 +306,8 @@ export function TabBar({
 
   return (
     <div
-      className="sticky z-[var(--z-sticky)] flex items-center gap-1.5 overflow-hidden border-b border-gray-700/60 bg-gray-900/90 px-3 py-2 backdrop-blur-sm"
-      style={{ top: topOffset }}
+      className="sticky top-0 z-[var(--z-sticky)] flex items-center gap-1.5 overflow-hidden border-b border-gray-700/60 bg-gray-900/90 px-4 backdrop-blur-sm"
+      style={{ top: 0 }}
     >
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
@@ -327,7 +336,7 @@ export function TabBar({
         title="New tab"
         aria-label="New tab"
         onClick={onCreateTab}
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-gray-400 transition-all duration-150 hover:bg-white/5 hover:text-gray-200 active:scale-90"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-gray-400 transition-all duration-150 hover:text-gray-200 active:scale-90"
       >
         <FiPlus size={16} />
       </button>

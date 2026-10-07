@@ -5,6 +5,8 @@ dist-electron/
 coverage/
 *.tsbuildinfo
 
+*.pdf
+
 # Env
 .env
 .env.local

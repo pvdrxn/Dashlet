@@ -81,7 +81,7 @@ export const DiaryWidget = memo(function DiaryWidget({ config, onConfigChange }:
             const newPage = parseInt(e.target.value) || 1;
             if (newPage !== page && newPage > 0) setPage(newPage);
           }}
-          className="w-16 rounded border border-gray-600 bg-gray-700 px-2 py-0.5 text-sm text-gray-200 outline-none focus:border-blue-400 text-center"
+          className="w-16 rounded border border-gray-600 bg-gray-700 px-2 py-0.5 text-sm text-gray-200 outline-none focus:border-gray-400 text-center"
           placeholder="Page"
         />
         <button type="button" onClick={toggleSearch} className="text-gray-400 hover:text-gray-100" aria-label="Search entries" title="Search">
@@ -100,7 +100,7 @@ export const DiaryWidget = memo(function DiaryWidget({ config, onConfigChange }:
             placeholder="Search entries..."
             spellCheck={false}
             aria-label="Search entries"
-            className="w-full rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm text-gray-200 outline-none focus:border-blue-400 placeholder-gray-500"
+            className="w-full rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm text-gray-200 outline-none focus:border-gray-400 placeholder-gray-500"
           />
           {results.length > 0 && (
             <div className="max-h-48 overflow-y-auto rounded border border-gray-700 bg-gray-800">
@@ -113,7 +113,7 @@ export const DiaryWidget = memo(function DiaryWidget({ config, onConfigChange }:
                     onClick={() => goToPage(p)}
                     className="flex w-full flex-col gap-0.5 px-2 py-1.5 text-left text-sm hover:bg-gray-700 border-b border-gray-700 last:border-b-0"
                   >
-                    <span className="text-xs font-semibold text-blue-400 tabular-nums">Page {p}</span>
+                    <span className="text-xs font-semibold text-gray-400 tabular-nums">Page {p}</span>
                     <span className="text-xs text-gray-400 truncate">{snippet(text, searchQuery)}</span>
                   </button>
                 );
@@ -131,9 +131,10 @@ export const DiaryWidget = memo(function DiaryWidget({ config, onConfigChange }:
         placeholder="Write something..."
         spellCheck={false}
         aria-label="Diary entry content"
-        className="flex-1 resize-none rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm text-gray-200 outline-none focus:border-blue-400 placeholder-gray-500"
+        className="flex-1 resize-none rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm text-gray-200 outline-none focus:border-gray-400 placeholder-gray-500"
       />
     </div>
   );
 });
+
 

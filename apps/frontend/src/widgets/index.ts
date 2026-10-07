@@ -16,8 +16,6 @@ registerWidget('todo-list', {
   label: 'Todo List',
   icon: FiCheckSquare,
   defaultConfig: { title: 'Todo List', items: [] },
-  defaultSize: { w: 300, h: 300 },
-  minSize: { w: 260, h: 180 },
 });
 
 registerWidget('pomodoro', {
@@ -25,8 +23,6 @@ registerWidget('pomodoro', {
   label: 'Timer',
   icon: FiClock,
   defaultConfig: { title: 'Timer', technique: 'pomodoro', workMinutes: 25, restMinutes: 5, state: 'idle', remainingSeconds: 1500, elapsedSeconds: 0, cycleCount: 0 },
-  defaultSize: { w: 280, h: 340 },
-  minSize: { w: 220, h: 305 },
 });
 
 registerWidget('notes', {
@@ -34,8 +30,6 @@ registerWidget('notes', {
   label: 'Notes',
   icon: FiEdit3,
   defaultConfig: { title: 'Notes', content: '', lastModified: null },
-  defaultSize: { w: 320, h: 280 },
-  minSize: { w: 240, h: 180 },
 });
 
 registerWidget('calculator', {
@@ -43,8 +37,6 @@ registerWidget('calculator', {
   label: 'Calculator',
   icon: LuCalculator,
   defaultConfig: { title: 'Calculator', history: [], lastResult: '' },
-  defaultSize: { w: 260, h: 380 },
-  minSize: { w: 220, h: 340 },
 });
 
 registerWidget('habit-tracker', {
@@ -52,8 +44,6 @@ registerWidget('habit-tracker', {
   label: 'Habit Tracker',
   icon: LuListChecks,
   defaultConfig: { title: 'Habits', habits: [] },
-  defaultSize: { w: 280, h: 280 },
-  minSize: { w: 240, h: 180 },
 });
 
 registerWidget('diary', {
@@ -61,8 +51,6 @@ registerWidget('diary', {
   label: 'Diary',
   icon: FiBook,
   defaultConfig: { title: 'Diary', entries: {} },
-  defaultSize: { w: 320, h: 300 },
-  minSize: { w: 260, h: 200 },
 });
 
 export { WidgetGrid } from './WidgetGrid';

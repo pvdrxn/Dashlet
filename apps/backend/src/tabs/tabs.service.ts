@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateTabDto, UpdateTabDto, TabDto } from '@widget-master/shared';
 
 const HARDCODED_USER_ID = 'hardcoded-user-id';
-const DEFAULT_TAB_NAME = 'Dashboard';
+const DEFAULT_TAB_NAME = 'Nuevo entorno';
 
 function toTabDto(tab: Record<string, unknown>, widgetCount?: number): TabDto {
   return {

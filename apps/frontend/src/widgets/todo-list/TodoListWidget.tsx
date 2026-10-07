@@ -204,14 +204,19 @@ function AutoGrowInput({
 
 const urgencyLabels: Record<number, string> = { 1: 'Low', 2: 'Medium', 3: 'High' };
 
+/*
+ * Urgencia = rampa de prioridad. Antes era gris / orange / red: tres tonos
+ * distintos para tres niveles de lo mismo. Ahora sube el brillo dentro de un
+ * solo tono, asi que "mucho de lo mismo" se distingue de "poco de lo mismo".
+ */
 function getUrgencyClass(urgency: 1 | 2 | 3): string {
   switch (urgency) {
     case 1:
-      return 'bg-gray-600/50 text-gray-400';
+      return 'bg-p1/15 text-p1';
     case 2:
-      return 'bg-orange-400/20 text-orange-400';
+      return 'bg-p2/15 text-p2';
     case 3:
-      return 'bg-red-400/20 text-red-400';
+      return 'bg-p3/20 text-p3';
   }
 }
 
@@ -272,7 +277,7 @@ const TaskRowContent = memo(function TaskRowContent({
         title={item.parentId ? 'Outdent (make it a task)' : 'Indent (make it a subtask)'}
         className={`absolute top-1/2 -translate-y-1/2 flex items-center px-0 leading-none ${
           item.parentId
-            ? 'text-blue-400'
+            ? 'text-gray-400'
             : 'invisible text-gray-600 group-hover/item:visible hover:text-gray-300'
         }`}
         aria-label={
@@ -287,7 +292,7 @@ const TaskRowContent = memo(function TaskRowContent({
         type="checkbox"
         checked={item.completed}
         onChange={() => toggleItem(item.id)}
-        className="h-4 w-4 shrink-0 cursor-pointer appearance-none rounded border border-gray-500 bg-gray-700 transition-colors checked:border-blue-600 checked:bg-blue-600 checked:bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2016%2016%27%20fill=%27none%27%20stroke=%27white%27%20stroke-width=%272.5%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%3E%3Cpath%20d=%27M3.5%208.5l3%203%206-7%27/%3E%3C/svg%3E')] checked:bg-center checked:bg-no-repeat checked:bg-[length:12px_12px] hover:border-gray-400"
+        className="h-4 w-4 shrink-0 cursor-pointer appearance-none rounded border border-gray-500 bg-gray-700 transition-colors checked:border-gray-400 checked:bg-gray-400 checked:bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2016%2016%27%20fill=%27none%27%20stroke=%27white%27%20stroke-width=%272.5%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%3E%3Cpath%20d=%27M3.5%208.5l3%203%206-7%27/%3E%3C/svg%3E')] checked:bg-center checked:bg-no-repeat checked:bg-[length:12px_12px] hover:border-gray-400"
         aria-label={`Mark "${item.text}" as completed`}
       />
       {editing ? (
@@ -316,7 +321,7 @@ const TaskRowContent = memo(function TaskRowContent({
                 onEditingChange(false);
               }
             }}
-            className="rounded border border-blue-500 bg-gray-800 px-1 py-0.5 text-sm text-gray-200 outline-none focus-visible:ring-1 focus-visible:ring-blue-500/60"
+            className="rounded border border-gray-500 bg-gray-800 px-1 py-0.5 text-sm text-gray-200 outline-none focus-visible:ring-1 focus-visible:ring-gray-500/60"
             aria-label="Edit task text"
           />
         </>
@@ -398,7 +403,7 @@ const TaskRowContent = memo(function TaskRowContent({
             onLinkTask(item.id, item.text, item.estimatedTime, item.estimatedTimeUnit);
           }}
           className={`invisible text-base group-hover/item:visible shrink-0 ${
-            isActive ? 'text-cyan-400' : 'text-gray-500 hover:text-cyan-400'
+            isActive ? 'text-p2' : 'text-gray-500 hover:text-p2'
           }`}
           title={isActive ? 'Active task' : 'Start timer for this task'}
           aria-label={`Start timer for ${item.text}`}
@@ -408,7 +413,7 @@ const TaskRowContent = memo(function TaskRowContent({
         <button
           type="button"
           onClick={() => removeItem(item.id)}
-          className="invisible mr-1 text-base text-gray-500 group-hover/item:visible hover:text-red-400"
+          className="invisible mr-1 text-base text-gray-500 group-hover/item:visible hover:text-danger"
           aria-label={`Delete task ${item.text}`}
         >
           &#x2715;
@@ -480,7 +485,7 @@ const SortableItem = memo(function SortableItem({
       {...listeners}
       style={{ ...style, paddingLeft: 21 + level * 20 }}
       className={`group/item mx-0.5 relative flex cursor-grab touch-none items-center gap-1.5 rounded py-0.5 hover:bg-gray-700/50 active:cursor-grabbing ${
-        isActive ? 'border-l-2 border-cyan-400 bg-cyan-400/5' : ''
+        isActive ? 'border-l-2 border-p2 bg-p2/5' : ''
       }`}
     >
       <TaskRowContent
@@ -525,7 +530,7 @@ const StaticItemRow = memo(function StaticItemRow({
     <div
       style={{ paddingLeft: 21 + level * 20 }}
       className={`group/item mx-0.5 relative flex cursor-default items-center gap-1.5 rounded py-0.5 hover:bg-gray-700/50 ${
-        isActive ? 'border-l-2 border-cyan-400 bg-cyan-400/5' : ''
+        isActive ? 'border-l-2 border-p2 bg-p2/5' : ''
       }`}
     >
       <TaskRowContent
@@ -950,7 +955,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
                     onClick={() => setConfirmClear(true)}
                     title="Delete all completed tasks"
                     aria-label="Delete all completed tasks"
-                    className="rounded p-1 text-gray-500 hover:bg-red-500/10 hover:text-red-400"
+                    className="rounded p-1 text-gray-500 hover:bg-danger/10 hover:text-danger"
                   >
                     <FiTrash2 size={14} />
                   </button>
@@ -1027,7 +1032,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
           value={newText}
           placeholder="Add a task..."
           onChange={(e) => setNewText(e.target.value)}
-          className="rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-200 outline-none placeholder-gray-500 focus:border-blue-400"
+          className="rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-200 outline-none placeholder-gray-500 focus:border-gray-400"
           aria-label="New task text"
         />
         <div className="relative flex w-[4.5rem] shrink-0 items-center">
@@ -1043,7 +1048,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
                 addItem();
               }
             }}
-            className="no-spinner w-full rounded border border-gray-600 bg-gray-700 px-2 py-1 pr-9 text-xs text-gray-200 outline-none placeholder-gray-500 focus:border-blue-400"
+            className="no-spinner w-full rounded border border-gray-600 bg-gray-700 px-2 py-1 pr-9 text-xs text-gray-200 outline-none placeholder-gray-500 focus:border-gray-400"
             aria-label="Estimated time"
           />
           <button
@@ -1059,9 +1064,9 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
           {(['1', '2', '3'] as const).map((val) => {
             const labels = { '1': 'Low', '2': 'Med', '3': 'High' };
             const colors = {
-              '1': 'text-gray-400',
-              '2': 'text-orange-400',
-              '3': 'text-red-400',
+              '1': 'text-p1',
+              '2': 'text-p2',
+              '3': 'text-p3',
             };
             const active = newUrgency === val;
             return (
@@ -1079,7 +1084,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
         <button
           type="submit"
           title="Add task"
-          className="rounded bg-blue-600 p-1 text-white hover:bg-blue-500 disabled:opacity-50"
+          className="rounded bg-gray-600 p-1 text-white hover:bg-gray-500 disabled:opacity-50"
           disabled={!newText.trim()}
           aria-label="Add task"
         >
@@ -1088,7 +1093,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
       </form>
 
       {confirmClear && (
-        <div className="absolute -inset-3 z-10 flex items-center justify-center rounded-[4px] bg-black/70 p-4">
+        <div className="absolute -inset-3 z-10 flex items-center justify-center rounded bg-black/70 p-4">
           <div
             role="dialog"
             aria-modal="true"
@@ -1110,7 +1115,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
               <button
                 type="button"
                 onClick={clearCompleted}
-                className="rounded bg-red-600 px-2.5 py-1 text-xs text-white hover:bg-red-500"
+                className="rounded bg-danger px-2.5 py-1 text-xs text-white hover:bg-danger/80"
               >
                 Delete
               </button>
@@ -1121,3 +1126,4 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
     </div>
   );
 });
+

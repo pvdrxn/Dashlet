@@ -6,8 +6,8 @@ export interface WidgetDefinition {
   label: string;
   icon: ComponentType<{ size?: number }>;
   defaultConfig: Record<string, unknown>;
-  defaultSize: { w: number; h: number };
-  minSize: { w: number; h: number };
+  // El dashboard es una grilla de celdas de tamano fijo, asi que el widget no
+  // tiene un tamano propio: no hay defaultSize ni minSize que mantener aca.
 }
 
 const registry = new Map<string, WidgetDefinition>();

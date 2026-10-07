@@ -103,7 +103,7 @@ export function TrashWindow({ onClose, onRestoreComplete }: TrashWindowProps) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-0.5 text-gray-400 hover:bg-red-500/10 hover:text-red-400 leading-none"
+            className="rounded p-0.5 text-gray-400 hover:bg-danger/10 hover:text-danger leading-none"
             title="Close trash"
             aria-label="Close trash"
           >
@@ -119,8 +119,8 @@ export function TrashWindow({ onClose, onRestoreComplete }: TrashWindowProps) {
               </h3>
               <ul className="flex flex-col gap-2">
                 {trashedTabs.map((tab) => (
-                  <li key={tab.id} className="flex items-center gap-3 rounded-md border border-gray-700 bg-gray-900 p-2.5">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-700 text-lg">
+                  <li key={tab.id} className="flex items-center gap-3 rounded border border-gray-700 bg-gray-900 p-2.5">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-gray-700 text-lg">
                       <FiFolder size={18} />
                     </span>
                     <div className="min-w-0 flex-1">
@@ -133,7 +133,7 @@ export function TrashWindow({ onClose, onRestoreComplete }: TrashWindowProps) {
                       <button
                         type="button"
                         onClick={() => handleRestoreTab(tab.id)}
-                        className="rounded-md border border-blue-500/60 px-2.5 py-1 text-xs text-blue-400 hover:bg-blue-500/15 hover:text-blue-300"
+                        className="rounded border border-gray-600 px-2.5 py-1 text-xs text-gray-300 hover:bg-gray-700 hover:text-gray-100"
                         title="Restore tab with all its widgets"
                       >
                         <FiRotateCcw size={13} className="inline-block mr-1 -mt-0.5" />
@@ -142,7 +142,7 @@ export function TrashWindow({ onClose, onRestoreComplete }: TrashWindowProps) {
                       <button
                         type="button"
                         onClick={() => handleDeleteTabForever(tab.id)}
-                        className="rounded-md border border-red-500/60 px-2 py-1 text-xs text-red-400 hover:bg-red-500/20 hover:text-red-300"
+                        className="rounded border border-danger/60 px-2 py-1 text-xs text-danger hover:bg-danger/20 hover:text-danger"
                         title="Delete tab and its widgets permanently"
                       >
                         <FiTrash size={13} className="inline-block -mt-0.5" />
@@ -155,9 +155,9 @@ export function TrashWindow({ onClose, onRestoreComplete }: TrashWindowProps) {
           )}
           {!loaded ? (
             <div className="flex flex-col gap-2.5 p-3" aria-hidden="true">
-              <div className="skeleton h-11 w-full rounded-md" />
-              <div className="skeleton h-11 w-full rounded-md" />
-              <div className="skeleton h-11 w-2/3 rounded-md" />
+              <div className="skeleton h-11 w-full rounded" />
+              <div className="skeleton h-11 w-full rounded" />
+              <div className="skeleton h-11 w-2/3 rounded" />
             </div>
           ) : items.length === 0 && trashedTabs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-gray-400">
@@ -174,8 +174,8 @@ export function TrashWindow({ onClose, onRestoreComplete }: TrashWindowProps) {
                 const daysLeft = getDaysLeft(widget.deletedAt);
                 const title = (widget.config.title as string) || def?.label || widget.type;
                 return (
-                  <li key={widget.id} className="flex items-center gap-3 rounded-md border border-gray-700 bg-gray-900 p-2.5">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-700 text-lg">
+                  <li key={widget.id} className="flex items-center gap-3 rounded border border-gray-700 bg-gray-900 p-2.5">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-gray-700 text-lg">
                       {def?.icon ? <def.icon size={18} /> : '?'}
                     </span>
                     <div className="min-w-0 flex-1">
@@ -189,7 +189,7 @@ export function TrashWindow({ onClose, onRestoreComplete }: TrashWindowProps) {
                       <button
                         type="button"
                         onClick={() => handleRestore(widget.id)}
-                        className="rounded-md border border-blue-500/60 px-2.5 py-1 text-xs text-blue-400 hover:bg-blue-500/15 hover:text-blue-300"
+                        className="rounded border border-gray-600 px-2.5 py-1 text-xs text-gray-300 hover:bg-gray-700 hover:text-gray-100"
                         title="Restore widget"
                       >
                         <FiRotateCcw size={13} className="inline-block mr-1 -mt-0.5" />
@@ -198,7 +198,7 @@ export function TrashWindow({ onClose, onRestoreComplete }: TrashWindowProps) {
                       <button
                         type="button"
                         onClick={() => handleDeleteForever(widget.id)}
-                        className="rounded-md border border-red-500/60 px-2 py-1 text-xs text-red-400 hover:bg-red-500/20 hover:text-red-300"
+                        className="rounded border border-danger/60 px-2 py-1 text-xs text-danger hover:bg-danger/20 hover:text-danger"
                         title="Delete permanently"
                       >
                         <FiTrash size={13} className="inline-block -mt-0.5" />

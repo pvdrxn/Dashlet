@@ -18,7 +18,7 @@ function toWidgetDto(widget: Record<string, unknown>): WidgetDto {
   return {
     ...widget,
     config: parseJsonField(widget.config as string, {}),
-    position: parseJsonField(widget.position as string, { x: 0, y: 0, w: 300, h: 200 }),
+    position: parseJsonField(widget.position as string, { x: 0, y: 0 }),
     deletedAt: widget.deletedAt ? new Date(widget.deletedAt as string).toISOString() : null,
   } as WidgetDto;
 }
@@ -101,7 +101,9 @@ export class WidgetsService implements OnModuleInit {
   async create(userId: string, dto: CreateWidgetDto) {
     await this.ensureUser(userId);
     const tabId = await this.resolveTabId(userId, dto.tabId);
-    const defaultPosition = { x: 100, y: 100, w: 300, h: 250 };
+    // Ranura del dashboard. {x,y} son indices de celda, no pixeles: el alto y
+    // el ancho los impone la celda (ver grid-utils.ts en el frontend).
+    const defaultPosition = { x: 0, y: 0 };
     const widget = await this.prisma.widget.create({
       data: {
         userId,

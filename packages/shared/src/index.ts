@@ -1,3 +1,20 @@
+/**
+ * Ranura (slot) del dashboard, en unidades de celda y no de pixeles.
+ *
+ * `x` es la columna dentro del bloque (0..BLOCK_COLS-1) e `y` es la fila
+ * absoluta del dashboard. El layout es una grilla de 2 columnas: cada bloque
+ * de 2x2 son dos filas consecutivas de `y`.
+ *
+ * No hay ancho ni alto persistido: el tamaño lo impose la celda. Ver
+ * `apps/frontend/src/widgets/grid-utils.ts`.
+ */
+/**
+ * Posicion y tamano de un widget, en celdas de la grilla (no en pixeles).
+ *
+ * `x`/`y` son la celda donde arranca, y `w`/`h` cuantas celdas ocupa hacia
+ * derecha y hacia abajo. GRID_COLS es el ancho de la grilla; ver
+ * `apps/frontend/src/widgets/grid-utils.ts`.
+ */
 export interface Position {
   x: number;
   y: number;

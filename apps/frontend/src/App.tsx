@@ -40,18 +40,20 @@ function App() {
   );
   const predictAddRefs = useRef(new Map<string, (type: string) => Position | null>());
   const revealAddRefs = useRef(new Map<string, () => void>());
-  const checkPlacementRefs = useRef(
-    new Map<string, (x: number, y: number, w: number, h: number) => boolean>(),
-  );
   const refreshWidgetsRefs = useRef(new Map<string, () => void>());
   const transferWidgetRefs = useRef(new Map<string, (action: TransferAction) => void>());
-  const toolbarRef = useRef<HTMLDivElement>(null);
-  const [toolbarHeight, setToolbarHeight] = useState(0);
+  /*
+   * El TabBar va arriba y la barra de acciones abajo. Mide el TabBar para que
+   * el Toolbar se pegue debajo: el mismo mecanismo que antes, con los cables
+   * invertidos.
+   */
+  const tabBarRef = useRef<HTMLDivElement>(null);
+  const [tabBarHeight, setTabBarHeight] = useState(0);
 
   useEffect(() => {
-    const el = toolbarRef.current;
+    const el = tabBarRef.current;
     if (!el) return;
-    const update = () => setToolbarHeight(el.offsetHeight);
+    const update = () => setTabBarHeight(el.offsetHeight);
     update();
     const observer = new ResizeObserver(update);
     observer.observe(el);
@@ -132,7 +134,6 @@ function App() {
       const tab = await tabsApi.createTab();
       setTabs((prev) => [...prev, tab]);
       setActiveTabId(tab.id);
-      setEditingTabId(tab.id);
     } catch {}
   }, []);
 
@@ -171,23 +172,6 @@ function App() {
       addWidgetRefs.current.set(tabId, fn);
     },
     [],
-  );
-
-  const registerCheckPlacementRef = useCallback(
-    (tabId: string, fn: (x: number, y: number, w: number, h: number) => boolean) => {
-      checkPlacementRefs.current.set(tabId, fn);
-    },
-    [],
-  );
-
-  const handleCheckPlacement = useCallback(
-    (clientX: number, clientY: number, w: number, h: number): boolean | null => {
-      if (!activeTabId) return null;
-      const fn = checkPlacementRefs.current.get(activeTabId);
-      if (!fn) return null;
-      return fn(clientX, clientY, w, h);
-    },
-    [activeTabId],
   );
 
   const registerRefreshRef = useCallback((tabId: string, fn: () => void) => {
@@ -306,28 +290,27 @@ function App() {
 
   return (
     <main className="min-h-screen bg-gray-900">
-      <div ref={toolbarRef}>
-        <Toolbar
-          onAddWidget={handleAddWidget}
-          onAddWidgetDeferred={handleAddWidgetDeferred}
-          onPredictAdd={handlePredictAdd}
-          onRevealWidgets={handleRevealWidgets}
-          onCheckPlacement={handleCheckPlacement}
-          onOpenTrash={() => setTrashOpen(true)}
+      <div ref={tabBarRef}>
+        <TabBar
+          tabs={tabs}
+          activeTabId={activeTabId}
+          onSelectTab={handleSelectTab}
+          onCreateTab={handleCreateTab}
+          onRenameTab={handleRenameTab}
+          onDeleteTab={handleDeleteTab}
+          onReorderTabs={handleReorderTabs}
+          editingTabId={editingTabId}
+          onEditingTabIdChange={setEditingTabId}
+          widgetDragActive={widgetDragActive}
         />
       </div>
-      <TabBar
-        tabs={tabs}
-        activeTabId={activeTabId}
-        onSelectTab={handleSelectTab}
-        onCreateTab={handleCreateTab}
-        onRenameTab={handleRenameTab}
-        onDeleteTab={handleDeleteTab}
-        onReorderTabs={handleReorderTabs}
-        editingTabId={editingTabId}
-        onEditingTabIdChange={setEditingTabId}
-        topOffset={toolbarHeight}
-        widgetDragActive={widgetDragActive}
+      <Toolbar
+        onAddWidget={handleAddWidget}
+        onAddWidgetDeferred={handleAddWidgetDeferred}
+        onPredictAdd={handlePredictAdd}
+        onRevealWidgets={handleRevealWidgets}
+        onOpenTrash={() => setTrashOpen(true)}
+        topOffset={tabBarHeight}
       />
       <div className="p-4">
         {tabs.map((tab) => (
@@ -337,7 +320,6 @@ function App() {
               onAddWidgetRef={registerAddWidgetRef}
               onPredictAddRef={registerPredictAddRef}
               onRevealRef={registerRevealRef}
-              onCheckPlacementRef={registerCheckPlacementRef}
               onRefreshRef={registerRefreshRef}
               onTransferRef={registerTransferRef}
               onWidgetDragStart={handleWidgetDragStart}

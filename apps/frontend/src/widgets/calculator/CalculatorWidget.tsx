@@ -19,7 +19,7 @@ const btn = (
   <button
     type="button"
     onClick={onClick}
-    className={`flex items-center justify-center rounded-sm text-sm font-normal active:scale-[0.97] transition-transform select-none ${className}`}
+    className={`flex items-center justify-center rounded text-sm font-normal active:scale-[0.97] transition-transform select-none ${className}`}
   >
     {label}
   </button>

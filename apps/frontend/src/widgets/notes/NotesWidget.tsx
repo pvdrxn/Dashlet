@@ -605,7 +605,7 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
             {menuOpen && (
               <div
                 role="menu"
-                className="absolute left-0 top-full z-10 mt-1 w-36 overflow-hidden rounded-md border border-gray-600 bg-gray-800 shadow-xl"
+                className="absolute left-0 top-full z-10 mt-1 w-36 overflow-hidden rounded-lg border border-gray-600 bg-gray-800 shadow-xl"
               >
                 {HEADINGS.map((h) => (
                   <button
@@ -674,7 +674,7 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
               {listMenuOpen && (
                 <div
                   role="menu"
-                  className="absolute left-0 top-full z-10 mt-1 w-44 overflow-hidden rounded-md border border-gray-600 bg-gray-800 shadow-xl"
+                  className="absolute left-0 top-full z-10 mt-1 w-44 overflow-hidden rounded-lg border border-gray-600 bg-gray-800 shadow-xl"
                 >
                   {LIST_OPTIONS.map((opt) => (
                     <button
@@ -732,7 +732,7 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
         </div>
       </div>
       {searchOpen && (
-        <div className="flex shrink-0 items-center gap-1 rounded border border-blue-500/50 bg-gray-800 px-2 py-1">
+        <div className="flex shrink-0 items-center gap-1 rounded border border-gray-600 bg-gray-800 px-2 py-1">
           <FiSearch size={12} className="shrink-0 text-gray-400" />
           <input
             ref={searchInputRef}
@@ -747,7 +747,7 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
               }
             }}
             placeholder="Search..."
-            className="flex-1 rounded-sm bg-transparent text-xs text-gray-200 focus:outline-none focus-visible:bg-white/5 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-blue-500/40 placeholder-gray-500"
+            className="flex-1 rounded bg-transparent text-xs text-gray-200 focus:outline-none focus-visible:bg-white/5 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-500/40 placeholder-gray-500"
             aria-label="Search in note"
           />
           {searchQuery && (
@@ -772,7 +772,7 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
         {searchOpen && searchQuery.trim() && (
           <div
             ref={highlightOverlayRef}
-            className="pointer-events-none absolute inset-0 p-2 text-sm leading-[1.4] text-transparent whitespace-pre-wrap break-words [font-family:inherit] [&_mark]:visible [&_mark]:bg-blue-500/30 [&_mark]:text-blue-100 [&_mark]:rounded-sm"
+            className="pointer-events-none absolute inset-0 p-2 text-sm leading-[1.4] text-transparent whitespace-pre-wrap break-words [font-family:inherit] [&_mark]:visible [&_mark]:bg-p2/30 [&_mark]:text-white [&_mark]:rounded"
             aria-hidden="true"
           />
         )}
@@ -798,7 +798,7 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
           }}
           spellCheck={false}
           data-placeholder="Write your notes here..."
-          className="relative z-[1] rounded-sm p-2 text-sm leading-[1.4] text-gray-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-blue-500/40 [font-family:inherit] [&_h1]:my-1 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-gray-100 [&_h2]:my-1 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-gray-100 [&_h3]:my-0.5 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-gray-100 [&_a]:text-blue-400 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul.dash-list]:list-none [&_ul.dash-list_li]:relative [&_ul.dash-list_li]:pl-4 [&_ul.dash-list_li:before]:absolute [&_ul.dash-list_li:before]:left-0 [&_ul.dash-list_li:before]:content-['-'] [&:empty:before]:pointer-events-none [&:empty:before]:absolute [&:empty:before]:content-[attr(data-placeholder)] [&:empty:before]:text-gray-500"
+          className="relative z-[1] rounded p-2 text-sm leading-[1.4] text-gray-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-500/40 [font-family:inherit] [&_h1]:my-1 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-gray-100 [&_h2]:my-1 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-gray-100 [&_h3]:my-0.5 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-gray-100 [&_a]:text-gray-100 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul.dash-list]:list-none [&_ul.dash-list_li]:relative [&_ul.dash-list_li]:pl-4 [&_ul.dash-list_li:before]:absolute [&_ul.dash-list_li:before]:left-0 [&_ul.dash-list_li:before]:content-['-'] [&:empty:before]:pointer-events-none [&:empty:before]:absolute [&:empty:before]:content-[attr(data-placeholder)] [&:empty:before]:text-gray-500"
           style={{ minHeight: '120px' }}
           aria-label="Note content"
         />
@@ -808,7 +808,7 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
           ref={linkMenuRef}
           role="dialog"
           aria-label="Insert link"
-          className="fixed z-20 flex items-center gap-1 rounded-md border border-gray-600 bg-gray-800 p-1 shadow-xl"
+          className="fixed z-20 flex items-center gap-1 rounded-lg border border-gray-600 bg-gray-800 p-1 shadow-xl"
           style={{ top: linkMenu.top, left: linkMenu.left }}
         >
           <input
@@ -824,7 +824,7 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
               }
             }}
             placeholder="https://..."
-            className="w-44 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-200 outline-none focus:border-blue-400 placeholder-gray-500"
+            className="w-44 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-200 outline-none focus:border-gray-400 placeholder-gray-500"
             aria-label="Link URL"
           />
         </div>

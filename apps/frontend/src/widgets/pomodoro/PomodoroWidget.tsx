@@ -425,7 +425,10 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
   const progress = isCountup ? 0 : totalSeconds > 0 ? ((totalSeconds - remainingSeconds) / totalSeconds) * 100 : 0;
   const dashOffset = RING_CIRCUMFERENCE * (1 - Math.min(progress, 100) / 100);
 
-  const ringColor = phase === 'break' ? '#22c55e' : '#22d3ee';
+  // Un solo sistema de color: trabajando es p2 (ambar, calido y bright) y en
+  // descanso el anillo baja a p1 (acero, frio y apagado). El cambio de
+  // temperatura dice la fase sin inventar un segundo color.
+  const ringColor = phase === 'break' ? 'var(--color-p1)' : 'var(--color-p2)';
 
   const openTaskPicker = useCallback(() => {
     widgetBus.emit('open-task-picker', {});
@@ -511,7 +514,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
                         }
                         if (e.key === 'Escape') setEditingField(null);
                       }}
-                      className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-sm text-gray-200 outline-none focus:ring-1 focus:ring-cyan-400"
+                      className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-sm text-gray-200 outline-none focus:ring-1 focus:ring-gray-500"
                     />
                   ) : (
                     <button
@@ -544,8 +547,8 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
                   }
                   setAlarmOpen((v) => !v);
                 }}
-                className={`mt-1 flex w-full items-center justify-between rounded bg-gray-800 px-2 py-1.5 text-sm text-gray-200 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-blue-500/50 ${
-                  alarmOpen ? 'ring-1 ring-cyan-400' : ''
+                className={`mt-1 flex w-full items-center justify-between rounded bg-gray-800 px-2 py-1.5 text-sm text-gray-200 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-gray-500 ${
+                  alarmOpen ? 'ring-1 ring-gray-500' : ''
                 }`}
               >
                 <span>{alarmOptions.find((o) => o.key === alarmSound)?.label ?? alarmSound}</span>
@@ -570,7 +573,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
                       }}
                       className={`flex w-full items-center px-2 py-1.5 text-left text-sm transition-colors ${
                         alarmSound === opt.key
-                          ? 'bg-cyan-500/15 text-cyan-400'
+                          ? 'bg-p2/15 text-p2'
                           : 'text-gray-200 hover:bg-white/5'
                       }`}
                     >
@@ -607,7 +610,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
       </div>
 
       {linkedTaskId ? (
-        <div className="mt-2 text-sm font-medium text-cyan-400 truncate max-w-[200px] tabular-nums">
+        <div className="mt-2 text-sm font-medium text-p2 truncate max-w-[200px] tabular-nums">
           {linkedTaskName}
         </div>
       ) : (
@@ -660,7 +663,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
             <span
               key={i}
               className={`h-1.5 w-1.5 rounded-full transition-colors ${
-                filled ? 'bg-cyan-400' : 'bg-white/15'
+                filled ? 'bg-p2' : 'bg-white/15'
               }`}
             />
           ))}
@@ -673,7 +676,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
           onClick={linkedTaskId ? unlinkTask : openTaskPicker}
           className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
             linkedTaskId
-              ? 'bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500/25'
+              ? 'bg-p2/15 text-p2 hover:bg-p2/25'
               : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-gray-200'
           }`}
           title={linkedTaskId ? `Unlink: ${linkedTaskName}` : 'Link task'}
@@ -731,7 +734,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
               <button
                 type="button"
                 onClick={confirmTechniqueChange}
-                className="flex items-center gap-1 rounded bg-cyan-600 px-2.5 py-1 text-xs text-white hover:bg-cyan-500"
+                className="flex items-center gap-1 rounded bg-gray-700 px-2.5 py-1 text-xs text-white hover:bg-gray-600"
               >
                 <FiCheck size={12} /> Change
               </button>
@@ -742,3 +745,4 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
     </div>
   );
 });
+

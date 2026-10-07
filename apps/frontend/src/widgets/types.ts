@@ -1,5 +1,6 @@
 import type { ComponentType as ReactComponentType, LazyExoticComponent, JSXElementConstructor } from 'react';
 
+/** Posicion y tamano en celdas de la grilla, no en pixeles. */
 export interface Position {
   x: number;
   y: number;

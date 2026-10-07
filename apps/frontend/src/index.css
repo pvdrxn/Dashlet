@@ -72,56 +72,123 @@
   --z-overlay: 4000;
 
   /*
-   * Acento de la app. Antes hardcodeado como blue-400 (#38bdf8) en ~20 lugares:
-   * croma alto contra una escala de grises casi desaturada, y ademas hacia cinco
-   * trabajos a la vez (hover, drag valido, colapsado, resize, boton New).
-   * Este valor baja el croma para integrarse mejor. Regla de uso:
-   *   - solo para "seleccionado / activo / foco"
-   *   - el hover va en escala de grises (bg-white/5), no en acento
+   * RADIOS: dos valores, no cinco.
+   *
+   * Antes coexistian seis: rounded-lg (8px), rounded-md (6px), rounded (4px),
+   * rounded-sm (2px), rounded-[4px] suelto en Toolbar y rounded-full. Ninguno
+   * significaba nada y los archivos indistintos usaban radios distintos para
+   * el mismo control. Ahora:
+   *
+   *   rounded-lg   8px   contenedor: shell del widget, modal, panel
+   *   rounded       4px   control: boton, input, chip, menu
+   *   rounded-full        solo lo que es circular de verdad (anillo, avatar)
+   *
+   * Por que el contenedor se queda en 8 y no baja a 4: CELL_GAP es 8px. Con
+   * radio igual al gap, la separacion entre widgets vecinos queda legible. A
+   * 4px el radio seria la mitad del gap y la esquina se leeria como casi recta
+   * sin llegar a estarlo: accidentada en vez de intencional.
+   *
+   * Por que el control si baja a 4: el contraste 4 contra 8 convierte el
+   * radio en jerarquia real en vez de un revoltijo de medidas.
+   *
+   * rounded-b queda aparte a proposito: el desplegable del Pomodoro se pega
+   * al boton de arriba y solo redondea abajo.
    */
-  --color-accent: #5b9dd9;
-  --color-accent-hover: #7ab3e4;
 
   /*
-   * Rampa del acento, sobreescribiendo la escala blue-* de Tailwind.
-   * Escala original: blue-300 #7dd3fc, blue-400 #38bdf8, blue-500 #3b82f6,
-   * blue-600 #2563eb. Tenian croma alto contra los grises desaturados y se
-   * usaban para cinco cosas distintas a la vez. Estos valores bajan el croma
-   * manteniendo el contraste: blue-400 sigue en 6.03:1 sobre el widget (AA).
+   * PALETA
+   *
+   * Regla unica: el color comunica ESTADO, nunca adorno. Todo lo demas (fondo,
+   * superficies, bordes, texto, seleccion, foco) vive en la rampa de grises.
+   * Asi el ojo va directo a lo que importa y la app tiene un solo acento.
+   *
+   * Antes coexistian cuatro sistemas: gray-* y blue-* reescritos a mano, mas
+   * cyan-*, red-* y green-* originales de Tailwind. Cyan y blue se usaban
+   * como si fueran el mismo color, y cada uno hacia un trabajo distinto.
    */
-  --color-blue-300: #7ab3e4;
-  --color-blue-400: #5b9dd9;
-  --color-blue-500: #4a87bf;
-  --color-blue-600: #3d7099;
 
-  --color-gray-50: #f6f7f9;
-  --color-gray-100: #eef0f4;
-  --color-gray-200: #e1e4ea;
-  --color-gray-300: #c7ccd6;
-  --color-gray-400: #9aa4b5;
-  --color-gray-500: #5f6a7a;
-  --color-gray-600: #3a4252;
-  --color-gray-700: #222936;
-  --color-gray-800: #161a22;
-  --color-gray-900: #0e1116;
-  --color-gray-950: #07090d;
-  --color-white: #e6e9ef;
+  /*
+   * Prioridad: una sola rampa perceptual. El brillo y el croma suben con la
+   * urgencia en vez de cambiar de tono, asi que "mucho de lo mismo" se lee
+   * distinto de "poco de lo mismo".
+   *
+   *   p1  acero    bajo / inactivo / descanso
+   *   p2  ambar    medio / corriendo / relevante
+   *   p3  naranja  alto / urgente
+   */
+  --color-p1: #868e9a;
+  --color-p2: #d9a441;
+  --color-p3: #e2703f;
+
+  /*
+   * Destructivo: solo hover de acciones que borran y estados de error.
+   * En reposo los botones van en gris, para que p3 sea lo unico que
+   * significa urgencia y el rojo no compita con el.
+   */
+  --color-danger: #d4605f;
+
+  /*
+   * Rampa de grises, neutra (sin tinte azulado como la anterior).
+   *
+   * Direccion: el fondo tira a casi negro. Pero los bordes SUBEN en vez de
+   * bajar. Es contraintuitivo y es lo que sostiene la profundidad: al bajar
+   * las superficies, el mismo borde queda con mas superficie que destacar.
+   *
+   * Los numeros siguen el uso real del codigo, no el orden natural del gris:
+   *
+   *   950   #050608  fondo de la ventana, debajo de todo
+   *   900   #050608  canvas de la app (App.tsx), fila hundida en lista
+   *   800   #161a21  superficie: widget, modal, panel
+   *   700   #2b3038  elevado: header, input, boton, hover
+   *   600   #454c58  boton primario, borde marcado, thumb del scrollbar
+   *   500   #6b7480  texto terciario, placeholder
+   *
+   * Medido antes (rampado viejo) y despues de oscurecer:
+   *
+   *                          antes    ahora
+   *   widget vs canvas       1,15:1   1,07:1   <- baja, es el costo
+   *   elevado vs widget      1,32:1   1,46:1   <- sube
+   *   borde(600) vs widget   1,95:1   2,11:1   <- sube
+   *   texto gray-400         5,58:1   6,55:1   <- sube
+   *   p2 (Pomodoro)          6,93:1   8,13:1   <- sube
+   *
+   * El widget se separa del canvas por el BORDE y por la sombra, no por su
+   * propio relleno: por eso el borde sube mientras el relleno baja. Y como el
+   * fondo se apaga, el unico color de la app (p2/p3) queda como lo mas
+   * brillante del encuadre.
+   *
+   * No se usa #000000 puro: en OLED produce halation sobre el texto y deja a
+   * las sombras de WidgetFrame sin contra que leerse. #050608 se ve igual de
+   * negro y conserva ese margen.
+   */
+  --color-gray-50: #f6f7f8;
+  --color-gray-100: #edeef0;
+  --color-gray-200: #dfe1e4;
+  --color-gray-300: #c3c7cd;
+  --color-gray-400: #969ba3;
+  --color-gray-500: #6b7480;
+  --color-gray-600: #454c58;
+  --color-gray-700: #2b3038;
+  --color-gray-800: #0e1116;
+  --color-gray-900: #050608;
+  --color-gray-950: #050608;
+  --color-white: #e8ecf2;
 }
 
 html {
-  background: #0e1116;
+  background: var(--color-gray-950);
 }
 
 body {
   margin: 0;
   font-family: var(--font-sans);
-  background: #0e1116;
-  color: #c7ccd6;
+  background: var(--color-gray-950);
+  color: var(--color-gray-300);
 }
 
 #root {
   min-height: 100dvh;
-  background: #0e1116;
+  background: var(--color-gray-950);
 }
 
 /*
@@ -139,7 +206,7 @@ body {
 }
 
 .skeleton {
-  background-color: #1b2029;
+  background-color: #1a1d23;
   background-image: linear-gradient(
     90deg,
     rgba(255, 255, 255, 0) 0%,
@@ -196,10 +263,10 @@ body {
   width: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #161a22;
+  background: #12151a;
 }
 ::-webkit-scrollbar-thumb {
-  background: #3a4252;
+  background: #454c58;
   border-radius: 3px;
 }
 

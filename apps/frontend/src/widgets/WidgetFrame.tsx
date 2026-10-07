@@ -1,90 +1,70 @@
 import { memo, useState, useCallback, useRef, useEffect, Suspense } from 'react';
-import { useDraggable } from '@dnd-kit/core';
-import { FiChevronUp, FiChevronDown, FiX, FiMoreVertical, FiLayers } from 'react-icons/fi';
-import { snapUpW, snapUpH } from './grid-utils';
+import { FiChevronUp, FiChevronDown, FiX, FiMoreVertical } from 'react-icons/fi';
 import { widgetBus } from './widget-bus';
 import type { ComponentType } from './types';
-
+/** Alto de la barra de titulo. */
+const HEADER_HEIGHT = 25;
 interface WidgetFrameProps {
   id: string;
-  position: { x: number; y: number; w: number; h: number };
-  zIndex: number;
-  minSize: { w: number; h: number };
   config: Record<string, unknown>;
   component: ComponentType;
-  onResize: (id: string, w: number, h: number) => void;
   onDelete: (id: string) => void;
   onConfigChange: (id: string, config: Record<string, unknown>) => void;
   label: string;
-  maxZIndex: number;
+  /** props de dnd-kit para el tirador de arrastre */
+  dragHandleProps: DragHandleProps;
+  dragHandleRef: (node: HTMLElement | null) => void;
+  /** El widget esta siguiendo al cursor. Enciende la senal de color. */
+  isDragging?: boolean;
 }
-
+/** Handlers de dnd-kit que se componen con los del frame. */
+export interface DragHandleProps {
+  onPointerDown?: (e: React.PointerEvent) => void;
+  onPointerUp?: (e: React.PointerEvent) => void;
+  onPointerCancel?: (e: React.PointerEvent) => void;
+  onPointerMove?: (e: React.PointerEvent) => void;
+  [key: string]: unknown;
+}
+/*
+ * El frame ya no posiciona nada: la grilla define donde vive el widget y que
+ * tamaño tiene. Solo quedan el encabezado, el arrastre y las acciones.
+ */
 export const WidgetFrame = memo(function WidgetFrame({
   id,
-  position,
-  zIndex,
-  minSize,
   config,
   component: WidgetComponent,
-  onResize,
   onDelete,
   onConfigChange,
   label,
-  maxZIndex,
+  dragHandleProps,
+  dragHandleRef,
+  isDragging = false,
 }: WidgetFrameProps) {
-  const [size, setSize] = useState({ w: position.w, h: position.h });
-  const [isResizing, setIsResizing] = useState(false);
   const [highlighted, setHighlighted] = useState(false);
-  const resizeStateRef = useRef({ w: position.w, h: position.h });
+  // El colapso lo decide la celda, que es la que mide su alto (ver
+  // cellHeight en grid-utils.ts). Aca solo se refleja para pintar el fondo.
   const collapsed = (config.collapsed as boolean) ?? false;
-
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: `widget-${id}`,
-  });
-
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pointerPosRef = useRef({ x: 0, y: 0 });
-
   const HOLD_THRESHOLD = 450;
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdPosRef = useRef({ x: 0, y: 0 });
-
-  const HEADER_HEIGHT = 25;
-
-/*
- * Bandas de z-index para las capas de widget. Ver la escala en index.css.
- * Un widget en reposo vive en la banda baja (Z_BASE) y "bring to front" lo
- * mueve a la banda alta (Z_TOP), de modo que sus capas nunca alcancen al
- * chrome (sticky en 1000, modales en 3000).
- */
-const Z_BASE = 0;
-const Z_TOP = 100;
-const Z_MAX = 999;
-const Z_DRAG = 900;
-
   const isHoldTargetInteractive = useCallback((target: EventTarget | null): boolean => {
     if (!(target instanceof HTMLElement)) return true;
-    if (
-      target.closest(
-        'button, input, textarea, select, a, [contenteditable="true"], [role="button"], [aria-roledescription]',
-      )
-    )
-      return true;
-    return false;
+    return !!target.closest(
+      'button, input, textarea, select, a, [contenteditable="true"], [role="button"], [aria-roledescription]',
+    );
   }, []);
-
   const clearHoldTimer = useCallback(() => {
     if (holdTimerRef.current) {
       clearTimeout(holdTimerRef.current);
       holdTimerRef.current = null;
     }
   }, []);
-
   const fireHoldToggle = useCallback(() => {
     holdTimerRef.current = null;
     onConfigChange(id, { ...config, collapsed: !collapsed });
-  }, [onConfigChange, id, config]);
-
+  }, [onConfigChange, id, config, collapsed]);
   const handleHoldPointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (e.button !== 0) return;
@@ -98,7 +78,6 @@ const Z_DRAG = 900;
     },
     [isHoldTargetInteractive, clearHoldTimer, fireHoldToggle],
   );
-
   const handleTitleHoldPointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (e.button !== 0) return;
@@ -106,27 +85,19 @@ const Z_DRAG = 900;
       holdPosRef.current = { x: e.clientX, y: e.clientY };
       clearHoldTimer();
       holdTimerRef.current = setTimeout(fireHoldToggle, HOLD_THRESHOLD);
-      try {
-        e.currentTarget.setPointerCapture(e.pointerId);
-      } catch {}
     },
     [clearHoldTimer, fireHoldToggle],
   );
-
   const handleHoldPointerMove = useCallback(
     (e: React.PointerEvent) => {
       if (!holdTimerRef.current) return;
-      if ((e.buttons & 1) === 0) {
-        clearHoldTimer();
-        return;
-      }
+      if ((e.buttons & 1) === 0) return clearHoldTimer();
       const dx = Math.abs(e.clientX - holdPosRef.current.x);
       const dy = Math.abs(e.clientY - holdPosRef.current.y);
       if (dx > 5 || dy > 5) clearHoldTimer();
     },
     [clearHoldTimer],
   );
-
   const handleHoldPointerUp = useCallback(
     (e: React.PointerEvent) => {
       clearHoldTimer();
@@ -136,157 +107,65 @@ const Z_DRAG = 900;
     },
     [clearHoldTimer],
   );
-
-  const handleHeaderPointerDown = useCallback(
-    (e: React.PointerEvent) => {
-      if (e.button !== 0) return;
-      pointerPosRef.current = { x: e.clientX, y: e.clientY };
-      longPressTimerRef.current = setTimeout(() => {
-        longPressTimerRef.current = null;
-        listeners?.onPointerDown(e);
-      }, 25);
-    },
-    [listeners],
-  );
-
+  const handleHeaderPointerDown = useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    pointerPosRef.current = { x: e.clientX, y: e.clientY };
+    // dnd-kit escucha en el tirador; este timeout solo evita que un clic
+    // simple (sin movimiento) dispare un arrastre.
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTimerRef.current = null;
+    }, 25);
+  }, []);
   const handleHeaderPointerUp = useCallback(() => {
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
   }, []);
-
   const handleHeaderPointerMove = useCallback((e: React.PointerEvent) => {
     if (!longPressTimerRef.current) return;
-    if ((e.buttons & 1) === 0) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-      return;
-    }
+    if ((e.buttons & 1) === 0) return handleHeaderPointerUp();
     const dx = Math.abs(e.clientX - pointerPosRef.current.x);
     const dy = Math.abs(e.clientY - pointerPosRef.current.y);
-    if (dx > 5 || dy > 5) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-  }, []);
-
+    if (dx > 5 || dy > 5) handleHeaderPointerUp();
+  }, [handleHeaderPointerUp]);
   useEffect(() => {
     return () => {
       if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
       if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
     };
   }, []);
-
-  /*
-   * width/height se animan con transition solo cuando el cambio NO viene de un
-   * resize en curso. Durante el arrastre del tirador, una transition sobre
-   * width/height pelea con el raton: el widget persigue al cursor con retardo y
-   * cada frame recalcula layout. Con la transition desactivada el resize es
-   * directo y solo se paga el layout inevitable del reflujo del contenido.
-   *
-   * La posicion (left/top) nunca se anima: el drag usa transform, que va por
-   * compositor y no dispara layout.
-   */
-  const style: React.CSSProperties = {
-    position: 'absolute',
-    left: position.x,
-    top: position.y,
-    width: size.w,
-    height: collapsed ? HEADER_HEIGHT : size.h,
-    zIndex: isDragging ? Z_DRAG : ((config.zIndex as number) ?? zIndex ?? Z_BASE),
-    opacity: isDragging ? 0.25 : 1,
-    pointerEvents: isDragging ? 'none' : undefined,
-    transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined,
-    transition: isResizing ? 'none' : 'width 0.15s ease-in-out, height 0.15s ease-in-out',
-  };
-
-  const handleResizeStart = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsResizing(true);
-      const startX = e.clientX;
-      const startY = e.clientY;
-      const startW = size.w;
-      const startH = size.h;
-
-      let raf = 0;
-      let pending: { x: number; y: number } | null = null;
-
-      // El contenido de un widget tiene que reflujo cuando cambia su tamano, asi que
-      // no se puede evitar el layout en esta operacion. Lo que si se evita es disparar
-      // mas de un layout por frame: mousemove llega mas seguido que la pantalla.
-      // requestAnimationFrame coalesce los eventos y aplica solo el ultimo de cada frame.
-      const applyPending = () => {
-        raf = 0;
-        if (!pending) return;
-        const { x, y } = pending;
-        pending = null;
-        const newW = snapUpW(Math.max(minSize.w, startW + x - startX));
-        const newH = snapUpH(Math.max(minSize.h, startH + y - startY));
-        resizeStateRef.current = { w: newW, h: newH };
-        setSize({ w: newW, h: newH });
-      };
-
-      const handleMouseMove = (me: MouseEvent) => {
-        if ((me.buttons & 1) === 0) {
-          handleMouseUp();
-          return;
-        }
-        pending = { x: me.clientX, y: me.clientY };
-        if (!raf) raf = requestAnimationFrame(applyPending);
-      };
-
-      const handleMouseUp = () => {
-        if (raf) {
-          cancelAnimationFrame(raf);
-          raf = 0;
-        }
-        applyPending();
-        setIsResizing(false);
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-        window.removeEventListener('blur', handleBlur);
-        onResize(id, resizeStateRef.current.w, resizeStateRef.current.h);
-      };
-
-      const handleBlur = () => handleMouseUp();
-
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      window.addEventListener('blur', handleBlur);
-    },
-    [id, size, onResize, minSize],
-  );
-
-  const handleConfigChangeWrapped = useCallback(
-    (newConfig: Record<string, unknown>) => onConfigChange(id, newConfig),
-    [id, onConfigChange],
-  );
-
   useEffect(() => {
     const off = widgetBus.on('timer-highlight', (data) => {
       if (data.widgetId !== id) return;
       setHighlighted(true);
       setTimeout(() => setHighlighted(false), 1500);
     });
-    return () => { off(); };
+    return () => {
+      off();
+    };
   }, [id]);
-
+  const handleConfigChangeWrapped = useCallback(
+    (newConfig: Record<string, unknown>) => onConfigChange(id, newConfig),
+    [id, onConfigChange],
+  );
   return (
     <div
-      ref={setNodeRef}
-      style={style}
-      className={`group overflow-hidden rounded-lg border transition-all duration-300 ${
+      data-widget-id={id}
+      className={`group flex h-full w-full flex-col overflow-hidden rounded-lg border transition-all duration-300 ${
         highlighted
-          ? 'border-cyan-400 shadow-[0_8px_28px_-6px_rgba(34,211,238,0.25),inset_0_1px_0_rgba(255,255,255,0.07)]'
-          : 'border-gray-700/80 bg-gray-800/90 shadow-[0_4px_16px_-4px_rgba(5,8,14,0.65),inset_0_1px_0_rgba(255,255,255,0.045)]'
+          ? 'border-p2 shadow-[0_8px_28px_-6px_rgba(217,164,65,0.22),inset_0_1px_0_rgba(255,255,255,0.07)]'
+          : isDragging
+            ? 'border-p2 bg-gray-800/90 shadow-[0_18px_44px_-10px_rgba(217,164,65,0.32),inset_0_1px_0_rgba(255,255,255,0.07)]'
+            : 'border-gray-600 bg-gray-800/90 shadow-[0_8px_24px_-6px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.08)]'
       }`}
       onWheel={(e) => e.stopPropagation()}
     >
       <div
-        className={`w-full flex items-center h-[25px] select-none ${collapsed ? 'bg-blue-500/10' : 'bg-transparent'}`}
+        className={`flex w-full shrink-0 items-center select-none ${
+          isDragging ? 'bg-p2/15' : collapsed ? 'bg-p2/10' : 'bg-transparent'
+        }`}
+        style={{ height: HEADER_HEIGHT }}
         onPointerDown={handleHoldPointerDown}
         onPointerMove={handleHoldPointerMove}
         onPointerUp={handleHoldPointerUp}
@@ -294,13 +173,31 @@ const Z_DRAG = 900;
         onLostPointerCapture={clearHoldTimer}
       >
         <span
-          {...attributes}
-          className="cursor-grab active:cursor-grabbing shrink-0 flex items-center self-stretch pl-[6px] pr-1"
-          style={{ touchAction: 'none' }}
-          onPointerDown={handleHeaderPointerDown}
-          onPointerUp={handleHeaderPointerUp}
-          onPointerCancel={handleHeaderPointerUp}
-          onPointerMove={handleHeaderPointerMove}
+          {...dragHandleProps}
+          ref={dragHandleRef}
+          className="flex shrink-0 cursor-grab touch-none items-center self-stretch pl-[6px] pr-1 active:cursor-grabbing"
+          /*
+           * Ojo con el orden: los handlers de dnd-kit (`dragHandleProps`) traen
+           * su propio onPointerDown, y este onPointerDown lo SOBREESCRIBE. Si
+           * se pierde, el sensor nunca arranca y el widget no se puede mover.
+           * Por eso se componen en vez de reemplazarse.
+           */
+          onPointerDown={(e) => {
+            handleHeaderPointerDown(e);
+            dragHandleProps.onPointerDown?.(e);
+          }}
+          onPointerUp={(e) => {
+            handleHeaderPointerUp();
+            dragHandleProps.onPointerUp?.(e);
+          }}
+          onPointerCancel={(e) => {
+            handleHeaderPointerUp();
+            dragHandleProps.onPointerCancel?.(e);
+          }}
+          onPointerMove={(e) => {
+            handleHeaderPointerMove(e);
+            dragHandleProps.onPointerMove?.(e);
+          }}
         >
           <FiMoreVertical size={15} className="text-gray-500" />
         </span>
@@ -323,43 +220,18 @@ const Z_DRAG = 900;
             e.stopPropagation();
             handleHoldPointerUp(e);
           }}
-          className="flex-1 min-w-0 rounded-sm border border-transparent bg-transparent text-sm font-medium tracking-[-0.01em] text-white truncate cursor-text focus:outline-none focus-visible:border-blue-500/70 focus-visible:bg-blue-500/5 focus-visible:ring-1 focus-visible:ring-blue-500/40"
+          className="min-w-0 flex-1 cursor-text truncate border border-transparent bg-transparent text-sm font-medium tracking-[-0.01em] text-white focus:border-gray-400 focus:bg-gray-700/40 focus:ring-1 focus:ring-gray-500/40 focus:outline-none"
           placeholder={label}
           aria-label="Widget title"
         />
-        <div className="flex items-center shrink-0 ml-1 rounded bg-gray-800/50 ring-1 ring-gray-600/40 divide-x divide-gray-700/60">
-          {(() => {
-            const isLayered = (config.layered as boolean) ?? false;
-            return (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const nextZ = isLayered
-                    ? Z_BASE
-                    : Math.min(maxZIndex + 1, Z_MAX) || Z_TOP;
-                  onConfigChange(id, {
-                    ...config,
-                    zIndex: nextZ,
-                    layered: !isLayered,
-                  });
-                }}
-                className={`relative flex h-6 w-6 items-center justify-center transition-all duration-150 active:scale-90 after:pointer-events-auto after:absolute after:-inset-1 after:content-[''] ${isLayered ? 'bg-blue-500/10 text-blue-400' : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'}`}
-                title={isLayered ? 'Bring to back' : 'Bring to front'}
-                aria-label={isLayered ? 'Bring to back' : 'Bring to front'}
-                aria-pressed={isLayered}
-              >
-                <FiLayers size={15} />
-              </button>
-            );
-          })()}
+        <div className="ml-1 flex shrink-0 items-center divide-x divide-gray-700/60 bg-gray-800/50 ring-1 ring-gray-600/40">
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
               onConfigChange(id, { ...config, collapsed: !collapsed });
             }}
-            className={`relative flex h-6 w-6 items-center justify-center transition-all duration-150 active:scale-90 after:pointer-events-auto after:absolute after:-inset-1 after:content-[''] ${collapsed ? 'bg-blue-500/10 text-blue-400' : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'}`}
+            className={`relative flex h-6 w-6 items-center justify-center transition-all duration-150 after:pointer-events-auto after:absolute after:-inset-1 after:content-[''] active:scale-90 ${collapsed ? 'bg-p2/10 text-p2' : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'}`}
             title={collapsed ? 'Expand widget' : 'Collapse widget'}
             aria-label={collapsed ? 'Expand widget' : 'Collapse widget'}
             aria-pressed={collapsed}
@@ -372,7 +244,7 @@ const Z_DRAG = 900;
               e.stopPropagation();
               onDelete(id);
             }}
-            className="relative flex h-6 w-6 items-center justify-center text-gray-500 transition-all duration-150 active:scale-90 after:pointer-events-auto after:absolute after:-inset-1 after:content-[''] hover:bg-red-500/10 hover:text-red-400"
+            className="relative flex h-6 w-6 items-center justify-center text-gray-500 transition-all duration-150 after:pointer-events-auto after:absolute after:-inset-1 after:content-[''] hover:bg-danger/10 hover:text-danger active:scale-90"
             title="Delete widget"
             aria-label="Delete widget"
           >
@@ -380,52 +252,31 @@ const Z_DRAG = 900;
           </button>
         </div>
       </div>
-
       {!collapsed && (
-        <>
-          <div
-            className="overflow-hidden p-3"
-            style={{ height: 'calc(100% - 25px)' }}
-            onPointerDown={handleHoldPointerDown}
-            onPointerMove={handleHoldPointerMove}
-            onPointerUp={handleHoldPointerUp}
-            onPointerCancel={handleHoldPointerUp}
-            onLostPointerCapture={clearHoldTimer}
+        <div
+          className="min-h-0 flex-1 overflow-hidden p-3"
+          onPointerDown={handleHoldPointerDown}
+          onPointerMove={handleHoldPointerMove}
+          onPointerUp={handleHoldPointerUp}
+          onPointerCancel={handleHoldPointerUp}
+          onLostPointerCapture={clearHoldTimer}
+        >
+          <Suspense
+            fallback={
+              <div className="flex flex-col gap-2" aria-hidden="true">
+                <div className="skeleton h-3 w-3/4 rounded" />
+                <div className="skeleton h-3 w-1/2 rounded" />
+                <div className="skeleton h-3 w-2/3 rounded" />
+              </div>
+            }
           >
-            <Suspense
-              fallback={
-                <div className="flex flex-col gap-2" aria-hidden="true">
-                  <div className="skeleton h-3 w-3/4 rounded" />
-                  <div className="skeleton h-3 w-1/2 rounded" />
-                  <div className="skeleton h-3 w-2/3 rounded" />
-                </div>
-              }
-            >
-              <WidgetComponent config={config} onConfigChange={handleConfigChangeWrapped} widgetId={id} />
-            </Suspense>
-          </div>
-
-          <button
-            type="button"
-            aria-label="Resize widget"
-            onMouseDown={handleResizeStart}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                handleResizeStart(e as unknown as React.MouseEvent);
-              }
-            }}
-            className={`absolute bottom-0 right-0 h-4 w-4 cursor-nwse-resize ${isResizing ? 'bg-blue-200' : ''}`}
-            style={{
-              backgroundImage: 'linear-gradient(135deg, transparent 50%, #999 50%)',
-              backgroundSize: '8px 8px',
-              backgroundPosition: 'bottom right',
-              backgroundRepeat: 'no-repeat',
-              border: 'none',
-              padding: 0,
-            }}
-          />
-        </>
+            <WidgetComponent
+              config={config}
+              onConfigChange={handleConfigChangeWrapped}
+              widgetId={id}
+            />
+          </Suspense>
+        </div>
       )}
     </div>
   );

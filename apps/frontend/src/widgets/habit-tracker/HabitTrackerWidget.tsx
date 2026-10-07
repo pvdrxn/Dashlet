@@ -196,7 +196,7 @@ const SortableHabit = memo(function SortableHabit({
                 const val = e.target.value === '' ? 0 : Number(e.target.value);
                 logValue(habit.id, today, val);
               }}
-              className="w-8 rounded border border-gray-600 bg-gray-700 px-1 py-0.5 text-xs text-gray-200 outline-none focus:border-blue-400 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              className="w-8 rounded border border-gray-600 bg-gray-700 px-1 py-0.5 text-xs text-gray-200 outline-none focus:border-gray-400 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               aria-label={`Log value for "${habit.name}"`}
             />
             {habit.unit && (
@@ -208,7 +208,7 @@ const SortableHabit = memo(function SortableHabit({
             type="checkbox"
             checked={isCompletedToday}
             onChange={() => toggleToday(habit.id)}
-            className="ml-1 h-5 w-5 shrink-0 cursor-pointer appearance-none rounded border border-gray-500 bg-gray-700 transition-colors checked:border-blue-600 checked:bg-blue-600 checked:bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2016%2016%27%20fill=%27none%27%20stroke=%27white%27%20stroke-width=%272.5%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%3E%3Cpath%20d=%27M3.5%208.5l3%203%206-7%27/%3E%3C/svg%3E')] checked:bg-center checked:bg-no-repeat checked:bg-[length:14px_14px] hover:border-gray-400"
+            className="ml-1 h-5 w-5 shrink-0 cursor-pointer appearance-none rounded border border-gray-500 bg-gray-700 transition-colors checked:border-gray-400 checked:bg-gray-400 checked:bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2016%2016%27%20fill=%27none%27%20stroke=%27white%27%20stroke-width=%272.5%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%3E%3Cpath%20d=%27M3.5%208.5l3%203%206-7%27/%3E%3C/svg%3E')] checked:bg-center checked:bg-no-repeat checked:bg-[length:14px_14px] hover:border-gray-400"
             aria-label={`Mark "${habit.name}" as completed`}
           />
         )}
@@ -233,7 +233,7 @@ const SortableHabit = memo(function SortableHabit({
                   setEditing(false);
                 }
               }}
-              className="flex-1 rounded border border-blue-500 bg-gray-800 px-1 py-0.5 text-sm text-gray-200 outline-none focus-visible:ring-1 focus-visible:ring-blue-500/60 min-w-0 truncate"
+              className="flex-1 rounded border border-gray-500 bg-gray-800 px-1 py-0.5 text-sm text-gray-200 outline-none focus-visible:ring-1 focus-visible:ring-gray-500/60 min-w-0 truncate"
               aria-label="Edit habit name"
             />
           ) : (
@@ -256,7 +256,7 @@ const SortableHabit = memo(function SortableHabit({
             </button>
           )}
           {streak >= 2 && (
-            <span className="shrink-0 text-sm font-bold text-orange-400 tabular-nums">
+            <span className="shrink-0 text-sm font-bold text-p2 tabular-nums">
               &#x1F525;{streak}
             </span>
           )}
@@ -264,7 +264,7 @@ const SortableHabit = memo(function SortableHabit({
         <button
           type="button"
           onClick={() => removeHabit(habit.id)}
-          className="invisible group-hover/item:visible text-xs text-gray-400 hover:text-red-400 mr-1"
+          className="invisible group-hover/item:visible text-xs text-gray-400 hover:text-danger mr-1"
         >
           &#x2715;
         </button>
@@ -308,11 +308,11 @@ const SortableHabit = memo(function SortableHabit({
                       toggleDate(habit.id, cell.date);
                     }
                   }}
-                  className={`flex items-center justify-center w-5 h-5 rounded-sm text-[10px] cursor-pointer select-none ${
-                    cell.date === today ? 'ring-1 ring-green-500' : ''
+                  className={`flex items-center justify-center w-5 h-5 rounded text-[10px] cursor-pointer select-none ${
+                    cell.date === today ? 'ring-1 ring-p2' : ''
                   } ${
                     completed
-                      ? 'bg-green-600 text-white hover:bg-green-500'
+                      ? 'bg-p2 text-gray-900 hover:bg-p2/85'
                       : 'bg-gray-700 text-gray-400 hover:bg-gray-600 hover:text-gray-100'
                   }`}
                   title={cell.date}
@@ -518,7 +518,7 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({
           spellCheck={false}
           onChange={(e) => setNewName(e.target.value)}
           placeholder="Add a habit..."
-          className="flex-1 min-w-0 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-200 outline-none focus:border-blue-400 placeholder-gray-500"
+          className="flex-1 min-w-0 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-200 outline-none focus:border-gray-400 placeholder-gray-500"
           aria-label="New habit name"
         />
         <button
@@ -526,7 +526,7 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({
           onClick={() => setNewMode(newMode === 'binary' ? 'quantitative' : 'binary')}
           className={`shrink-0 rounded px-1.5 py-1 text-[9px] font-medium transition-colors ${
             newMode === 'quantitative'
-              ? 'bg-blue-600 text-white'
+              ? 'bg-gray-600 text-white'
               : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
           }`}
         >
@@ -540,7 +540,7 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({
               step={1}
               value={newTarget}
               onChange={(e) => setNewTarget(Number(e.target.value) || 1)}
-              className="w-10 shrink-0 rounded border border-gray-600 bg-gray-700 px-1 py-1 text-[9px] text-gray-200 outline-none focus:border-blue-400 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              className="w-10 shrink-0 rounded border border-gray-600 bg-gray-700 px-1 py-1 text-[9px] text-gray-200 outline-none focus:border-gray-400 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               aria-label="Target value"
             />
             <input
@@ -548,7 +548,7 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({
               spellCheck={false}
               onChange={(e) => setNewUnit(e.target.value)}
               placeholder="unit"
-              className="w-12 shrink-0 rounded border border-gray-600 bg-gray-700 px-1 py-1 text-[9px] text-gray-200 outline-none focus:border-blue-400 placeholder-gray-500"
+              className="w-12 shrink-0 rounded border border-gray-600 bg-gray-700 px-1 py-1 text-[9px] text-gray-200 outline-none focus:border-gray-400 placeholder-gray-500"
               aria-label="Unit"
             />
           </>
@@ -556,7 +556,7 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({
         <button
           type="submit"
           title="Add habit"
-          className="shrink-0 rounded bg-blue-600 p-1 text-white hover:bg-blue-500 disabled:opacity-50"
+          className="shrink-0 rounded bg-gray-600 p-1 text-white hover:bg-gray-500 disabled:opacity-50"
           disabled={!newName.trim()}
           aria-label="Add habit"
         >
@@ -566,3 +566,4 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({
     </div>
   );
 });
+

@@ -110,7 +110,7 @@ export function TaskPickerModal({ onClose }: TaskPickerModalProps) {
                         <button
                           type="button"
                           onClick={() => handleSelect(item, widget.id)}
-                          className="flex w-full items-center gap-2 rounded-md border border-gray-700 bg-gray-900 p-2.5 text-left transition-colors hover:border-cyan-600 hover:bg-gray-750"
+                          className="flex w-full items-center gap-2 rounded border border-gray-700 bg-gray-900 p-2.5 text-left transition-colors hover:border-gray-500 hover:bg-gray-800"
                         >
                           <FiClock size={14} className="shrink-0 text-gray-500" />
                           <span className="min-w-0 flex-1 truncate text-sm text-gray-200">
