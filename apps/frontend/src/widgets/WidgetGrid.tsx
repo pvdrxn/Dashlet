@@ -11,6 +11,7 @@ import {
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { FiTrash2, FiRotateCcw, FiGrid } from 'react-icons/fi';
 import { WidgetFrame, COLLAPSED_HEIGHT } from './WidgetFrame';
+import { disposePomodoroTimer } from './pomodoro/timer';
 import { getWidget } from './registry';
 import type { WidgetData, Position } from './types';
 import type { DragHandleProps } from './WidgetFrame';
@@ -714,6 +715,17 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
   const handleDelete = useCallback(
     (id: string) => {
       const widget = widgetsRef.current.find((w) => w.id === id);
+      /*
+       * El reloj del pomodoro vive fuera del componente (ver `pomodoro/timer.ts`),
+       * asi que desmontar el widget NO lo para: eso es lo que permite que siga
+       * corriendo retraido. Borrarlo es la unica salida, asi que hay que soltar
+       * el registro explicito o el tick seguiria escribiendo contra un widget
+       * que ya no existe.
+       *
+       * El import es arriba del archivo, no perezoso: el registro tiene que estar
+       * vivo antes del primer tick.
+       */
+      disposePomodoroTimer(id);
       api.deleteWidget(id);
       setWidgets((prev) => normalizeLayout(prev.filter((w) => w.id !== id), cols));
       if (!widget) return;

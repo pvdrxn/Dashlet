@@ -2,172 +2,21 @@ import { memo, useCallback, useRef, useEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { FiArrowLeft, FiPause, FiPlay, FiRotateCcw, FiSettings, FiCheck, FiX, FiClock, FiEdit } from 'react-icons/fi';
 import { widgetBus } from '../widget-bus';
-
-let audioCtx: AudioContext | null = null;
-
-function getAudioCtx(): AudioContext {
-  if (!audioCtx) audioCtx = new AudioContext();
-  if (audioCtx.state === 'suspended') audioCtx.resume();
-  return audioCtx;
-}
-
-function playDing() {
-  try {
-    const ctx = getAudioCtx();
-    const t = ctx.currentTime;
-
-    const osc1 = ctx.createOscillator();
-    const g1 = ctx.createGain();
-    osc1.connect(g1); g1.connect(ctx.destination);
-    osc1.frequency.value = 880; osc1.type = 'sine';
-    g1.gain.setValueAtTime(0.3, t);
-    g1.gain.exponentialRampToValueAtTime(0.01, t + 0.5);
-    osc1.start(t); osc1.stop(t + 0.5);
-
-    const osc2 = ctx.createOscillator();
-    const g2 = ctx.createGain();
-    osc2.connect(g2); g2.connect(ctx.destination);
-    osc2.frequency.value = 1100; osc2.type = 'sine';
-    g2.gain.setValueAtTime(0.3, t + 0.6);
-    g2.gain.exponentialRampToValueAtTime(0.01, t + 1.1);
-    osc2.start(t + 0.6); osc2.stop(t + 1.1);
-  } catch { /* */ }
-}
-
-function playChime() {
-  try {
-    const ctx = getAudioCtx();
-    const t = ctx.currentTime;
-    const notes = [523, 659, 784];
-    notes.forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const g = ctx.createGain();
-      osc.connect(g); g.connect(ctx.destination);
-      osc.frequency.value = freq; osc.type = 'sine';
-      const start = t + i * 0.2;
-      g.gain.setValueAtTime(0.25, start);
-      g.gain.exponentialRampToValueAtTime(0.01, start + 0.6);
-      osc.start(start); osc.stop(start + 0.6);
-    });
-  } catch { /* */ }
-}
-
-function playDigital() {
-  try {
-    const ctx = getAudioCtx();
-    const t = ctx.currentTime;
-    for (let i = 0; i <3; i++) {
-      const osc = ctx.createOscillator();
-      const g = ctx.createGain();
-      osc.connect(g); g.connect(ctx.destination);
-      osc.frequency.value = 1000; osc.type = 'square';
-      const start = t + i * 0.15;
-      g.gain.setValueAtTime(0.15, start);
-      g.gain.exponentialRampToValueAtTime(0.01, start + 0.1);
-      osc.start(start); osc.stop(start + 0.1);
-    }
-  } catch { /* */ }
-}
-
-function playSound(name: string) {
-  if (name === 'chime') playChime();
-  else if (name === 'digital') playDigital();
-  else playDing();
-}
-
-function sendNotification() {
-  try {
-    if (Notification.permission === 'granted') {
-      new Notification('Pomodoro', { body: 'Timer finished!' });
-    } else if (Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
-  } catch { /* */ }
-}
-
-interface PomodoroConfig {
-  technique: Technique;
-  workMinutes: number;
-  restMinutes: number;
-  longRestMinutes: number;
-  alarmSound: string;
-  state: 'idle' | 'running' | 'paused' | 'break';
-  remainingSeconds: number;
-  elapsedSeconds: number;
-  cycleCount: number;
-  phase: 'work' | 'break';
-  linkedTaskId?: string;
-  linkedTaskName?: string;
-  timerIndex?: number;
-  title?: string;
-}
+import {
+  TECHNIQUES,
+  TECHNIQUE_KEYS,
+  formatTimeShort,
+  formatTimeCountup,
+  normalizeConfig,
+  playSound,
+  type Technique,
+} from './shared';
+import { registerPomodoroTimer, unregisterPomodoroTimer } from './timer';
 
 interface PomodoroWidgetProps {
   config: Record<string, unknown>;
   onConfigChange: (config: Record<string, unknown>) => void;
   widgetId?: string;
-}
-
-function formatTimeShort(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  if (s === 0) return `${m}m`;
-  return `${m}m ${String(s).padStart(2, '0')}s`;
-}
-
-function formatTimeCountup(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  if (h > 0) return `${h}h ${m}m ${String(s).padStart(2, '0')}s`;
-  return `${m}m ${String(s).padStart(2, '0')}s`;
-}
-
-type Technique = 'pomodoro' | 'custom' | '52-17' | 'countup';
-
-interface TechniquePreset {
-  label: string;
-  workMinutes: number;
-  restMinutes: number;
-  longRestMinutes: number;
-}
-
-const TECHNIQUES: Record<Technique, TechniquePreset> = {
-  'pomodoro':  { label: 'Pomodoro', workMinutes: 25, restMinutes: 5,  longRestMinutes: 15 },
-  'custom':    { label: 'Custom',   workMinutes: 30, restMinutes: 10, longRestMinutes: 20 },
-  '52-17':     { label: '52/17',    workMinutes: 52, restMinutes: 17, longRestMinutes: 17 },
-  'countup':   { label: 'Flow',     workMinutes: 0,  restMinutes: 0,  longRestMinutes: 0 },
-};
-
-const TECHNIQUE_KEYS: Technique[] = ['pomodoro', 'custom', '52-17', 'countup'];
-
-function normalizeConfig(config: Record<string, unknown>): PomodoroConfig {
-  const technique = TECHNIQUE_KEYS.includes(config.technique as Technique)
-    ? (config.technique as Technique)
-    : 'pomodoro';
-  const preset = TECHNIQUES[technique];
-  return {
-    technique,
-    workMinutes: typeof config.workMinutes === 'number' ? config.workMinutes : preset.workMinutes,
-    restMinutes: typeof config.restMinutes === 'number' ? config.restMinutes : preset.restMinutes,
-    longRestMinutes: typeof config.longRestMinutes === 'number' ? config.longRestMinutes : preset.longRestMinutes,
-    alarmSound: typeof config.alarmSound === 'string' ? config.alarmSound : 'ding',
-    state:
-      config.state === 'running' || config.state === 'paused' || config.state === 'break'
-        ? config.state
-        : 'idle',
-    phase: config.phase === 'break' ? 'break' : 'work',
-    remainingSeconds:
-      typeof config.remainingSeconds === 'number'
-        ? config.remainingSeconds
-        : (typeof config.workMinutes === 'number' ? config.workMinutes : preset.workMinutes) * 60,
-    elapsedSeconds: typeof config.elapsedSeconds === 'number' ? config.elapsedSeconds : 0,
-    cycleCount: typeof config.cycleCount === 'number' ? config.cycleCount : 0,
-    linkedTaskId: typeof config.linkedTaskId === 'string' ? config.linkedTaskId : undefined,
-    linkedTaskName: typeof config.linkedTaskName === 'string' ? config.linkedTaskName : undefined,
-    timerIndex: typeof config.timerIndex === 'number' ? config.timerIndex : undefined,
-    title: typeof config.title === 'string' ? config.title : undefined,
-  };
 }
 
 const RING_RADIUS = 58;
@@ -185,17 +34,32 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
   const [alarmPos, setAlarmPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const [pendingTechnique, setPendingTechnique] = useState<Technique | null>(null);
 
-  const startTimeRef = useRef(0);
   const configRef = useRef(c);
-  const remainingRef = useRef(remainingSeconds);
   const onConfigChangeRef = useRef(onConfigChange);
-  const workerRef = useRef<Worker | null>(null);
-  const isRunningRef = useRef(state === 'running');
 
   configRef.current = c;
-  remainingRef.current = remainingSeconds;
   onConfigChangeRef.current = onConfigChange;
-  isRunningRef.current = state === 'running';
+
+  /*
+   * El reloj vive en `./timer`, no aca. Este efecto es lo unico que lo conecta:
+   * se registra en cada cambio de config y se saca el callback al desmontar.
+   *
+   * Sacar el callback NO para el reloj -- eso es lo que hace que el pomodoro siga
+   * corriendo con el widget retraido, donde el componente no esta montado. Para
+   *olo hace falta `disposePomodoroTimer`, que se llama al borrar el widget.
+   *
+   * El unico canal es el `state` del config: pausa, reset y cambio de tecnica
+   * cambian el `state` y el reloj se para solo.
+   *
+   * El `config` va como dependencia a proposito: el registro tiene que enterarse
+   * de cada cambio para decidir si corre o no. Es un efecto sin estado propio y
+   * sin DOM, asi que el costo es nulo.
+   */
+  useEffect(() => {
+    if (!widgetId) return;
+    registerPomodoroTimer(widgetId, config, onConfigChange);
+    return () => unregisterPomodoroTimer(widgetId);
+  }, [widgetId, config, onConfigChange]);
 
   useEffect(() => {
     if (!alarmOpen) return;
@@ -242,85 +106,6 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
     return () => { offIdx(); };
   }, [widgetId]);
 
-  useEffect(() => {
-    const blob = new Blob([
-      `let i = null; onmessage = function(e) {
-        if (e.data.t === 'start' && !i) { i = setInterval(() => postMessage('t'), 1000); }
-        if (e.data.t === 'stop' && i) { clearInterval(i); i = null; }
-      };`,
-    ], { type: 'application/javascript' });
-    const w = new Worker(URL.createObjectURL(blob));
-    w.onmessage = () => {
-      if (!isRunningRef.current) return;
-      const curCfg = configRef.current;
-
-      if (curCfg.technique === 'countup') {
-        const newElapsed = curCfg.elapsedSeconds + 1;
-        onConfigChangeRef.current({ ...curCfg, elapsedSeconds: newElapsed });
-        if (curCfg.linkedTaskId) {
-          widgetBus.emit('timer:tick', { taskId: curCfg.linkedTaskId, elapsed: newElapsed, remaining: 0 });
-        }
-        return;
-      }
-
-      const totalSecs = curCfg.phase === 'break' ? curCfg.restMinutes * 60 : curCfg.workMinutes * 60;
-      const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
-      const newRemaining = Math.max(0, totalSecs - elapsed);
-
-      if (newRemaining <= 0) {
-        w.postMessage({ t: 'stop' });
-        playSound(curCfg.alarmSound);
-        sendNotification();
-        if (curCfg.linkedTaskId) {
-          widgetBus.emit('timer:complete', { taskId: curCfg.linkedTaskId });
-        }
-        if (curCfg.phase === 'work') {
-          const newCycle = curCfg.cycleCount + 1;
-          const isLongRest = newCycle % 4 === 0;
-          const breakDur = isLongRest ? curCfg.longRestMinutes : curCfg.restMinutes;
-          onConfigChangeRef.current({
-            ...curCfg,
-            state: 'break',
-            phase: 'break',
-            remainingSeconds: breakDur * 60,
-            cycleCount: newCycle,
-          });
-        } else {
-          onConfigChangeRef.current({
-            ...curCfg,
-            state: 'idle',
-            phase: 'work',
-            remainingSeconds: curCfg.workMinutes * 60,
-          });
-        }
-        return;
-      }
-
-      remainingRef.current = newRemaining;
-      onConfigChangeRef.current({ ...curCfg, remainingSeconds: newRemaining });
-      if (curCfg.linkedTaskId) {
-        widgetBus.emit('timer:tick', { taskId: curCfg.linkedTaskId, elapsed: totalSecs - newRemaining, remaining: newRemaining });
-      }
-    };
-    workerRef.current = w;
-    return () => w.terminate();
-  }, []);
-
-  useEffect(() => {
-    if (state === 'running') {
-      if (technique === 'countup') {
-        startTimeRef.current = Date.now() - elapsedSeconds * 1000;
-      } else {
-        const totalSecs = phase === 'break' ? restMinutes * 60 : workMinutes * 60;
-        const alreadyElapsed = totalSecs - remainingSeconds;
-        startTimeRef.current = Date.now() - alreadyElapsed * 1000;
-      }
-      workerRef.current?.postMessage({ t: 'start' });
-    } else {
-      workerRef.current?.postMessage({ t: 'stop' });
-    }
-  }, [state, workMinutes, restMinutes, phase, technique, elapsedSeconds]);
-
   const start = useCallback(() => {
     if (technique === 'countup') {
       onConfigChange({
@@ -335,7 +120,6 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
     const isBreak = phase === 'break' || state === 'break';
     const totalSecs = isBreak ? restMinutes * 60 : workMinutes * 60;
     const init = state === 'paused' ? remainingSeconds : totalSecs;
-    remainingRef.current = init;
     onConfigChange({
       ...config,
       state: 'running',
@@ -348,7 +132,6 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
   }, [state, phase, technique, remainingSeconds, workMinutes, restMinutes, linkedTaskId, linkedTaskName, config, onConfigChange]);
 
   const pause = useCallback(() => {
-    workerRef.current?.postMessage({ t: 'stop' });
     onConfigChange({ ...config, state: 'paused' });
     if (linkedTaskId) {
       widgetBus.emit('timer:pause', { taskId: linkedTaskId });
@@ -356,13 +139,11 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
   }, [config, linkedTaskId, onConfigChange]);
 
   const goSettings = useCallback(() => {
-    workerRef.current?.postMessage({ t: 'stop' });
     onConfigChange({ ...config, state: 'paused' });
     setView('settings');
   }, [config, onConfigChange]);
 
   const goBackAndReset = useCallback(() => {
-    workerRef.current?.postMessage({ t: 'stop' });
     onConfigChange({
       ...config,
       state: 'idle',
@@ -386,7 +167,6 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
 
   const applyTechnique = useCallback((tech: Technique) => {
     const preset = TECHNIQUES[tech];
-    workerRef.current?.postMessage({ t: 'stop' });
     onConfigChange({
       ...config,
       technique: tech,
@@ -435,7 +215,6 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
   }, []);
 
   const unlinkTask = useCallback(() => {
-    workerRef.current?.postMessage({ t: 'stop' });
     onConfigChange({
       ...config,
       linkedTaskId: undefined,
