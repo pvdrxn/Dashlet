@@ -125,13 +125,23 @@ export const DiaryWidget = memo(function DiaryWidget({ config, onConfigChange }:
           )}
         </div>
       )}
+      {/*
+        * Sin borde ni fondo propios: el marco del widget ya aporta los dos. Mismo
+        * criterio que en notas -- dos marcos del mismo gris, anidados, que no se
+        * notan hasta que ibas a escribir.
+        *
+        * El foco tampoco dibuja un cuadro: en un `textarea` Chrome matchea
+        * `:focus-visible` tambien con click de mouse, asi que un borde de foco
+        * aparece como un recuadro nuevo. Queda solo el anillo, igual que en notas,
+        * para que los dos widgets se lean igual.
+        */}
       <textarea
         value={content}
         onChange={(e) => handleChange(e.target.value)}
         placeholder="Write something..."
         spellCheck={false}
         aria-label="Diary entry content"
-        className="flex-1 resize-none rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm text-gray-200 outline-none focus:border-gray-400 placeholder-gray-500"
+        className="flex-1 resize-none px-2 py-1 text-sm text-gray-200 outline-none placeholder-gray-500 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-500/40"
       />
     </div>
   );

@@ -1,17 +1,189 @@
-import { memo, useState, useCallback, useRef, useEffect, Suspense } from 'react';
+﻿import { memo, useState, useCallback, useRef, useEffect, useSyncExternalStore, Suspense } from 'react';
 import { FiChevronUp, FiChevronDown, FiX, FiMoreVertical } from 'react-icons/fi';
 import { widgetBus } from './widget-bus';
+import { getWidget } from './registry';
+import { getLiveConfig, subscribeLiveConfig } from './live-config';
 import type { ComponentType } from './types';
 /** Alto de la barra de titulo. */
 const HEADER_HEIGHT = 25;
 /*
- * Alto de la caja con el widget retraido: la barra mas el borde del marco (1px
- * por lado, `border`). Vive aca porque el alto del header es de este archivo y
- * no conviene que la grilla vuelva a hardcodear 27.
+ * Geometria del readout retraido.
+ *
+ * El anillo va en la fila del readout y NO en el slot del Ã­cono del header. El
+ * header tiene 25px y no da: el anillo grande es radio 58 sobre caja 140 con
+ * trazo 5; escalado a 18px el trazo queda en 0.64px y no se ve. En la fila del
+ * readout entra holgado y el tiempo sigue a su derecha.
+ *
+ * El trazo NO es proporcional a proposito. Escalado da 1.43px a 40px, ilegible.
+ * El piso de 3px lo hace visible aunque lo vuelva mas grueso en relacion que el
+ * grande: es una desviacion deliberada, no un descuido.
  */
-export const COLLAPSED_HEIGHT = HEADER_HEIGHT + 2;
+const MINI_RING_R = 16;
+const MINI_RING_C = 2 * Math.PI * MINI_RING_R;
+const MINI_RING_SIZE = 40;
+/* Pista fija: dos widgets con 3/5 y 1/2 tienen que tener la misma para que los
+ * rellenos sean comparables. */
+const BAR_W = 'w-16';
+/*
+ * 8px: lo alto de las cifras de un `text-sm`. La barra pesa lo mismo que el
+ * numero que tiene al lado, en vez de leerse como una regla de pelo al lado de un
+ * dato solido.
+ */
+const BAR_H = 'h-2';
+
+function toneColor(tone: 'neutral' | 'p2' | 'p3' | undefined): string {
+  if (tone === 'p3') return 'var(--color-p3)';
+  if (tone === 'p2') return 'var(--color-p2)';
+  return 'var(--color-gray-400)';
+}
+
+function MiniRing({
+  done,
+  total,
+  tone,
+}: {
+  done: number;
+  total: number;
+  tone?: 'neutral' | 'p2' | 'p3';
+}) {
+  const pct = total > 0 ? Math.max(0, Math.min(1, done / total)) : 0;
+  return (
+    <svg
+      width={MINI_RING_SIZE}
+      height={MINI_RING_SIZE}
+      viewBox={`0 0 ${MINI_RING_SIZE} ${MINI_RING_SIZE}`}
+      className="-rotate-90 shrink-0"
+      aria-hidden="true"
+    >
+      <circle
+        cx={MINI_RING_SIZE / 2}
+        cy={MINI_RING_SIZE / 2}
+        r={MINI_RING_R}
+        fill="none"
+        stroke="var(--color-gray-700)"
+        strokeWidth={3}
+      />
+      <circle
+        cx={MINI_RING_SIZE / 2}
+        cy={MINI_RING_SIZE / 2}
+        r={MINI_RING_R}
+        fill="none"
+        stroke={toneColor(tone)}
+        strokeWidth={3}
+        strokeDasharray={MINI_RING_C}
+        strokeDashoffset={MINI_RING_C * (1 - pct)}
+        strokeLinecap="round"
+        /* 1s como el tick del reloj: el arco avanza al ritmo del segundo. */
+        className="transition-[stroke-dashoffset] duration-1000 ease-linear"
+      />
+    </svg>
+  );
+}
+
+/**
+ * El config que hay que dibujar.
+ *
+ * Los widgets que publican estado que avanza solo lo escriben en `live-config`,
+ * asi que con el retraido --sin componente montado-- las props quedan
+ * congeladas en el momento del colapso. Para el resto, `config` ya es la
+ * verdad y no hay nada que seguir.
+ *
+ * El hook se llama SIEMPRE, con suscripcion no-op si el widget no es vivo: si se
+ * llamara solo en el caso vivo se romperia la regla de hooks.
+ */
+function useEffectiveConfig(
+  type: string,
+  widgetId: string,
+  config: Record<string, unknown>,
+): Record<string, unknown> {
+  const live = getWidget(type)?.live === true;
+  const subscribe = useCallback(
+    (cb: () => void) => (live ? subscribeLiveConfig(cb) : () => {}),
+    [live],
+  );
+  const snapshot = useCallback(
+    () => (live ? getLiveConfig(widgetId) : null),
+    [live, widgetId],
+  );
+  return useSyncExternalStore(subscribe, snapshot, snapshot) ?? config;
+}
+
+function CollapsedBody({
+  type,
+  widgetId,
+  config,
+}: {
+  type: string;
+  widgetId: string;
+  config: Record<string, unknown>;
+}) {
+  const effective = useEffectiveConfig(type, widgetId, config);
+  const summary = getWidget(type)?.collapsedSummary?.(effective);
+  if (!summary) return null;
+  const bar = summary.bar && summary.bar.total > 0 ? summary.bar : null;
+  const ring = summary.ring && summary.ring.total > 0 ? summary.ring : null;
+  /*
+   * Sin `aria-hidden`: el readout es informacion, no decorado. "3/5" o "24:31"
+   * tienen que llegar a un lector de pantalla. Lo que si es decorativo es el
+   * anillo, que va marcado por separado y repite un dato que el texto ya dice.
+   */
+  return (
+    <div className="flex min-h-0 flex-1 items-center gap-2 px-3">
+      {ring && <MiniRing done={ring.done} total={ring.total} tone={summary.tone} />}
+      {/*
+       * Todo el readout va al MISMO tamano que el texto de tarea del todo-list
+       * (`text-sm`), que es donde el usuario ya lee texto de esta app. No hay
+       * salto tipografico entre valor y contexto: la jerarquia la carga el color
+       * -- el valor en el tono del widget, el contexto en `gray-500` -- y no un
+       * numero mas grande que otro.
+       *
+       * Formula y detalle se recortan antes que el valor: son lo menos
+       * importante de la fila, y un nombre de tarea cortado se lee peor que un
+       * "24:31" que se ve entero.
+       */}
+      {summary.formula && (
+        <span className="min-w-0 truncate text-sm text-gray-500">{summary.formula}</span>
+      )}
+      <span className="shrink-0 text-sm tabular-nums" style={{ color: toneColor(summary.tone) }}>
+        {summary.value}
+      </span>
+      {/*
+       * El objetivo va pegado al valor y en `gray-500`, no en el tono del widget:
+       * es una referencia, no el dato. La barra de "/" es lo que lo separa del
+       * reloj sin necesitar otra fila -- en el widget desplegado va debajo por lo
+       * mismo, pero alli no entra al lado a `text-xl`.
+       */}
+      {summary.target && (
+        <span className="shrink-0 text-sm tabular-nums text-gray-500">/ {summary.target}</span>
+      )}
+      {summary.detail && (
+        <span className="min-w-0 truncate text-sm text-gray-500">{summary.detail}</span>
+      )}
+      {bar && (
+        /*
+         * La barra va PEGADA al valor, no al extremo derecho de la fila. El `ml-auto`
+         * que la empujaba al borde se saco: dejaba un hueco entre el detalle y la
+         * barra, y en habitos se leia como que faltaba algo entre "3/5 hoy" y el
+         * relleno. Pegadas, el numero, su contexto y su avance se leen como una
+         * sola unidad.
+         */
+        <span className={`inline-block ${BAR_W} ${BAR_H} shrink-0 overflow-hidden bg-gray-700`}>
+          <span
+            className="block h-full"
+            style={{
+              width: `${Math.max(0, Math.min(100, (bar.done / bar.total) * 100))}%`,
+              background: 'var(--color-gray-400)',
+            }}
+          />
+        </span>
+      )}
+    </div>
+  );
+}
 interface WidgetFrameProps {
   id: string;
+  /** Clave del tipo en el registro. Solo la usa el readout retraido. */
+  type: string;
   config: Record<string, unknown>;
   component: ComponentType;
   onDelete: (id: string) => void;
@@ -33,10 +205,11 @@ export interface DragHandleProps {
 }
 /*
  * El frame ya no posiciona nada: la grilla define donde vive el widget y que
- * tamaño tiene. Solo quedan el encabezado, el arrastre y las acciones.
+ * tamaÃ±o tiene. Solo quedan el encabezado, el arrastre y las acciones.
  */
 export const WidgetFrame = memo(function WidgetFrame({
   id,
+  type,
   config,
   component: WidgetComponent,
   onDelete,
@@ -170,13 +343,13 @@ export const WidgetFrame = memo(function WidgetFrame({
       <div
         /*
          * `transition-colors` y no `transition-all`: lo unico que cambia de golpe
-         * acá es el fondo. El alto viene de un style inline y no debe animarse.
+         * acÃ¡ es el fondo. El alto viene de un style inline y no debe animarse.
          *
          * Comparte `--motion-sizing` con la transicion de la caja. No coincide
          * con el colapso de items del todo-list (150ms) y a proposito: son gestos
          * de escala distinta, una fila dentro de un widget contra el widget
          * entero. Lo que si tiene que coincidir es con la caja, que se retrae a la
-         * vez que esta barra se tiñe.
+         * vez que esta barra se tiÃ±e.
          */
         className={`flex w-full shrink-0 select-none items-center transition-colors duration-[var(--motion-sizing)] ease-in-out ${
           isDragging ? 'bg-p2/15' : collapsed ? 'bg-p2/10' : 'bg-transparent'
@@ -268,7 +441,15 @@ export const WidgetFrame = memo(function WidgetFrame({
           </button>
         </div>
       </div>
-      {!collapsed && (
+      {collapsed ? (
+        /*
+         * El readout ocupa lo que el cuerpo deja libre. Ojo: el cuerpo sigue
+         * DESMONTADO en el otro lado del ternario, y tiene que seguir asi. El
+         * readout es una funcion pura sobre el config --mas el store vivo para
+         * los que avanzan solos-- justamente para no tener que montar nada.
+         */
+        <CollapsedBody type={type} widgetId={id} config={config} />
+      ) : (
         <div
           className="min-h-0 flex-1 overflow-hidden p-3"
           onPointerDown={handleHoldPointerDown}

@@ -21,6 +21,12 @@ const ACTIVE_TAB_KEY = 'dashlet-active-tab';
 function App() {
   const [trashOpen, setTrashOpen] = useState(false);
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
+  /*
+   * Que timer pidio el selector. Va en un ref y no en estado porque solo se lee
+   * cuando el modal elige una tarea, y guardarlo en estado provocaria un render
+   * extra de toda la app en cada apertura.
+   */
+  const taskPickerTargetRef = useRef<string | undefined>(undefined);
   const [tabs, setTabs] = useState<TabDto[]>([]);
   const [tabsLoaded, setTabsLoaded] = useState(false);
   const [activeTabId, setActiveTabId] = useState<string | null>(() =>
@@ -87,7 +93,10 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const off = widgetBus.on('open-task-picker', () => setTaskPickerOpen(true));
+    const off = widgetBus.on('open-task-picker', (data) => {
+      taskPickerTargetRef.current = data.widgetId;
+      setTaskPickerOpen(true);
+    });
     return () => { off(); };
   }, []);
 
@@ -338,7 +347,11 @@ function App() {
       )}
       {taskPickerOpen && (
         <TaskPickerModal
-          onClose={() => setTaskPickerOpen(false)}
+          targetWidgetId={taskPickerTargetRef.current}
+          onClose={() => {
+            taskPickerTargetRef.current = undefined;
+            setTaskPickerOpen(false);
+          }}
         />
       )}
     </main>

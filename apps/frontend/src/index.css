@@ -1,4 +1,4 @@
-@import "tailwindcss";
+﻿@import "tailwindcss";
 
 /*
  * Geist variable (pesos 100-900), self-hosted.
@@ -73,7 +73,7 @@
 
   /*
    * DURACION de los cambios de medidas de un widget: el repliegue del marco y
-   * el teñido de la barra de titulo.
+   * el teÃ±ido de la barra de titulo.
    *
    * Vive como token porque lo consumen dos cosas en archivos distintos -- la
    * transicion en `.widget-sizing` y la clase del header en `WidgetFrame` -- y
@@ -334,7 +334,7 @@ body {
  * El foco va aparte y con el anillo gris del resto de la app. Encenderlo con el
  * ambar del hover encendia DOS botones a la vez -- el que tiene el foco y el que
  * esta bajo el mouse -- y no habia forma de saber cual se iba a activar. Son dos
- * señales distintas: el ambar dice "esto se agarra", el anillo dice "aca esta el
+ * seÃ±ales distintas: el ambar dice "esto se agarra", el anillo dice "aca esta el
  * teclado".
  */
 .add-widget-item:focus-visible {
@@ -372,8 +372,8 @@ body {
  *
  * La comparten los dos lugares donde aparece un placeholder: el hueco que queda
  * cuando se levanta un widget que ya esta en el canvas, y la celda de destino de
- * un widget nuevo que se arrastra desde el menu. Es la misma operacion — "aca va
- * a haber un widget" — asi que tiene que ser el mismo dibujo, no dos parecidos.
+ * un widget nuevo que se arrastra desde el menu. Es la misma operacion â€” "aca va
+ * a haber un widget" â€” asi que tiene que ser el mismo dibujo, no dos parecidos.
  *
  * Vive en una clase y no en dos classNames de Tailwind por eso: duplicado se
  * ve bien hoy y se separa con el tiempo, sin que nadie lo decida.

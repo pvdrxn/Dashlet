@@ -10,7 +10,7 @@ import {
 } from '@dnd-kit/core';
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { FiTrash2, FiRotateCcw, FiGrid } from 'react-icons/fi';
-import { WidgetFrame, COLLAPSED_HEIGHT } from './WidgetFrame';
+import { WidgetFrame } from './WidgetFrame';
 import { disposePomodoroTimer } from './pomodoro/timer';
 import { getWidget } from './registry';
 import type { WidgetData, Position } from './types';
@@ -261,7 +261,13 @@ function WidgetBox({
           left: liveBox.left,
           top: liveBox.top,
           width: liveBox.width,
-          height: collapsed ? COLLAPSED_HEIGHT : liveBox.height,
+          /*
+           * Retraido ocupa una celda entera, no 27px: el readout necesita el
+           * alto. Se dice `CELL_H` y no `liveBox.height` a proposito -- un widget
+           * retraido que venga de datos viejos puede tener `position.h` de 4 y se
+           * dibujaria como un widget grande con la barra de titulo pegada arriba.
+           */
+          height: collapsed ? CELL_H : liveBox.height,
           transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined,
           zIndex: isDragging ? 900 : undefined,
           cursor: isDragging ? 'grabbing' : undefined,
@@ -269,6 +275,7 @@ function WidgetBox({
       >
       <WidgetFrame
         id={widget.id}
+        type={widget.type}
         config={widget.config}
         component={def.component}
         onDelete={onDelete}

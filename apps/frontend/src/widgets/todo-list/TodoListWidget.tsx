@@ -1,4 +1,4 @@
-import {
+﻿import {
   Fragment,
   memo,
   useState,
@@ -12,6 +12,7 @@ import {
 } from 'react';
 import { FiChevronDown, FiChevronRight, FiCornerDownRight, FiPlus, FiTrash2, FiClock } from 'react-icons/fi';
 import { widgetBus } from '../widget-bus';
+import { linkedTaskIds } from '../pomodoro/timer';
 import {
   DndContext,
   closestCenter,
@@ -563,6 +564,11 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
   const [activeId, setActiveId] = useState<string | null>(null);
   const [completedExpanded, setCompletedExpanded] = useState(true);
   const [confirmClear, setConfirmClear] = useState(false);
+  /*
+   * Tarea a la que se pidio confirmacion antes de borrar, con su texto para el
+   * dialogo. `null` cuando no hay nada pendiente.
+   */
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; text: string } | null>(null);
 
   const items = useMemo(() => ensureUniqueIds(rawItems), [rawItems]);
   const childrenMap = useMemo(() => buildChildrenMap(items), [items]);
@@ -703,21 +709,61 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
         item.id === id ? { ...item, text } : item,
       ),
     });
+    /*
+     * Se avisa del renombre. El pomodoro guarda una COPIA del nombre en
+     * `linkedTaskName`, asi que sin esto seguia mostrando el texto viejo para
+     * siempre. Solo se emite al confirmar (blur o Enter), no por tecla.
+     */
+    widgetBus.emit('task:rename', { taskId: id, taskName: text });
   }, [config, items, onConfigChange]);
 
-  const removeItem = useCallback((id: string) => {
+  const deleteNow = useCallback((id: string) => {
+    /*
+     * UNA sola escritura. `activeTaskId` entra en el MISMO objeto que los items y
+     * no en una segunda llamada: dos escrituras con el mismo `config` viejo, la
+     * segunda traeria los items de antes y dejaria la tarea sin borrar.
+     */
     onConfigChange({
       ...config,
       items: items
         .filter((item) => item.id !== id)
         .map((item) => (item.parentId === id ? { ...item, parentId: undefined } : item)),
+      ...(config.activeTaskId === id ? { activeTaskId: undefined } : {}),
     });
+    /*
+     * El enlace con el pomodoro vive en el config del POMODORO y esta referencia al
+     * reves: borrar la tarea no lo deshace sola. Sin este aviso el reloj seguia
+     * corriendo y el readout retraido seguia mostrando el nombre de una tarea que ya
+     * no existe en ninguna parte.
+     */
+    widgetBus.emit('task:deleted', { taskId: id });
   }, [config, items, onConfigChange]);
+
+  const removeItem = useCallback(
+    (id: string) => {
+      /*
+       * Solo pide confirmacion si la tarea tiene un pomodoro atado. Confirmar
+       * siempre seria ruido: borrar una tarea suelta no tiene nada que avisar y el
+       * el modal ya de por si es un paso extra que la mayoria de las veces no corresponde.
+       */
+      if (!linkedTaskIds().has(id)) {
+        deleteNow(id);
+        return;
+      }
+      const text = items.find((item) => item.id === id)?.text ?? '';
+      setPendingDelete({ id, text });
+    },
+    [items, deleteNow],
+  );
 
   const clearCompleted = useCallback(() => {
     const removedIds = new Set(
       items.filter((item) => item.completed).map((item) => item.id),
     );
+    const activeId = config.activeTaskId;
+    const wasActive = typeof activeId === 'string' && removedIds.has(activeId);
+    /* Una sola escritura, igual que en `deleteNow`: `activeTaskId` va en el mismo
+     * objeto que los items. */
     onConfigChange({
       ...config,
       items: items
@@ -727,7 +773,17 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
             ? { ...item, parentId: undefined }
             : item,
         ),
+      ...(wasActive ? { activeTaskId: undefined } : {}),
     });
+    /*
+     * Aca NO hay modal aunque alguna de las borradas tenga un timer: el dialogo que
+     * ya se abrio pregunta por N tareas, y preguntar otra vez seria una confirmacion
+     * por cada tarea. Lo que no puede pasar es dejar el enlace colgando, asi que se
+     * avisa igual y el pomodoro se desvincula solo.
+     */
+    for (const id of removedIds) {
+      if (linkedTaskIds().has(id)) widgetBus.emit('task:deleted', { taskId: id });
+    }
     setConfirmClear(false);
   }, [config, items, onConfigChange]);
 
@@ -1091,6 +1147,46 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
           <FiPlus size={16} />
         </button>
       </form>
+
+      {pendingDelete && (
+        <div className="absolute -inset-3 z-10 flex items-center justify-center rounded bg-black/70 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Confirm delete linked task"
+            className="w-full max-w-56 rounded-lg border border-gray-600 bg-gray-800 p-3 shadow-xl"
+          >
+            <p className="text-sm text-gray-200">
+              {/*
+               * El nombre va aparte y en `font-medium`: es lo unico que hay que
+               * verificar antes de apretar. El resto del texto es el mismo aviso
+               * para cualquier tarea y no necesita emphasis.
+               */}
+              <span className="font-medium text-gray-100">{pendingDelete.text}</span> is linked to a
+              timer. Deleting it will unlink and reset it.
+            </p>
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingDelete(null)}
+                className="rounded bg-gray-600 px-2.5 py-1 text-xs text-white hover:bg-gray-500"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteNow(pendingDelete.id);
+                  setPendingDelete(null);
+                }}
+                className="rounded bg-danger px-2.5 py-1 text-xs text-white hover:bg-danger/80"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {confirmClear && (
         <div className="absolute -inset-3 z-10 flex items-center justify-center rounded bg-black/70 p-4">

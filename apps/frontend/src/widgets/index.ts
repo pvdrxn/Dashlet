@@ -3,6 +3,14 @@ import { FiCheckSquare, FiClock, FiEdit3, FiBook } from 'react-icons/fi';
 import { LuListChecks } from 'react-icons/lu';
 import { LuCalculator } from 'react-icons/lu';
 import { registerWidget } from './registry';
+import {
+  todoListSummary,
+  habitSummary,
+  pomodoroSummary,
+  calculatorSummary,
+  diarySummary,
+  notesSummary,
+} from './collapsed-summaries';
 
 const TodoListWidget = lazy(() => import('./todo-list/TodoListWidget').then(m => ({ default: m.TodoListWidget })));
 const PomodoroWidget = lazy(() => import('./pomodoro/PomodoroWidget').then(m => ({ default: m.PomodoroWidget })));
@@ -16,6 +24,7 @@ registerWidget('todo-list', {
   label: 'Todo List',
   icon: FiCheckSquare,
   defaultConfig: { title: 'Todo List', items: [] },
+  collapsedSummary: todoListSummary,
 });
 
 registerWidget('pomodoro', {
@@ -23,6 +32,10 @@ registerWidget('pomodoro', {
   label: 'Timer',
   icon: FiClock,
   defaultConfig: { title: 'Timer', technique: 'pomodoro', workMinutes: 25, restMinutes: 5, state: 'idle', remainingSeconds: 1500, elapsedSeconds: 0, cycleCount: 0 },
+  collapsedSummary: pomodoroSummary,
+  // Su tick sigue corriendo con el widget retraido, o sea que el readout tiene
+  // que leer el estado vivo y no el config congelado del arbol de React.
+  live: true,
 });
 
 registerWidget('notes', {
@@ -30,6 +43,7 @@ registerWidget('notes', {
   label: 'Notes',
   icon: FiEdit3,
   defaultConfig: { title: 'Notes', content: '', lastModified: null },
+  collapsedSummary: notesSummary,
 });
 
 registerWidget('calculator', {
@@ -37,6 +51,7 @@ registerWidget('calculator', {
   label: 'Calculator',
   icon: LuCalculator,
   defaultConfig: { title: 'Calculator', history: [], lastResult: '' },
+  collapsedSummary: calculatorSummary,
 });
 
 registerWidget('habit-tracker', {
@@ -44,6 +59,7 @@ registerWidget('habit-tracker', {
   label: 'Habit Tracker',
   icon: LuListChecks,
   defaultConfig: { title: 'Habits', habits: [] },
+  collapsedSummary: habitSummary,
 });
 
 registerWidget('diary', {
@@ -51,6 +67,7 @@ registerWidget('diary', {
   label: 'Diary',
   icon: FiBook,
   defaultConfig: { title: 'Diary', entries: {} },
+  collapsedSummary: diarySummary,
 });
 
 export { WidgetGrid } from './WidgetGrid';

@@ -19,6 +19,16 @@ export interface PomodoroConfig {
   state: 'idle' | 'running' | 'paused' | 'break';
   remainingSeconds: number;
   elapsedSeconds: number;
+  /**
+   * Total del stopwatch en MILISEGUNDOS, con fraccion. Es el que alimenta el
+   * formato `HH:MM:SS,SP`.
+   *
+   * `elapsedSeconds` no se saca: el tick lo emite en `timer:tick` y lo leian otros
+   * widgets. Tener los dos es redundante a proposito -- el entero para el bus, el
+   * ms para el display -- y el ms es el que manda. Si un config viejo llega sin
+   * `elapsedMs`, `normalizeConfig` lo deriva del entero, asi que no hay migracion.
+   */
+  elapsedMs: number;
   cycleCount: number;
   phase: 'work' | 'break';
   linkedTaskId?: string;
@@ -38,7 +48,7 @@ export const TECHNIQUES: Record<Technique, TechniquePreset> = {
   'pomodoro': { label: 'Pomodoro', workMinutes: 25, restMinutes: 5, longRestMinutes: 15 },
   'custom': { label: 'Custom', workMinutes: 30, restMinutes: 10, longRestMinutes: 20 },
   '52-17': { label: '52/17', workMinutes: 52, restMinutes: 17, longRestMinutes: 17 },
-  'countup': { label: 'Flow', workMinutes: 0, restMinutes: 0, longRestMinutes: 0 },
+  'countup': { label: 'Stopwatch', workMinutes: 0, restMinutes: 0, longRestMinutes: 0 },
 };
 
 export const TECHNIQUE_KEYS: Technique[] = ['pomodoro', 'custom', '52-17', 'countup'];
@@ -48,6 +58,22 @@ export function normalizeConfig(config: Record<string, unknown>): PomodoroConfig
     ? (config.technique as Technique)
     : 'pomodoro';
   const preset = TECHNIQUES[technique];
+  /*
+   * `elapsedMs` es la VERDAD del stopwatch y `elapsedSeconds` se deriva de el.
+   *
+   * Que sean dos campos que alguien pueda escribir por separado ya costo un bug:
+   * el reinicio ponia `elapsedSeconds: 0` y dejaba `elapsedMs` con el valor viejo,
+   * asi que el contador no volvia a cero -- el boton "pausaba" y nada mas.
+   * Derivando uno del otro no hay nada que sincronizar, y los sitios que reinician
+   * escriben un solo numero.
+   *
+   * Si viene un config viejo sin `elapsedMs`, se deriva del entero: no hace falta
+   * migracion.
+   */
+  const elapsedMs =
+    typeof config.elapsedMs === 'number'
+      ? config.elapsedMs
+      : (typeof config.elapsedSeconds === 'number' ? config.elapsedSeconds : 0) * 1000;
   return {
     technique,
     workMinutes: typeof config.workMinutes === 'number' ? config.workMinutes : preset.workMinutes,
@@ -63,7 +89,8 @@ export function normalizeConfig(config: Record<string, unknown>): PomodoroConfig
       typeof config.remainingSeconds === 'number'
         ? config.remainingSeconds
         : (typeof config.workMinutes === 'number' ? config.workMinutes : preset.workMinutes) * 60,
-    elapsedSeconds: typeof config.elapsedSeconds === 'number' ? config.elapsedSeconds : 0,
+    elapsedSeconds: Math.floor(elapsedMs / 1000),
+    elapsedMs,
     cycleCount: typeof config.cycleCount === 'number' ? config.cycleCount : 0,
     linkedTaskId: typeof config.linkedTaskId === 'string' ? config.linkedTaskId : undefined,
     linkedTaskName: typeof config.linkedTaskName === 'string' ? config.linkedTaskName : undefined,
@@ -80,12 +107,34 @@ export function formatTimeShort(seconds: number): string {
   return `${m}m ${String(s).padStart(2, '0')}s`;
 }
 
-export function formatTimeCountup(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  if (h > 0) return `${h}h ${m}m ${String(s).padStart(2, '0')}s`;
-  return `${m}m ${String(s).padStart(2, '0')}s`;
+/**
+ * El display del cronografo: `HH:MM:SS,SP`.
+ *
+ * La coma separa la centesima en vez de un punto, que es como lo muestran los
+ * cronografos. `SP` son dos digitos de centesima.
+ */
+export function formatStopwatch(ms: number): string {
+  const safe = Math.max(0, ms);
+  const cs = Math.floor(safe / 10) % 100;
+  const total = Math.floor(safe / 1000);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(Math.floor(total / 3600))}:${p(Math.floor(total / 60) % 60)}:${p(total % 60)},${p(cs)}`;
+}
+
+/**
+ * El objetivo del stopwatch, que va al lado del numero: `10:00`, o `1:05:00` si
+ * pasa de la hora.
+ *
+ * Formato DISTINTO del reloj a proposito. El reloj se cuenta y por eso lleva horas
+ * fijas y centesimas; el objetivo se lee de un vistazo y por eso no las lleva --
+ * `00:10:00` al lado de `00:04:12,34` seria ruido de relleno.
+ */
+export function formatTarget(totalMinutes: number): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  const secs = Math.max(0, Math.round(totalMinutes)) * 60;
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor(secs / 60) % 60;
+  return h > 0 ? `${p(h)}:${p(m)}:${p(secs % 60)}` : `${p(m)}:${p(secs % 60)}`;
 }
 
 /* -------------------------------------------------------------------------- */

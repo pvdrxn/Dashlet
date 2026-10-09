@@ -1,12 +1,14 @@
-import { memo, useCallback, useRef, useEffect, useState, useMemo } from 'react';
+﻿import { memo, useCallback, useRef, useEffect, useState, useMemo, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import { FiArrowLeft, FiPause, FiPlay, FiRotateCcw, FiSettings, FiCheck, FiX, FiClock, FiEdit } from 'react-icons/fi';
+import { FiArrowLeft, FiPause, FiPlay, FiRotateCcw, FiSettings, FiCheck, FiX, FiCheckSquare, FiEdit } from 'react-icons/fi';
 import { widgetBus } from '../widget-bus';
+import { getLiveConfig, subscribeLiveConfig } from '../live-config';
 import {
   TECHNIQUES,
   TECHNIQUE_KEYS,
   formatTimeShort,
-  formatTimeCountup,
+  formatStopwatch,
+  formatTarget,
   normalizeConfig,
   playSound,
   type Technique,
@@ -25,7 +27,8 @@ const RING_SIZE = 140;
 
 export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigChange, widgetId }: PomodoroWidgetProps) {
   const c = normalizeConfig(config);
-  const { technique, workMinutes, restMinutes, longRestMinutes, alarmSound, state, remainingSeconds, elapsedSeconds, cycleCount, phase, linkedTaskId, linkedTaskName } = c;
+  const { technique, workMinutes, restMinutes, longRestMinutes, alarmSound, state, remainingSeconds, elapsedMs, cycleCount, phase, linkedTaskId, linkedTaskName } = c;
+  const isCountup = technique === 'countup';
 
   const [view, setView] = useState<'main' | 'settings'>('main');
   const [editingField, setEditingField] = useState<string | null>(null);
@@ -37,28 +40,61 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
   const configRef = useRef(c);
   const onConfigChangeRef = useRef(onConfigChange);
 
+  /*
+   * El store vivo, para la centesima del stopwatch.
+   *
+   * El tick corre a 100ms mientras corre un stopwatch, pero el config por props solo
+   * baja UNA vez por segundo --a proposito, la base no se escribe en cada tick--.
+   * Asi que sin esta suscripcion el digito de centesima daria un salto por segundo,
+   * que es indistinguible de no mostrarlo.
+   *
+   * `live-config` es el store generico: el widget lee de donde publica su propio
+   * reloj, sin entrar al modulo del reloj ni saber que existe.
+   */
+  const liveCfg = useSyncExternalStore(
+    useCallback((cb: () => void) => (widgetId ? subscribeLiveConfig(cb) : () => {}), [widgetId]),
+    useCallback(() => (widgetId ? getLiveConfig(widgetId) : null), [widgetId]),
+  );
+  const showMs =
+    isCountup && state === 'running' && typeof liveCfg?.elapsedMs === 'number'
+      ? liveCfg.elapsedMs
+      : elapsedMs;
+
   configRef.current = c;
   onConfigChangeRef.current = onConfigChange;
 
   /*
-   * El reloj vive en `./timer`, no aca. Este efecto es lo unico que lo conecta:
-   * se registra en cada cambio de config y se saca el callback al desmontar.
+   * El reloj vive en `./timer`, no aca. Estos dos efectos son lo unico que lo
+   * conectan, y van SEPARADOS a proposito.
    *
-   * Sacar el callback NO para el reloj -- eso es lo que hace que el pomodoro siga
+   * Con uno solo, el cleanup corria en cada cambio de config --porque `config`
+   * esta en las dependencias-- o sea una vez por tick: `unregister` dejaba
+   * `entry.write` en null y `register` lo encontraba null al volver a entrar.
+   * Entonces `wasUnwatched` decia "cambio el config", que es lo mismo que "el
+   * widget esta retraido" solo cuando NO esta retraido.
+   *
+   * Y ahi vive la reconciliacion que cura el flash del despliegue: con el flag
+   * siempre prendido, cada tick escribia una segunda vez el tiempo recalculado
+   * contra el reloj de pared. Dos writers por segundo con valores que difieren en
+   * uno, y el contador saltaba o repetia segundos.
+   *
+   * Separados, el que limpia depende solo de `widgetId` --o sea, corre cuando el
+   * componente se monta o se desmonta de verdad-- y el que registra sigue
+   * escuchando cada cambio de config, que es lo que necesita para decidir si el
+   * reloj corre.
+   *
+   * Sacar el callback NO para el reloj: eso es lo que hace que el pomodoro siga
    * corriendo con el widget retraido, donde el componente no esta montado. Para
-   *olo hace falta `disposePomodoroTimer`, que se llama al borrar el widget.
-   *
-   * El unico canal es el `state` del config: pausa, reset y cambio de tecnica
-   * cambian el `state` y el reloj se para solo.
-   *
-   * El `config` va como dependencia a proposito: el registro tiene que enterarse
-   * de cada cambio para decidir si corre o no. Es un efecto sin estado propio y
-   * sin DOM, asi que el costo es nulo.
+   * eso hace falta `disposePomodoroTimer`, que se llama al borrar el widget.
    */
   useEffect(() => {
     if (!widgetId) return;
-    registerPomodoroTimer(widgetId, config, onConfigChange);
     return () => unregisterPomodoroTimer(widgetId);
+  }, [widgetId]);
+
+  useEffect(() => {
+    if (!widgetId) return;
+    registerPomodoroTimer(widgetId, config, onConfigChange);
   }, [widgetId, config, onConfigChange]);
 
   useEffect(() => {
@@ -74,8 +110,16 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
   }, [alarmOpen]);
 
   useEffect(() => {
+    /*
+     * Destino OBLIGATORIO. Antes el guard era `si viene y no soy yo, fuera`, o sea
+     * que un `task:select` sin destino --como el que mandaba el selector de tareas
+     * -- entraba en todos los pomodoros y un solo click vinculaba la tarea a cada
+     * timer del dashboard. Los dos emisores mandan destino, asi que exigirlo no
+     * rompe ningun camino.
+     */
     const offSelect = widgetBus.on('task:select', (data) => {
-      if (data.targetWidgetId && data.targetWidgetId !== widgetId) return;
+      console.log('[pomo]', widgetId, 'recibe select target=', data.targetWidgetId, 'acepta=', data.targetWidgetId === widgetId);
+      if (data.targetWidgetId !== widgetId) return;
       const workMin = data.estimatedMinutes ?? configRef.current.workMinutes;
       onConfigChangeRef.current({
         ...configRef.current,
@@ -85,7 +129,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
         state: 'idle',
         phase: 'work',
         remainingSeconds: workMin * 60,
-        elapsedSeconds: 0,
+        elapsedMs: 0,
         cycleCount: 0,
       });
     });
@@ -143,17 +187,30 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
     setView('settings');
   }, [config, onConfigChange]);
 
-  const goBackAndReset = useCallback(() => {
+  /*
+   * Dos funciones y no una. Compartian `goBackAndReset`, con lo cual volver de
+   * los ajustes aplastaba el reloj. Y el reinicio no reseteaba el stopwatch:
+   * `goBackAndReset` ponia `remainingSeconds` en cero pero jamas tocaba
+   * `elapsedSeconds`, que es lo UNICO que muestra la tecnica countup. Por eso el
+   * boton de reiniciar no parecia hacer nada en el cronometro.
+   */
+  const reset = useCallback(() => {
     onConfigChange({
       ...config,
       state: 'idle',
       phase: 'work',
       remainingSeconds: workMinutes * 60,
+      elapsedMs: 0,
       cycleCount: 0,
     });
-    setView('main');
     setEditingField(null);
   }, [workMinutes, config, onConfigChange]);
+
+  /** Volver de los ajustes. No toca el reloj: solo cambia de vista. */
+  const goBack = useCallback(() => {
+    setView('main');
+    setEditingField(null);
+  }, []);
 
   const selectTechnique = useCallback((tech: Technique) => {
     if (tech === technique) return;
@@ -176,7 +233,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
       state: 'idle',
       phase: 'work',
       remainingSeconds: preset.workMinutes * 60,
-      elapsedSeconds: 0,
+      elapsedMs: 0,
       cycleCount: 0,
     });
   }, [config, onConfigChange]);
@@ -200,7 +257,12 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
   }, [config, state, onConfigChange]);
 
   const isRunning = state === 'running';
-  const isCountup = technique === 'countup';
+  /*
+   * El techo del stopwatch: el estimado de la tarea vinculada, que `task:select`
+   * escribe en `workMinutes`. Solo cuenta si la tecnica es countup -- en un
+   * countdown `workMinutes` es la duracion y ya se ve en el anillo.
+   */
+  const budget = isCountup ? Math.round(workMinutes) : 0;
   const totalSeconds = phase === 'break' ? restMinutes * 60 : workMinutes * 60;
   const progress = isCountup ? 0 : totalSeconds > 0 ? ((totalSeconds - remainingSeconds) / totalSeconds) * 100 : 0;
   const dashOffset = RING_CIRCUMFERENCE * (1 - Math.min(progress, 100) / 100);
@@ -211,8 +273,15 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
   const ringColor = phase === 'break' ? 'var(--color-p1)' : 'var(--color-p2)';
 
   const openTaskPicker = useCallback(() => {
-    widgetBus.emit('open-task-picker', {});
-  }, []);
+    if (!widgetId) return;
+    /*
+     * Va el `widgetId` en el pedido, no se resuelve despues. El selector tiene que
+     * saber a que timer atar la tarea: si lo deja sin destino, `task:select` lo
+     * reciben TODOS los pomodoros y cada uno se creeria elegido.
+     */
+    widgetBus.emit('open-task-picker', { widgetId });
+    console.log('[pomo] abre picker', widgetId);
+  }, [widgetId]);
 
   const unlinkTask = useCallback(() => {
     onConfigChange({
@@ -222,7 +291,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
       state: 'idle',
       phase: 'work',
       remainingSeconds: workMinutes * 60,
-      elapsedSeconds: 0,
+      elapsedMs: 0,
       cycleCount: 0,
     });
     if (linkedTaskId) {
@@ -250,7 +319,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
       <div className="flex h-full flex-col">
         <button
           type="button"
-          onClick={goBackAndReset}
+          onClick={goBack}
           className="mb-2 flex items-center text-gray-400 hover:text-gray-200 transition-colors"
         >
           <FiArrowLeft size={18} />
@@ -376,34 +445,54 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
             key={tech}
             type="button"
             onClick={() => selectTechnique(tech)}
-            className={`flex-1 rounded px-1.5 py-1 text-[10px] font-medium transition-colors ${
+            className={`min-w-0 flex-1 truncate rounded px-1.5 py-1 text-[10px] font-medium transition-colors ${
               !linkedTaskId && technique === tech
                 ? 'bg-gray-600 text-gray-100'
                 : 'text-gray-500 hover:text-gray-300'
             }`}
             title={tech === 'custom' ? 'Custom' : TECHNIQUES[tech].label}
           >
-            {tech === 'custom' ? <FiEdit size={12} className="mx-auto" /> : TECHNIQUES[tech].label}
+            {/*
+           * `truncate` + `min-w-0` porque "Stopwatch" es el nombre mas largo de
+           * la fila y con solo `flex-1` se desborda en vez de encogerse: el ancho
+           * minimo de un flex item es su contenido, asi que sin `min-w-0` el
+           * `truncate` no tiene nada que recortar y la pill se sale del widget.
+           */}
+          {tech === 'custom' ? <FiEdit size={12} className="mx-auto" /> : TECHNIQUES[tech].label}
           </button>
         ))}
       </div>
 
       {linkedTaskId ? (
-        <div className="mt-2 text-sm font-medium text-p2 truncate max-w-[200px] tabular-nums">
+        /*
+         * `w-full` y no un tope fijo: el padre es un `items-center`, asi que sin
+         * ancho el div se ajusta al contenido y agrandar el widget no cambiaba
+         * nada. Con `w-full` el nombre usa todo el espacio disponible y aparece
+         * de a partes segun lo achiques o lo estes.
+         */
+        <div className="mt-2 w-full truncate text-center text-sm font-medium text-p2 tabular-nums">
           {linkedTaskName}
         </div>
       ) : (
         <div className="mt-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-          {isCountup ? 'FLOW' : phase === 'break' ? 'BREAK' : 'FOCUS'}
+          {isCountup ? 'STOPWATCH' : phase === 'break' ? 'BREAK' : 'FOCUS'}
         </div>
       )}
 
       <div className="relative my-2 flex items-center justify-center">
         {isCountup ? (
-          <div className="flex h-[140px] w-[140px] items-center justify-center">
+          <div className="flex h-[140px] w-[140px] flex-col items-center justify-center">
             <span className="text-xl font-semibold tracking-wide text-gray-100 tabular-nums">
-              {formatTimeCountup(elapsedSeconds)}
+              {formatStopwatch(showMs)}
             </span>
+            {/*
+             * El objetivo va DEBAJO y no al lado: a `text-xl` el numero
+             * `00:04:12,34` ya llena los 140px de la caja. Arriba, con la misma
+             * barra de "/", se lee igual.
+             */}
+            {budget > 0 && (
+              <span className="mt-1 text-xs tabular-nums text-gray-500">/ {formatTarget(budget)}</span>
+            )}
           </div>
         ) : (
           <>
@@ -460,12 +549,19 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
           }`}
           title={linkedTaskId ? `Unlink: ${linkedTaskName}` : 'Link task'}
         >
-          <FiClock size={16} />
+          {/*
+           * `FiCheckSquare`, el mismo icono con el que el registro identifica al
+           * widget de tareas. Antes era `FiClock`, que es el icono del pomodoro:
+           * dentro de un timer un reloj no dice "vincular", dice "timer" -- y el
+           * boton de al lado de play/pause ya se lee como parte del reloj. El
+           * check-square es el que comunica "esto va a una lista de tareas".
+           */}
+          <FiCheckSquare size={16} />
         </button>
 
         <button
           type="button"
-          onClick={goBackAndReset}
+          onClick={reset}
           className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-gray-400 transition-colors hover:bg-white/10 hover:text-gray-200"
           title="Reset"
         >

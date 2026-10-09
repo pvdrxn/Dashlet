@@ -13,6 +13,11 @@ interface TodoItem {
 }
 
 interface TaskPickerModalProps {
+  /**
+   * Timer que pidio el selector. Sin destino, `task:select` lo reciben todos los
+   * pomodoros y la tarea queda atada a cada uno.
+   */
+  targetWidgetId?: string;
   onClose: () => void;
 }
 
@@ -21,7 +26,7 @@ function formatEstimatedTime(time?: number, unit?: 'min' | 'hr'): string | null 
   return unit === 'hr' ? `${time}hr` : `${time}min`;
 }
 
-export function TaskPickerModal({ onClose }: TaskPickerModalProps) {
+export function TaskPickerModal({ targetWidgetId, onClose }: TaskPickerModalProps) {
   const [todoLists, setTodoLists] = useState<WidgetData[]>([]);
 
   const load = useCallback(() => {
@@ -49,14 +54,16 @@ export function TaskPickerModal({ onClose }: TaskPickerModalProps) {
         ? item.estimatedTime * 60
         : item.estimatedTime
       : undefined;
+    console.log('[picker] target', targetWidgetId);
     widgetBus.emit('task:select', {
       taskId: item.id,
       taskName: item.text,
       estimatedMinutes,
       widgetId,
+      targetWidgetId,
     });
     onClose();
-  }, [onClose]);
+  }, [onClose, targetWidgetId]);
 
   return (
     <div

@@ -768,7 +768,13 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
           </button>
         </div>
       )}
-      <div ref={editorContainerRef} className="relative flex-1 overflow-auto rounded border border-gray-600 bg-gray-800" style={{ minHeight: '120px' }}>
+      {/*
+         * Sin borde ni fondo propios: el marco del widget ya aporta los dos
+         * (`border` + `bg-gray-800/90`). Tenerlos tambien adentro dibujaba un
+         * cuadro dentro de otro cuadro, del mismo gris, que no se notaba hasta
+         * que ibas a escribir.
+         */}
+      <div ref={editorContainerRef} className="relative flex-1 overflow-auto">
         {searchOpen && searchQuery.trim() && (
           <div
             ref={highlightOverlayRef}
@@ -798,8 +804,7 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
           }}
           spellCheck={false}
           data-placeholder="Write your notes here..."
-          className="relative z-[1] rounded p-2 text-sm leading-[1.4] text-gray-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-500/40 [font-family:inherit] [&_h1]:my-1 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-gray-100 [&_h2]:my-1 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-gray-100 [&_h3]:my-0.5 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-gray-100 [&_a]:text-gray-100 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul.dash-list]:list-none [&_ul.dash-list_li]:relative [&_ul.dash-list_li]:pl-4 [&_ul.dash-list_li:before]:absolute [&_ul.dash-list_li:before]:left-0 [&_ul.dash-list_li:before]:content-['-'] [&:empty:before]:pointer-events-none [&:empty:before]:absolute [&:empty:before]:content-[attr(data-placeholder)] [&:empty:before]:text-gray-500"
-          style={{ minHeight: '120px' }}
+          className="relative z-[1] h-full p-2 text-sm leading-[1.4] text-gray-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-500/40 [font-family:inherit] [&_h1]:my-1 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-gray-100 [&_h2]:my-1 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-gray-100 [&_h3]:my-0.5 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-gray-100 [&_a]:text-gray-100 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul.dash-list]:list-none [&_ul.dash-list_li]:relative [&_ul.dash-list_li]:pl-4 [&_ul.dash-list_li:before]:absolute [&_ul.dash-list_li:before]:left-0 [&_ul.dash-list_li:before]:content-['-'] [&:empty:before]:pointer-events-none [&:empty:before]:absolute [&:empty:before]:content-[attr(data-placeholder)] [&:empty:before]:text-gray-500"
           aria-label="Note content"
         />
       </div>

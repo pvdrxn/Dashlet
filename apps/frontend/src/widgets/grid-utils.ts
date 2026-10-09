@@ -114,15 +114,18 @@ export const WIDGET_DEFAULT_SIZE: Record<string, { w: number; h: number }> = {
  * - todo-list: la fila de una tarea trae checkbox (16px) + campo de texto +
  *   selector de urgencia (`w-12` = 48px) + padding. Con 3 celdas (256px) el
  *   texto queda enanoso, asi que el minimo son 4 celdas (344px).
- * - notes / diary: listas con scroll, asi que el minimo es el que deja la
- *   barra de entrada y dos filas visibles.
+ * - notes: editor de texto largo. En alto 3 celdas alcanza porque el cuerpo se
+ *   scrollea; en ancho 3 celdas dejan 207px de linea, que se lee como una tira,
+ *   asi que el minimo son 4 (295px, medida de pagina).
+ * - diary: paginado, con la barra de paginas arriba y una sola entrada por
+ *   pagina. 3 celdas alcanzan en las dos direcciones.
  */
 export const WIDGET_MIN_SIZE: Record<string, { w: number; h: number }> = {
   'todo-list': { w: 4, h: 3 },
   pomodoro: { w: 3, h: 4 },
-  notes: { w: 3, h: 3 },
+  notes: { w: 4, h: 3 },
   calculator: { w: 3, h: 4 },
-  'habit-tracker': { w: 4, h: 3 },
+  'habit-tracker': { w: 3, h: 3 },
   diary: { w: 3, h: 3 },
 };
 
