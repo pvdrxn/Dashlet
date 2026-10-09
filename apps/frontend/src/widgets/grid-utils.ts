@@ -78,6 +78,16 @@ export function canvasWidth(containerWidth: number, cols: number = GRID_COLS): n
 export const MIN_CELLS_W = 1;
 export const MIN_CELLS_H = 1;
 
+/**
+ * En celdas, el alto de un widget retraido: 1.
+ *
+ * El header + borde miden 27px contra 88px de paso de celda, y 1 celda es la
+ * menor unidad que la grilla puede expresar. No hace falta mirar el tipo: el
+ * `minSize` de cada tipo esta calculado para que el CONTENIDO entre, y retraido
+ * no hay contenido.
+ */
+export const COLLAPSED_CELLS_H = 1;
+
 /** Tamano por defecto, en celdas. */
 export const WIDGET_DEFAULT_SIZE: Record<string, { w: number; h: number }> = {
   'todo-list': { w: 4, h: 4 },
@@ -171,7 +181,12 @@ export function occupantOf(
  * Ajusta un rect a la grilla: entero, dentro de la grilla, y entre el minimo y
  * el maximo del tipo. Es el unico lugar donde se decide que un rect es valido.
  */
-export function clampRect(rect: Position, type: string, cols: number = GRID_COLS): Position {
+export function clampRect(
+  rect: Position,
+  type: string,
+  cols: number = GRID_COLS,
+  minH?: number,
+): Position {
   const min = minSize(type);
   const max = maxSize(type);
 
@@ -186,9 +201,11 @@ export function clampRect(rect: Position, type: string, cols: number = GRID_COLS
   if (!Number.isFinite(h)) h = defaultSize(type).h;
   h = Math.max(Math.min(h, max.h), MIN_CELLS_H);
 
-  // El minimo del tipo, pero sin volver a pasarse del techo.
+  // El minimo del tipo, pero sin volver a pasarse del techo. `minH` lo pisa el
+  // llamador para el widget retraido, que tiene que poder bajar a 1 celda sin
+  // que este clamp lo vuelva a subir en el siguiente normalize.
   w = Math.max(w, Math.min(min.w, cols, max.w));
-  h = Math.max(h, Math.min(min.h, max.h));
+  h = Math.max(h, Math.min(minH ?? min.h, max.h));
 
   return {
     x: Math.max(0, Math.min(Math.round(rect.x) || 0, cols - w)),
@@ -198,13 +215,32 @@ export function clampRect(rect: Position, type: string, cols: number = GRID_COLS
   };
 }
 
-/** Primera ranura libre para un tamano dado, barriendo fila por fila. */
+/**
+ * Alto minimo en celdas de un widget concreto.
+ *
+ * Retraido son 1 celda; desplegado, el minimo de su tipo. Va aparte de
+ * `minSize` porque el minimo de tipo esta medido contra el CONTENIDO, y un
+ * widget retraido no muestra contenido.
+ */
+export function minHeightOf(widget: WidgetData): number {
+  return widget.config.collapsed ? COLLAPSED_CELLS_H : minSize(widget.type).h;
+}
+
+/**
+ * Primera ranura libre para un tamano dado, barriendo fila por fila.
+ *
+ * El tamano se puede pasar aparte del tipo. Si se midiera siempre contra
+ * `defaultSize` y el widget se crease con `minSize`, la busqueda reservaria un
+ * hueco mas grande del que hace falta y cada widget nuevo dejaria un vacio
+ * invisible al costado que empuja a los siguientes hacia abajo.
+ */
 export function findFirstSlot(
   widgets: WidgetData[],
   type: string,
   cols: number = GRID_COLS,
+  size?: { w: number; h: number },
 ): { x: number; y: number } {
-  const { w, h } = defaultSize(type);
+  const { w, h } = size ?? defaultSize(type);
   const width = Math.min(w, cols);
   for (let y = 0; ; y++) {
     for (let x = 0; x + width <= cols; x++) {
@@ -235,7 +271,8 @@ export function resolveDrop(
   const moving = widgets.find((w) => w.id === id);
   if (!moving) return null;
 
-  const rect = clampRect(target, moving.type, cols);
+  // Piso por widget: arrastrar un widget retraido no lo despliega.
+  const rect = clampRect(target, moving.type, cols, minHeightOf(moving));
 
   // Todo lo ya resuelto. Empieza solo con el widget que se esta moviendo.
   const settled: Position[] = [rect];
@@ -248,7 +285,7 @@ export function resolveDrop(
     .sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x);
 
   for (const other of others) {
-    let pos = clampRect(other.position, other.type, cols);
+    let pos = clampRect(other.position, other.type, cols, minHeightOf(other));
     const before = pos;
 
     // Cada vuelta lo baja hasta quedar justo debajo de lo que lo pisa.
@@ -267,8 +304,6 @@ export function resolveDrop(
 
   return { moved: { ...moving, position: rect }, shifted };
 }
-
-/** Cuantas filas hay que dibujar para que quepa todo, con un margen. */
 
 /** Cuantas filas hay que dibujar para que quepa todo, con un margen. */
 export function rowCountFor(widgets: WidgetData[]): number {
@@ -352,20 +387,26 @@ export function normalizeLayout(widgets: WidgetData[], cols: number = GRID_COLS)
 
   for (const w of widgets) {
     const legacy = isLegacyRect(w.position, cols);
+    // El piso sale del widget, no del tipo: un retraido tiene que poder quedarse
+    // en 1 celda o este clamp lo desplegaria solo en cada normalize.
+    const floor = minHeightOf(w);
     let rect: Position;
 
     if (!legacy) {
-      rect = clampRect(w.position, w.type, cols);
+      rect = clampRect(w.position, w.type, cols, floor);
       // Si choca con lo ya colocado, se va a la primera ranura libre.
       if (occupantOf(placed, rect, '')) {
-        const size = defaultSize(w.type);
-        const slot = findFirstSlot(placed, w.type, cols);
-        rect = clampRect({ ...slot, w: size.w, h: size.h }, w.type, cols);
+        // Se conserva el tamano que ya traia. Forzar `defaultSize` aqui
+        // devolveria al default a un widget que el usuario ya agrando, y
+        // agrandaria solo a los recien creados: justo lo contrario de lo que se
+        // quiere, que el tamano cambie cuando el usuario lo cambie.
+        const slot = findFirstSlot(placed, w.type, cols, { w: rect.w, h: rect.h });
+        rect = clampRect({ ...slot, w: rect.w, h: rect.h }, w.type, cols, floor);
       }
     } else {
-      const size = defaultSize(w.type);
-      const slot = findFirstSlot(placed, w.type, cols);
-      rect = clampRect({ ...slot, w: size.w, h: size.h }, w.type, cols);
+      const size = { w: defaultSize(w.type).w, h: floor };
+      const slot = findFirstSlot(placed, w.type, cols, size);
+      rect = clampRect({ ...slot, ...size }, w.type, cols, floor);
     }
 
     placed.push({ ...w, position: rect });

@@ -72,6 +72,35 @@
   --z-overlay: 4000;
 
   /*
+   * DURACION de los cambios de medidas de un widget: el repliegue del marco y
+   * el teñido de la barra de titulo.
+   *
+   * Vive como token porque lo consumen dos cosas en archivos distintos -- la
+   * transicion en `.widget-sizing` y la clase del header en `WidgetFrame` -- y
+   * antes de que existiera cada una tenia su numero. A 100ms el repliegue se
+   * leia como un corte; 240 entra como un movimiento.
+   *
+   * La caja y la barra usan el MISMO numero a proposito: si una fuera mas
+   * rapida, se leerian como dos gestos en vez de uno.
+   *
+   * Ojo: el timer que mantiene viva la clase (en `WidgetGrid`) tiene que ser
+   * MAS LARGO que esto. Si se sacara antes, la transicion se cortaria a mitad de
+   * camino y el widget daria un tiron, que es justo el salto que la animacion
+   * existe para quitar.
+   */
+  --motion-sizing: 240ms;
+
+  /*
+   * DURACION de la reubicacion: cuando un widget cae sobre otro y los de abajo
+   * se corren, o cuando uno se despliega y empuja a quien tiene debajo.
+   *
+   * Acompana a `--motion-sizing` y va por separado porque son ejes distintos:
+   * uno cambia medidas, este cambia posicion. Mismo numero porque el tablero se
+   * esta reacomodando en el mismo gesto y tiene que leerse como una sola cosa.
+   */
+  --motion-push: 240ms;
+
+  /*
    * RADIOS: dos valores, no cinco.
    *
    * Antes coexistian seis: rounded-lg (8px), rounded-md (6px), rounded (4px),
@@ -128,50 +157,56 @@
   --color-danger: #d4605f;
 
   /*
-   * Rampa de grises, neutra (sin tinte azulado como la anterior).
+   * Rampa de grises, totalmente neutra: ningun canal supera a otro.
    *
-   * Direccion: el fondo tira a casi negro. Pero los bordes SUBEN en vez de
-   * bajar. Es contraintuitivo y es lo que sostiene la profundidad: al bajar
+   * Direccion: el fondo es negro mate (no puro), pero los bordes SUBEN en vez
+   * de bajar. Es contraintuitivo y es lo que sostiene la profundidad: al bajar
    * las superficies, el mismo borde queda con mas superficie que destacar.
    *
    * Los numeros siguen el uso real del codigo, no el orden natural del gris:
    *
-   *   950   #050608  fondo de la ventana, debajo de todo
-   *   900   #050608  canvas de la app (App.tsx), fila hundida en lista
-   *   800   #161a21  superficie: widget, modal, panel
-   *   700   #2b3038  elevado: header, input, boton, hover
-   *   600   #454c58  boton primario, borde marcado, thumb del scrollbar
-   *   500   #6b7480  texto terciario, placeholder
+   *   950   #121212  fondo de la ventana, debajo de todo
+   *   900   #121212  canvas de la app (App.tsx), fila hundida en lista
+   *   800   #191919  superficie: widget, modal, panel
+   *   700   #383838  elevado: header, input, boton, hover
+   *   600   #4f4f4f  boton primario, borde marcado, thumb del scrollbar
+   *   500   #7a7a7a  texto terciario, placeholder
    *
-   * Medido antes (rampado viejo) y despues de oscurecer:
+   * Contraste medido contra la superficie real (#191919), antes y ahora:
    *
    *                          antes    ahora
-   *   widget vs canvas       1,15:1   1,07:1   <- baja, es el costo
-   *   elevado vs widget      1,32:1   1,46:1   <- sube
-   *   borde(600) vs widget   1,95:1   2,11:1   <- sube
-   *   texto gray-400         5,58:1   6,55:1   <- sube
-   *   p2 (Pomodoro)          6,93:1   8,13:1   <- sube
+   *   widget vs canvas       1,07:1   1,07:1   <- igual a proposito
+   *   elevado vs widget      1,43:1   1,50:1   <- sube
+   *   borde(600) vs widget   2,19:1   2,15:1   <- casi igual
+   *   texto gray-400         6,77:1   6,72:1   <- casi igual
+   *   texto gray-500         3,99:1   4,10:1   <- sube
+   *   p2 (Pomodoro)          8,41:1   7,81:1   <- baja, es el costo
    *
    * El widget se separa del canvas por el BORDE y por la sombra, no por su
    * propio relleno: por eso el borde sube mientras el relleno baja. Y como el
-   * fondo se apaga, el unico color de la app (p2/p3) queda como lo mas
-   * brillante del encuadre.
+   * fondo sigue siendo el tono mas bajo, el unico color de la app (p2/p3)
+   * queda como lo mas brillante del encuadre.
    *
-   * No se usa #000000 puro: en OLED produce halation sobre el texto y deja a
-   * las sombras de WidgetFrame sin contra que leerse. #050608 se ve igual de
+   * El canvas NO es #000000: en OLED produce halation sobre el texto y deja a
+   * las sombras de WidgetFrame sin contra que leerse. #121212 se ve igual de
    * negro y conserva ese margen.
+   *
+   * Ojo al sube-bajar cosas: 900 tiene que quedar MAS OSCURO que 800. Si el
+   * canvas sube por encima de la superficie, los widgets se leen como huecos
+   * oscuros y se invierte la elevacion. Por eso el negro mate sube la rampa
+   * entera y no solo el canvas.
    */
   --color-gray-50: #f6f7f8;
   --color-gray-100: #edeef0;
   --color-gray-200: #dfe1e4;
-  --color-gray-300: #c3c7cd;
-  --color-gray-400: #969ba3;
-  --color-gray-500: #6b7480;
-  --color-gray-600: #454c58;
-  --color-gray-700: #2b3038;
-  --color-gray-800: #0e1116;
-  --color-gray-900: #050608;
-  --color-gray-950: #050608;
+  --color-gray-300: #c6c6c6;
+  --color-gray-400: #a0a0a0;
+  --color-gray-500: #7a7a7a;
+  --color-gray-600: #4f4f4f;
+  --color-gray-700: #383838;
+  --color-gray-800: #191919;
+  --color-gray-900: #121212;
+  --color-gray-950: #121212;
   --color-white: #e8ecf2;
 }
 
@@ -206,7 +241,7 @@ body {
 }
 
 .skeleton {
-  background-color: #1a1d23;
+  background-color: #212121;
   background-image: linear-gradient(
     90deg,
     rgba(255, 255, 255, 0) 0%,
@@ -258,15 +293,167 @@ body {
   to { scale: 1; }
 }
 
+/*
+ * Botones del menu "+".
+ *
+ * Hover y estado sostenido comparten el mismo ambar. No es un acento nuevo: p2
+ * ya significa "esto esta activo y disponible" en toda la app -- el mismo `+`
+ * se enciende asi cuando el menu esta abierto -- asi que el hover que tiraba a
+ * gris era ademas el color equivocado, porque la pregunta que hace este menu es
+ * "que agrego", no "esto es texto".
+ *
+ * Va por atributo de datos y no por clase condicional para no repetir el mismo
+ * tratamiento en dos lugares, y desde el padre en vez de con `group-hover` en los
+ * hijos: dos reglas de hover sobre la misma propiedad empatan en especificidad
+ * (0,3,0) y gana la que salga despues en la hoja, que no es algo que uno pueda
+ * predecir leyendo el JSX.
+ *
+ * El estado sostenido NO se puede hacer con pseudo-clases. Durante el arrastre
+ * nativo el navegador apaga `:hover` y `:active` sobre el elemento de origen, de
+ * modo que el boton se apaga justo mientras se lo esta sosteniendo con el mouse.
+ * Por eso lo lleva `[data-active]`, que es lo unico que sobrevive al arrastre.
+ */
+.add-widget-item:is(:hover, [data-active='true']) {
+  border-color: rgba(217, 164, 65, 0.5);
+  background-color: rgba(217, 164, 65, 0.09);
+  box-shadow:
+    0 0 0 1px rgba(217, 164, 65, 0.18),
+    0 10px 26px -8px rgba(217, 164, 65, 0.55);
+}
+
+.add-widget-item:is(:hover, [data-active='true']) .add-widget-item-icon {
+  background-color: rgba(217, 164, 65, 0.16);
+  color: var(--color-p2);
+}
+
+.add-widget-item:is(:hover, [data-active='true']) .add-widget-item-label {
+  color: var(--color-p2);
+}
+
+/*
+ * El foco va aparte y con el anillo gris del resto de la app. Encenderlo con el
+ * ambar del hover encendia DOS botones a la vez -- el que tiene el foco y el que
+ * esta bajo el mouse -- y no habia forma de saber cual se iba a activar. Son dos
+ * señales distintas: el ambar dice "esto se agarra", el anillo dice "aca esta el
+ * teclado".
+ */
+.add-widget-item:focus-visible {
+  outline: 1px solid var(--color-gray-500);
+  outline-offset: 1px;
+}
+
+/*
+ * Silueta de destino del arrastre.
+ *
+ * Se mueve por `transform` y no por `left`/`top`: la posicion cambia en cada
+ * frame mientras se arrastra, y `left`/`top` fuerzan un layout por frame. Con
+ * `transform` lo resuelve el compositor y el resto del canvas ni se entera.
+ *
+ * El `transition` es a proposito. La silueta tiene que pegarse a la grilla, que
+ * es discreta, pero el ojo necesita ver a donde va: sin transicion salta de
+ * celda en celda, de a 88px, y eso se lee como parpadeo y no como movimiento.
+ *
+ * Se declara solo sobre `transform`. La aparicion y la desaparecida son
+ * instantaneas a proposito: si el `transform` tambien se interpolara al
+ * aparecer, se veria un barrido desde la esquina.
+ */
+.drop-preview {
+  transition: transform 100ms cubic-bezier(0.2, 0, 0, 1);
+  will-change: transform;
+}
+
+/* La primera posicion de cada arrastre no desliza: entra donde esta y ya esta. */
+.drop-preview-instant {
+  transition: none;
+}
+
+/*
+ * La silueta de una celda de widget.
+ *
+ * La comparten los dos lugares donde aparece un placeholder: el hueco que queda
+ * cuando se levanta un widget que ya esta en el canvas, y la celda de destino de
+ * un widget nuevo que se arrastra desde el menu. Es la misma operacion — "aca va
+ * a haber un widget" — asi que tiene que ser el mismo dibujo, no dos parecidos.
+ *
+ * Vive en una clase y no en dos classNames de Tailwind por eso: duplicado se
+ * ve bien hoy y se separa con el tiempo, sin que nadie lo decida.
+ *
+ * Continuo y no punteado, por el mismo motivo que el hueco: ya hay algo
+ * moviendose, no es un slot vacio esperando que lo llenen.
+ */
+.widget-slot {
+  border: 2px solid var(--color-p2);
+  border-radius: 0.5rem;
+  background-color: rgba(217, 164, 65, 0.04);
+  box-shadow:
+    0 18px 44px -10px rgba(217, 164, 65, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+/*
+ * Cambio de medidas de un widget: redimensionado por tirador y repliegue con el
+ * boton de la barra. Los dos gestos son el mismo movimiento -- la caja cambia de
+ * tamano -- asi que comparten la misma transicion y el mismo token de duracion.
+ *
+ * El redimensionado reporta en celdas enteras, igual que `pxToCells`, o sea que
+ * sin esto el widget daba saltos de 88px mientras el mouse avanza en fino.
+ *
+ * Solo `width`/`height`. Durante ambos gestos `left`/`top` no se mueven (el ancla
+ * es la esquina superior izquierda) y los widgets que se empujan por debajo
+ * siguen saltando a proposito: ver el comentario de reubicacion en `WidgetBox`.
+ * Esta regla no toca la reubicacion.
+ *
+ * A diferencia de la silueta, `width`/`height` no se componen: el navegador
+ * recalcula layout en cada frame. Con un solo widget alcanza; con la transicion
+ * puesta de forma permanente habria que pagar eso en cada cambio de ventana o de
+ * pestana, asi que la clase va solo durante el gesto.
+ */
+.widget-sizing {
+  transition:
+    width var(--motion-sizing) cubic-bezier(0.2, 0, 0, 1),
+    height var(--motion-sizing) cubic-bezier(0.2, 0, 0, 1);
+}
+
+/*
+ * Reubicacion: los widgets que se corren por un empuje.
+ *
+ * No es la reubicacion en vivo de iOS, y la diferencia es el fondo. Alli los de
+ * abajo ya se abren SOLO mientras se arrastra, porque el hueco se calcula en
+ * vivo y el soltado no empuja a nadie: confirma. Aca el empuje se resuelve al
+ * soltar (`resolveDrop`), asi que el evento es discreto y una transicion de
+ * duracion fija es el modelo honesto. Una fisica de resorte con interrupcion
+ * solo se justifica si el layout responde mientras se arrastra.
+ *
+ * `transform` entra en la lista por el widget que se esta soltando: dnd-kit le
+ * escribe el desplazamiento vivo en el `transform` y al soltar lo quita de un
+ * golpe. Sin animarlo, ese widget primero salta a su celda y despues se
+ * desliza -- con el transform incluido, se desliza de una. Ese `transform` lo
+ * compone el compositor, asi que no reflowea.
+ *
+ * `left`/`top` si pasan por layout, pero solo cambian de coordenada: el ancho y
+ * el alto no se tocan, asi que el contenido no se re-arma ni re-envuelve. Por eso
+ * no hace falta medir nada ni montar un FLIP con refs.
+ *
+ * Va en `.widget-sizing` y no en una regla aparte: los dos gestos -- cambiar de
+ * medidas, cambiar de celda -- pasan por la misma transicion y un solo selector
+ * con `transition` sobre el mismo elemento no se pisan.
+ */
+.widget-pushing {
+  transition:
+    left var(--motion-push) cubic-bezier(0.2, 0, 0, 1),
+    top var(--motion-push) cubic-bezier(0.2, 0, 0, 1),
+    transform var(--motion-push) cubic-bezier(0.2, 0, 0, 1);
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #12151a;
+  background: #161616;
 }
 ::-webkit-scrollbar-thumb {
-  background: #454c58;
+  background: var(--color-gray-600);
   border-radius: 3px;
 }
 

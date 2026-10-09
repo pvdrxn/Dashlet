@@ -200,7 +200,7 @@ export const CalculatorWidget = memo(function CalculatorWidget({ config, onConfi
       </div>
 
       {showHistory && history.length > 0 && (
-        <div className="absolute top-10 left-1/2 -translate-x-1/2 w-52 bg-[#2d2d2d] rounded-lg border border-gray-600 p-2 text-xs text-gray-300 max-h-80 overflow-y-auto z-20 shadow-xl">
+        <div className="absolute top-10 left-1/2 -translate-x-1/2 w-52 bg-gray-700 rounded-lg border border-gray-600 p-2 text-xs text-gray-300 max-h-80 overflow-y-auto z-20 shadow-xl">
           <div className="flex items-center justify-between mb-2 px-1">
             <span className="text-gray-400">Historial</span>
             <button

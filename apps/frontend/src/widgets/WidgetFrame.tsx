@@ -4,6 +4,12 @@ import { widgetBus } from './widget-bus';
 import type { ComponentType } from './types';
 /** Alto de la barra de titulo. */
 const HEADER_HEIGHT = 25;
+/*
+ * Alto de la caja con el widget retraido: la barra mas el borde del marco (1px
+ * por lado, `border`). Vive aca porque el alto del header es de este archivo y
+ * no conviene que la grilla vuelva a hardcodear 27.
+ */
+export const COLLAPSED_HEIGHT = HEADER_HEIGHT + 2;
 interface WidgetFrameProps {
   id: string;
   config: Record<string, unknown>;
@@ -162,7 +168,17 @@ export const WidgetFrame = memo(function WidgetFrame({
       onWheel={(e) => e.stopPropagation()}
     >
       <div
-        className={`flex w-full shrink-0 items-center select-none ${
+        /*
+         * `transition-colors` y no `transition-all`: lo unico que cambia de golpe
+         * acá es el fondo. El alto viene de un style inline y no debe animarse.
+         *
+         * Comparte `--motion-sizing` con la transicion de la caja. No coincide
+         * con el colapso de items del todo-list (150ms) y a proposito: son gestos
+         * de escala distinta, una fila dentro de un widget contra el widget
+         * entero. Lo que si tiene que coincidir es con la caja, que se retrae a la
+         * vez que esta barra se tiñe.
+         */
+        className={`flex w-full shrink-0 select-none items-center transition-colors duration-[var(--motion-sizing)] ease-in-out ${
           isDragging ? 'bg-p2/15' : collapsed ? 'bg-p2/10' : 'bg-transparent'
         }`}
         style={{ height: HEADER_HEIGHT }}

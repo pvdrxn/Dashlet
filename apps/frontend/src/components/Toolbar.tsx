@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { getAllWidgets, getWidget, type WidgetDefinition } from '../widgets/registry';
+import { setPendingWidgetType, WIDGET_DRAG_MIME } from '../widgets/drag-session';
 import type { Position } from '../widgets/types';
 import { FiPlus, FiTrash2 } from 'react-icons/fi';
 import { createRoot, type Root } from 'react-dom/client';
@@ -22,8 +23,13 @@ export function Toolbar({
 }: ToolbarProps) {
   const availableWidgets = getAllWidgets();
   const [menuOpen, setMenuOpen] = useState(false);
+  // Que boton se esta arrastrando. El arrastre es DnD nativo, asi que el
+  // navegador deja de avisar por `:active` sobre el boton de origen: sin esto
+  // no hay forma de saber en JS que sigue en uso.
+  const [draggingType, setDraggingType] = useState<string | null>(null);
   const ghostRef = useRef<{ el: HTMLDivElement; root: Root } | null>(null);
   const destroyGhost = () => {
+    setPendingWidgetType(null);
     if (ghostRef.current) {
       ghostRef.current.root.unmount();
       ghostRef.current.el.remove();
@@ -45,6 +51,8 @@ export function Toolbar({
     destroyGhost();
     // Se oculta la imagen nativa: el boton arrastrado ya es el ghost.
     e.dataTransfer.setDragImage(new Image(), 0, 0);
+    setPendingWidgetType(type);
+    setDraggingType(type);
     const el = document.createElement('div');
     el.style.cssText = `position:fixed;left:0;top:0;pointer-events:none;z-index:9999;transform:translate(${e.clientX}px, ${e.clientY}px);`;
     document.body.appendChild(el);
@@ -58,6 +66,12 @@ export function Toolbar({
     const w = g.el.offsetWidth;
     const h = g.el.offsetHeight;
     g.el.style.transform = `translate(${clientX - w / 2}px, ${clientY - h / 2}px)`;
+  };
+  // `destroyGhost` sola se usa tambien como cleanup de unmount, donde no se
+  // debe tocar estado de React; el estado lo baja este wrapper.
+  const endDrag = () => {
+    setDraggingType(null);
+    destroyGhost();
   };
   const handleMenuAdd = async (type: string) => {
     const def = getWidget(type);
@@ -122,15 +136,16 @@ export function Toolbar({
               key={`${type}-${menuOpen ? 'open' : 'closed'}`}
               type="button"
               draggable
+              data-active={draggingType === type}
               onDragStart={(e) => {
-                e.dataTransfer.setData('text/plain', type);
+                e.dataTransfer.setData(WIDGET_DRAG_MIME, type);
                 e.dataTransfer.effectAllowed = 'copy';
                 startGhost(e, type);
               }}
               onDrag={(e) => moveGhost(e.clientX, e.clientY)}
-              onDragEnd={destroyGhost}
+              onDragEnd={endDrag}
               onClick={() => handleMenuAdd(type)}
-              className="group flex items-center gap-2.5 overflow-hidden whitespace-nowrap rounded border border-gray-700/80 bg-gray-800/80 py-1.5 pl-1.5 pr-3 text-sm shadow-lg transition-all duration-150 hover:border-gray-500/60 hover:bg-white/5 active:scale-90"
+              className="add-widget-item flex items-center gap-2.5 overflow-hidden whitespace-nowrap rounded border border-gray-700/80 bg-gray-800/80 py-1.5 pl-1.5 pr-3 text-sm shadow-lg transition-all duration-150 active:scale-90"
               style={{
                 ['--i' as string]: i,
                 animation: menuOpen
@@ -138,10 +153,10 @@ export function Toolbar({
                   : 'widget-menu-deal 0.6s cubic-bezier(0.4, 0, 0.2, 1) reverse forwards',
               }}
             >
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-gray-700/80 text-gray-300 transition-colors group-hover:bg-white/10 group-hover:text-gray-100">
+              <span className="add-widget-item-icon flex h-6 w-6 shrink-0 items-center justify-center rounded bg-gray-700/80 text-gray-300 transition-colors">
                 <def.icon size={14} />
               </span>
-              <span className="text-gray-300 transition-colors group-hover:text-gray-100">
+              <span className="add-widget-item-label text-gray-300 transition-colors">
                 {def.label}
               </span>
             </button>

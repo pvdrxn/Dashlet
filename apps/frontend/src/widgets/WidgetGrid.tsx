@@ -10,12 +10,17 @@ import {
 } from '@dnd-kit/core';
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { FiTrash2, FiRotateCcw, FiGrid } from 'react-icons/fi';
-import { WidgetFrame } from './WidgetFrame';
+import { WidgetFrame, COLLAPSED_HEIGHT } from './WidgetFrame';
 import { getWidget } from './registry';
 import type { WidgetData, Position } from './types';
 import type { DragHandleProps } from './WidgetFrame';
 import * as api from '../api/widgets';
-import { getDragSession, type TransferAction } from './drag-session';
+import {
+  getDragSession,
+  getPendingWidgetType,
+  WIDGET_DRAG_MIME,
+  type TransferAction,
+} from './drag-session';
 import {
   CELL_GAP,
   CELL_W,
@@ -32,7 +37,7 @@ import {
   resolveDrop,
   normalizeLayout,
   minSize,
-  defaultSize,
+  COLLAPSED_CELLS_H,
 } from './grid-utils';
 /*
  * Dashboard tipo home screen: grilla de GRID_COLS columnas donde cada widget
@@ -48,6 +53,20 @@ import {
  */
 const CACHE_VERSION = 3;
 const UNDO_TOAST_MS = 5000;
+/** Id imposible: sirve para meter un widget sin crear en el calculo del empuje. */
+const NEW_WIDGET_PROBE = '__new__';
+/*
+ * Cuanto sigue viva la clase `.widget-sizing` despues del ultimo cambio.
+ *
+ * Tiene que ser MAS LARGA que `--motion-sizing` (240ms), no igual: si la clase
+ * se sacara antes de que termine la transicion, esta se corta a mitad de camino
+ * y el widget da un tirón. El tiron es exactamente el salto que la animación
+ * existe para quitar, asi que el margen va aparte del número de la animación en
+ * vez de ser el mismo.
+ */
+const SIZING_SETTLE_MS = 280;
+/** Igual que el anterior pero para `--motion-push`. Ver la nota de ahi. */
+const PUSH_SETTLE_MS = 280;
 function loadCache(cacheKey: string): WidgetData[] {
   try {
     const cached = localStorage.getItem(cacheKey);
@@ -68,8 +87,18 @@ interface WidgetBoxProps {
   onDelete: (id: string) => void;
   onConfigChange: (id: string, config: Record<string, unknown>) => void;
   onResize: (id: string, size: { w: number; h: number }) => void;
+  /** Hay un empuje en curso: las cajas deslizan a su nueva celda. */
+  pushing?: boolean;
 }
-function WidgetBox({ widget, box, cols, onDelete, onConfigChange, onResize }: WidgetBoxProps) {
+function WidgetBox({
+  widget,
+  box,
+  cols,
+  onDelete,
+  onConfigChange,
+  onResize,
+  pushing,
+}: WidgetBoxProps) {
   const def = getWidget(widget.type);
   /*
    * El nodo que dnd-kit mide es el tirador, no la caja. Asi el sensor arranca
@@ -87,12 +116,46 @@ function WidgetBox({ widget, box, cols, onDelete, onConfigChange, onResize }: Wi
    */
   const [draft, setDraft] = useState<{ w: number; h: number } | null>(null);
   const draftRef = useRef<{ w: number; h: number } | null>(null);
+  /*
+   * Vive un poco mas alla del gesto. Si la transicion se sacara en el mismo
+   * frame en que se commitea el tamano, el ultimo paso se cortaria a mitad de
+   * camino y el widget daria un tiron al soltar: justo el salto que se esta
+   * tratando de quitar.
+   */
+  const [resizing, setResizing] = useState(false);
+  const settleRef = useRef(0);
+  useEffect(() => () => clearTimeout(settleRef.current), []);
   const min = minSize(widget.type);
   const collapsed = (widget.config.collapsed as boolean) ?? false;
+  /*
+   * Repliegue del widget: misma transicion que el redimensionado, sobre el alto
+   * de la misma caja.
+   *
+   * La clase tiene que estar puesta ANTES de que el alto cambie, y el alto
+   * cambia en el mismo render en que cambia `collapsed`. Un `useEffect` llega
+   * tarde: cuando corre, el alto ya commiteo sin transicion y no hay nada que
+   * interpolar. Comparar contra el valor previo durante el render y marcar el
+   * estado ahi hace que React descarte el render en curso y vuelva a hacerlo
+   * con la clase ya puesta, antes de commitear.
+   *
+   * Vive mas alla del cambio por lo mismo que el redimensionado: si la clase se
+   * sacara en el mismo commit, la transicion se cortaria a mitad de camino.
+   */
+  const prevCollapsedRef = useRef(collapsed);
+  const [retracting, setRetracting] = useState(false);
+  const retractTimerRef = useRef(0);
+  if (prevCollapsedRef.current !== collapsed) {
+    prevCollapsedRef.current = collapsed;
+    setRetracting(true);
+    if (retractTimerRef.current) clearTimeout(retractTimerRef.current);
+    retractTimerRef.current = window.setTimeout(() => setRetracting(false), SIZING_SETTLE_MS);
+  }
+  useEffect(() => () => clearTimeout(retractTimerRef.current), []);
   const handleResizeStart = useCallback(
     (e: React.PointerEvent) => {
       e.preventDefault();
       e.stopPropagation();
+      setResizing(true);
       const startX = e.clientX;
       const startY = e.clientY;
       const startW = widget.position.w;
@@ -134,6 +197,8 @@ function WidgetBox({ widget, box, cols, onDelete, onConfigChange, onResize }: Wi
         const committed = draftRef.current;
         draftRef.current = null;
         setDraft(null);
+        if (settleRef.current) clearTimeout(settleRef.current);
+        settleRef.current = window.setTimeout(() => setResizing(false), SIZING_SETTLE_MS);
         if (committed) onResize(widget.id, committed);
       };
       document.addEventListener('pointermove', onMove);
@@ -156,9 +221,11 @@ function WidgetBox({ widget, box, cols, onDelete, onConfigChange, onResize }: Wi
    * Sin animacion de reubicacion: cuando un widget cambia de celda aparece
    * directamente en su posicion nueva.
    *
-   * Lo unico que se mueve de forma continua es el widget que se esta arrastrando,
-   * y eso no es una animacion sino el `transform` que escribe dnd-kit en cada
-   * frame mientras dura el arrastre. Los que se empujan por debajo saltan.
+   * Reubicacion: cuando un widget cae sobre otro, los de abajo se corren. Ahora
+   * deslizan en vez de saltar -- ver `.widget-pushing` en index.css. Se deslizan
+   * los que se empujan Y el que se acaba de soltar: con el `transform` de dnd-kit
+   * incluido en la transicion, ese entra a su celda en vez de saltar y despues
+   * correr.
    */
   return (
     <>
@@ -167,15 +234,13 @@ function WidgetBox({ widget, box, cols, onDelete, onConfigChange, onResize }: Wi
         queda clavada en el lugar de donde salio el widget, como el hueco que
         deja una app al levantarla en iOS.
 
-        Borde continuo, no discontinuo: el punteado sugeria un "slot" vacio
-        esperando ser llenado, cuando en realidad ya hay algo moviendose. Y
-        comparte la sombra de p2 del widget arrastrado para que el par se lea
-        como una sola operacion: lo que se levanta y el hueco de donde salio.
+        El dibujo es `.widget-slot`, la misma clase que usa la celda de destino
+        de un widget nuevo. El por que de ese dibujo esta en la clase.
       */}
       {isDragging && (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute rounded-lg border-2 border-p2 bg-p2/[0.04] shadow-[0_18px_44px_-10px_rgba(217,164,65,0.32),inset_0_1px_0_rgba(255,255,255,0.07)]"
+          className="widget-slot pointer-events-none absolute"
           style={{ left: box.left, top: box.top, width: box.width, height: box.height }}
         />
       )}
@@ -188,12 +253,14 @@ function WidgetBox({ widget, box, cols, onDelete, onConfigChange, onResize }: Wi
       */}
       <div
         data-widget-id={widget.id}
-        className="absolute touch-none"
+        className={`absolute touch-none${resizing || retracting ? ' widget-sizing' : ''}${
+          pushing ? ' widget-pushing' : ''
+        }`}
         style={{
           left: liveBox.left,
           top: liveBox.top,
           width: liveBox.width,
-          height: collapsed ? undefined : liveBox.height,
+          height: collapsed ? COLLAPSED_HEIGHT : liveBox.height,
           transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined,
           zIndex: isDragging ? 900 : undefined,
           cursor: isDragging ? 'grabbing' : undefined,
@@ -214,9 +281,18 @@ function WidgetBox({ widget, box, cols, onDelete, onConfigChange, onResize }: Wi
         type="button"
         aria-label={`Resize ${def.label}`}
         onPointerDown={handleResizeStart}
+        /*
+         * Oculto mientras esta retraido. El tirador agrandaria la celda del
+         * widget y empujaria a los de abajo, pero la config seguiria diciendo
+         * "retraido" y se dibujaria como una franja con una celda grande debajo.
+         * Un widget retraido se despliega, no se redimensiona.
+         */
+        hidden={collapsed}
+        tabIndex={collapsed ? -1 : 0}
         className="absolute bottom-0 right-0 z-20 h-3 w-3 cursor-nwse-resize touch-none"
         style={{
-          backgroundImage: 'linear-gradient(135deg, transparent 50%, #454c58 50%)',
+          backgroundImage:
+            'linear-gradient(135deg, transparent 50%, var(--color-gray-600) 50%)',
           backgroundSize: '8px 8px',
           backgroundPosition: 'bottom right',
           backgroundRepeat: 'no-repeat',
@@ -271,6 +347,31 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
   const widgetsRef = useRef(widgets);
   const deferredCommitRef = useRef<WidgetData[] | null>(null);
   const areaRef = useRef<HTMLDivElement>(null);
+  /*
+   * Ventana de reubicacion. Va en `WidgetGrid` y no en `WidgetBox` porque los
+   * tres empuves -- al soltar un widget, al soltar uno nuevo del menu y al
+   * desplegar -- se resuelven todos desde aca.
+   */
+  const [pushing, setPushing] = useState(false);
+  const pushTimerRef = useRef(0);
+  /*
+   * Deja puesta la clase de transicion. La tiene que quedar DESPUES de que la
+   * posicion cambie, porque una transicion se lee del estilo de despues: si se
+   * sacara en el mismo commit, la caja se cortaria a mitad de camino. Se llama
+   * justo antes del `setWidgets` para que ambas cosas entren en el mismo
+   * render.
+   */
+  const beginPush = useCallback(() => {
+    setPushing(true);
+    if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
+    pushTimerRef.current = window.setTimeout(() => setPushing(false), PUSH_SETTLE_MS);
+  }, []);
+  useEffect(
+    () => () => {
+      if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
+    },
+    [],
+  );
   const [containerWidth, setContainerWidth] = useState(0);
   useEffect(() => {
     widgetsRef.current = widgets;
@@ -338,8 +439,9 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
   }, [runUndoRing]);
   const computeNewPosition = useCallback(
     (type: string): Position => {
-      const slot = findFirstSlot(widgetsRef.current, type, cols);
-      return clampRect({ ...slot, ...defaultSize(type) }, type, cols);
+      const size = minSize(type);
+      const slot = findFirstSlot(widgetsRef.current, type, cols, size);
+      return clampRect({ ...slot, ...size }, type, cols);
     },
     [cols],
   );
@@ -350,8 +452,9 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
     ): Promise<Position | null> => {
       const def = getWidget(type);
       if (!def) return null;
-      const slot = findFirstSlot(widgetsRef.current, type, cols);
-      const position = clampRect({ ...slot, ...defaultSize(type) }, type, cols);
+      const size = minSize(type);
+      const slot = findFirstSlot(widgetsRef.current, type, cols, size);
+      const position = clampRect({ ...slot, ...size }, type, cols);
       await api.createWidget(type, def.defaultConfig, position, tabId);
       const data = await api.fetchWidgets(tabId);
       const normalized = normalizeLayout(data, cols);
@@ -368,6 +471,178 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
   useEffect(() => {
     onAddWidgetRef(tabId, handleAddWidget);
   }, [handleAddWidget, onAddWidgetRef, tabId]);
+
+  /*
+   * Suelte del menu "+": el widget nace en la celda donde se solto y empuja
+   * hacia abajo lo que quede debajo, igual que mover uno que ya existe.
+   *
+   * El empuje se PERSISTE. `normalizeLayout` tambien lo reparte, pero solo en
+   * memoria: si no se guarda, al recargar los demas vuelven a su sitio y el
+   * layout se desarma. Se usa un id imposible como sonda para que `resolveDrop`
+   * trate al widget nuevo como el que se esta moviendo.
+   */
+  const addWidgetAt = useCallback(
+    async (type: string, cell: { x: number; y: number }) => {
+      const def = getWidget(type);
+      if (!def) return;
+      const target = clampRect({ ...cell, ...minSize(type) }, type, cols);
+      const probe: WidgetData = {
+        id: NEW_WIDGET_PROBE,
+        userId: '',
+        tabId,
+        type,
+        config: def.defaultConfig,
+        position: target,
+        zIndex: 0,
+      };
+      const resolved = resolveDrop(
+        [...widgetsRef.current, probe],
+        NEW_WIDGET_PROBE,
+        target,
+        cols,
+      );
+      if (!resolved) return;
+      await api.createWidget(type, def.defaultConfig, resolved.moved.position, tabId);
+      await Promise.all(resolved.shifted.map((s) => api.updateWidget(s.id, { position: s.position })));
+      const data = await api.fetchWidgets(tabId);
+      const normalized = normalizeLayout(data, cols);
+      if (resolved.shifted.length) beginPush();
+      setWidgets(normalized);
+      saveCache(cacheKey, normalized);
+    },
+    [tabId, cacheKey, cols, beginPush],
+  );
+
+  /*
+   * Arrastre NATIVO desde el menu "+". Es otro sistema que dnd-kit: aqui manda
+   * el navegador, no el puntero. Las dos reglas que no se pueden omitir:
+   *
+   * - `dragover` tiene que llamar a preventDefault. Sin eso el elemento no
+   *   cuenta como destino valido, no se dispara `drop` y no hay forma de
+   *   arrastrar nada sobre el.
+   * - solo se acepta el MIME propio de Dashlet. dnd-kit no usa DnD nativo, asi
+   *   que este handler nunca ve los drags de mover o redimensionar, y sin el
+   *   chequeo un archivo soltado desde el escritorio activaria el preview.
+   */
+  /*
+   * La silueta NO vive en estado de React. `dragover` dispara en cada movimiento
+   * del mouse, y un setState ahi re-renderiza `WidgetGrid` entero: todos los
+   * widgets con su contenido, en cada frame. Con el nodo directo se escribe solo
+   * su `transform` y el resto del canvas no se entera.
+   *
+   * Los refs, no el estado, tambien por el `requestAnimationFrame`: dentro del
+   * callback no existe `e.currentTarget`, porque React ya termino de despachar.
+   */
+  const dropAreaRef = useRef<HTMLDivElement | null>(null);
+  const dropPreviewRef = useRef<HTMLDivElement | null>(null);
+  const rafRef = useRef(0);
+  const pendingDragRef = useRef<{ x: number; y: number; type: string } | null>(null);
+  // dragleave tambien dispara al pasar sobre cada hijo. El contador da la
+  // salida real del area sin parpadear.
+  const dragDepthRef = useRef(0);
+
+  const isWidgetDrag = (e: React.DragEvent) => e.dataTransfer.types.includes(WIDGET_DRAG_MIME);
+
+  /*
+   * Cancelar el frame pendiente es parte de ocultar. Si no, un `dragover` que
+   * se pidio justo antes de salir del canvas se resuelve despues y vuelve a
+   * prender la silueta, que queda pegada afuera del canvas.
+   */
+  const hidePreview = () => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = 0;
+    pendingDragRef.current = null;
+    const el = dropPreviewRef.current;
+    if (el) el.style.opacity = '0';
+  };
+
+  /*
+   * Coloca la silueta. La primera vez de cada arrastre se saltea la transicion:
+   * si no, apareceria deslizando desde el 0,0, que esta en la esquina y no
+   * arriba del puntero.
+   *
+   * El salto se hace con un reflow forzado y no con un `requestAnimationFrame`
+   * para el apagado: un segundo frame guardaria su id en el mismo ref que
+   * usa `dragover` y, sin volverlo a cero, cortaria el siguiente `dragover`.
+   */
+  const placePreview = (px: { left: number; top: number; width: number; height: number }) => {
+    const el = dropPreviewRef.current;
+    if (!el) return;
+    el.style.width = `${px.width}px`;
+    el.style.height = `${px.height}px`;
+    el.style.transform = `translate3d(${px.left}px, ${px.top}px, 0)`;
+    if (el.style.opacity !== '1') {
+      el.classList.add('drop-preview-instant');
+      el.style.opacity = '1';
+      // Obliga al navegador a registrar esta posicion con la transicion apagada.
+      void el.offsetWidth;
+      el.classList.remove('drop-preview-instant');
+    }
+  };
+
+  const handleNativeDragEnter = (e: React.DragEvent) => {
+    if (!isWidgetDrag(e)) return;
+    e.preventDefault();
+    dragDepthRef.current += 1;
+  };
+
+  const handleNativeDragOver = (e: React.DragEvent) => {
+    if (!isWidgetDrag(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    const type = getPendingWidgetType();
+    if (!type) {
+      hidePreview();
+      return;
+    }
+    // `dragover` puede dispararse varias veces por frame: se guarda el ultimo
+    // punto y se resuelve una sola vez en el proximo frame.
+    pendingDragRef.current = { x: e.clientX, y: e.clientY, type };
+    if (rafRef.current) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = 0;
+      const p = pendingDragRef.current;
+      const area = dropAreaRef.current;
+      if (!p || !area) return;
+      pendingDragRef.current = null;
+      const rect = area.getBoundingClientRect();
+      const cell = pointToCell(p.x, p.y, rect, cols);
+      placePreview(rectToPixels(clampRect({ ...cell, ...minSize(p.type) }, p.type, cols)));
+    });
+  };
+
+  const handleNativeDragLeave = (e: React.DragEvent) => {
+    if (!isWidgetDrag(e)) return;
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) hidePreview();
+  };
+
+  const handleNativeDrop = async (e: React.DragEvent) => {
+    if (!isWidgetDrag(e)) return;
+    e.preventDefault();
+    dragDepthRef.current = 0;
+    hidePreview();
+    const type = e.dataTransfer.getData(WIDGET_DRAG_MIME);
+    if (!type) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    await addWidgetAt(type, pointToCell(e.clientX, e.clientY, rect, cols));
+  };
+
+  /*
+   * Soltar fuera del canvas no dispara ni drop ni dragleave, y el preview se
+   * quedaria pegado. `dragend` es el unico evento que dispara siempre.
+   */
+  useEffect(() => {
+    const clear = () => {
+      dragDepthRef.current = 0;
+      hidePreview();
+    };
+    window.addEventListener('dragend', clear);
+    return () => {
+      window.removeEventListener('dragend', clear);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
   const predictAddPosition = useCallback(
     (type: string) => computeNewPosition(type),
     [computeNewPosition],
@@ -460,13 +735,104 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
       () => {},
     );
   }, [undoToastWidget, dismissUndoToast, cols]);
+  /** Lee el tamano guardado al retraer, si hay uno usable. */
+function readCollapsedSize(config: Record<string, unknown>): { w: number; h: number } | null {
+    const raw = config.collapsedSize;
+    if (!raw || typeof raw !== 'object') return null;
+    const { w, h } = raw as { w?: unknown; h?: unknown };
+    if (!Number.isFinite(w) || !Number.isFinite(h)) return null;
+    return { w: Math.round(w as number), h: Math.round(h as number) };
+  }
+
   const handleConfigChange = useCallback((id: string, config: Record<string, unknown>) => {
-    setWidgets((prev) => prev.map((w) => (w.id === id ? { ...w, config } : w)));
-    api.updateWidget(id, { config });
-  }, []);
+    const current = widgetsRef.current;
+    const widget = current.find((w) => w.id === id);
+    /*
+     * Retraer y desplegar son ASIMETRICOS a proposito:
+     *
+     * - Retraer baja la celda a 1 y no mueve a nadie. Las filas liberadas quedan
+     *   vacias. Si los de abajo subieran, el tablero se reorganizaria cada vez
+     *   que se retrae algo, que es justo lo que no se quiere.
+     * - Desplegar, en cambio, SI tiene que empujar: el widget crece y lo que
+     *   tenga debajo quedaria dentro de su celda.
+     *
+     * El alto que tenia antes se guarda en la config porque al bajar la celda se
+     * pierde: sin eso, desplegar lo mandaria al minimo del tipo y un widget de
+     * 5x5 volveria como 4x3.
+     */
+    const isCollapse =
+      !!widget &&
+      typeof config.collapsed === 'boolean' &&
+      Boolean(config.collapsed) !== Boolean(widget.config.collapsed);
+    if (!isCollapse || !widget) {
+      setWidgets((prev) => prev.map((w) => (w.id === id ? { ...w, config } : w)));
+      api.updateWidget(id, { config });
+      return;
+    }
+    const collapsed = Boolean(config.collapsed);
+    const nextConfig: Record<string, unknown> = { ...config };
+    if (collapsed) {
+      nextConfig.collapsedSize = { w: widget.position.w, h: widget.position.h };
+    } else {
+      delete nextConfig.collapsedSize;
+    }
+    const saved = readCollapsedSize(config);
+
+    if (collapsed) {
+      /*
+       * Retraer: la celda encoge y NADIE se mueve. Las filas liberadas quedan
+       * vacias, que es lo pedido.
+       */
+      const position = clampRect(
+        { ...widget.position, w: widget.position.w, h: COLLAPSED_CELLS_H },
+        widget.type,
+        cols,
+        COLLAPSED_CELLS_H,
+      );
+      setWidgets(current.map((w) => (w.id === id ? { ...w, config: nextConfig, position } : w)));
+      api.updateWidget(id, { config: nextConfig, position });
+      return;
+    }
+
+    /*
+     * Desplegar es lo contrario: el widget CRECE, y lo que este debajo queda
+     * adentro de su celda si no se mueve. Aca si hay que empujar, y es el mismo
+     * empuje que ya hacen un drop y un resize, asi que se delega a `resolveDrop`
+     * en vez de reescribirlo.
+     *
+     * Se resuelve contra la config ya desplegada para que `minHeightOf` vea al
+     * widget en su estado final y no le exija el piso de 1 celda.
+     */
+    const size = saved ?? minSize(widget.type);
+    const target = clampRect({ ...widget.position, ...size }, widget.type, cols, size.h);
+    const withNewConfig = current.map((w) => (w.id === id ? { ...w, config: nextConfig } : w));
+    const resolved = resolveDrop(withNewConfig, id, target, cols);
+    if (!resolved) {
+      setWidgets(current.map((w) => (w.id === id ? { ...w, config: nextConfig } : w)));
+      api.updateWidget(id, { config: nextConfig });
+      return;
+    }
+    const updates = [{ id, position: resolved.moved.position }, ...resolved.shifted];
+    if (resolved.shifted.length) beginPush();
+    setWidgets(
+      normalizeLayout(
+        withNewConfig.map((w) => {
+          const patch = updates.find((u) => u.id === w.id);
+          return patch ? { ...w, position: patch.position } : w;
+        }),
+        cols,
+      ),
+    );
+    api.updateWidget(id, { config: nextConfig, position: resolved.moved.position });
+    for (const u of resolved.shifted) void api.updateWidget(u.id, { position: u.position });
+  }, [cols, beginPush]);
   const commitPositions = useCallback(
     (updates: { id: string; position: Position }[]) => {
       if (!updates.length) return;
+      // Mas de un widget movido significa que hubo empuje y hay que deslizarlo.
+      // `updates` trae primero al que se movio y despues a los corridos, asi que
+      // con dos o mas ya se sabe.
+      if (updates.length > 1) beginPush();
       setWidgets((prev) => {
         const next = normalizeLayout(
           prev.map((w) => {
@@ -482,7 +848,7 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
         return next;
       });
     },
-    [cols],
+    [cols, beginPush],
   );
   const handleResize = useCallback(
     (id: string, size: { w: number; h: number }) => {
@@ -607,10 +973,15 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
         <div ref={areaRef} className="w-full">
           <div
             id="dashboard-drop-area"
+            ref={dropAreaRef}
             data-grid
             data-dashboard-tab-id={tabId}
             className="relative"
             style={{ width: canvasWidth(containerWidth, cols), height: canvasHeight(rows) }}
+            onDragEnter={handleNativeDragEnter}
+            onDragOver={handleNativeDragOver}
+            onDragLeave={handleNativeDragLeave}
+            onDrop={handleNativeDrop}
           >
             {/* Punteado de fondo: hace visible la grilla, como en iOS. */}
             <div
@@ -623,6 +994,19 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
                 backgroundPosition: `${CELL_GAP}px ${CELL_GAP}px`,
               }}
             />
+            {/*
+             * Celda donde caeria el widget. Comparte `.widget-slot` con el hueco
+             * de origen: las dos siluetas son el mismo dibujo.
+             *
+             * Siempre montado: si se montara y desmontara segun el estado,
+             * entraria y saldría del DOM en cada celda y no habria transicion
+             * posible. La visibilidad la maneja el ref con `opacity`.
+             */}
+            <div
+              ref={dropPreviewRef}
+              className="drop-preview widget-slot pointer-events-none absolute left-0 top-0 opacity-0"
+              aria-hidden="true"
+            />
             {widgets.map((widget) => (
               <WidgetBox
                 key={widget.id}
@@ -632,6 +1016,7 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
                 onDelete={handleDelete}
                 onConfigChange={handleConfigChange}
                 onResize={handleResize}
+                pushing={pushing}
               />
             ))}
           {loaded && widgets.length === 0 && (
