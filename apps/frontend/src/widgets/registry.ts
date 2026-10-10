@@ -29,6 +29,14 @@ export interface CollapsedSummary {
   tone?: 'neutral' | 'p2' | 'p3';
 }
 
+export interface CollapsedAction {
+  /** Texto del tooltip y del `aria-label`. */
+  label: string;
+  onSelect: () => void;
+  /** El boton se pinta en el tono del widget: el color ya dice "esta corriendo". */
+  tone?: 'neutral' | 'p2';
+}
+
 export interface WidgetDefinition {
   component: WidgetComponentType;
   label: string;
@@ -41,6 +49,18 @@ export interface WidgetDefinition {
    * monta, el cuerpo retraido sigue desmontado.
    */
   collapsedSummary?: (config: Record<string, unknown>) => CollapsedSummary | null;
+  /**
+   * Botonera del readout retraido.
+   *
+   * Va aparte de `collapsedSummary` porque ese es una funcion PURA: no puede
+   * tener un callback adentro. Esto si lo tiene, asi que el readout colapsado
+   * deja de ser "nada se monta" en el sentido estricto: el boton vive en el
+   * frame y actua contra el modulo, no contra un componente.
+   *
+   * Se pasa el `widgetId` porque la accion suele ser la del widget sobre si
+   * mismo, y la necesita para que el reloj o la lista sepan a quien obedecer.
+   */
+  collapsedActions?: (widgetId: string, config: Record<string, unknown>) => CollapsedAction[];
   /**
    * El widget publica estado que avanza solo, asi que su readout tiene que
    * seguirlo en vivo en vez de leer el config congelado. Hoy solo el pomodoro.

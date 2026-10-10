@@ -1,4 +1,4 @@
-﻿import * as api from '../../api/widgets';
+import * as api from '../../api/widgets';
 import { widgetBus } from '../widget-bus';
 import { setLiveConfig, clearLiveConfig } from '../live-config';
 import { normalizeConfig, playSound, sendNotification, type PomodoroConfig } from './shared';
@@ -330,26 +330,84 @@ export function registerPomodoroTimer(widgetId: string, raw: Record<string, unkn
   const wasUnwatched = entry.write === null;
 
   /*
-   * Cuando el reloj sigue corriendo y las props estan viejas, el valor
-   * autoritativo no es el de las props: es el del reloj de pared, o en countup el
-   * acumulado que el tick ya lleva. Se corrige aca y se escribe de vuelta, asi el
-   * componente ve el valor real en el mismo render en vez de dar un salto y
-   * corregirse al segundo siguiente.
+   * Reconciliacion de las props viejas. Solo aplica cuando el widget estuvo
+   * retraido: sin `write` nadie leia el config del arbol de React, asi que este
+   * se congelo en el momento del colapso y el reloj --o el boton del readout-- lo
+   * movio aparte. Con un `write` presente las props vienen del camino vivo y
+   * son frescas, y tocarlas en cada tick se pelearia con el tick: dos escrituras
+   * por segundo con valores que difieren en 1, y el display parpadeando.
    */
-  if (wasUnwatched && wasRunning && next.state === 'running') {
-    if (next.technique === 'countup') {
-      // El ms manda: el entero solo no distingue dos ticks del mismo segundo.
-      if (prev.elapsedMs > next.elapsedMs) {
-        next.elapsedMs = prev.elapsedMs;
-        next.elapsedSeconds = Math.floor(prev.elapsedMs / 1000);
-        write({ ...next });
+  if (wasUnwatched) {
+    /*
+     * EL ESTADO LO MANDA EL RELOJ, no las props.
+     *
+     * Este es el caso que se rompia antes: pausar desde el readout retraido
+     * deja el registro en `paused` y la API en `paused`, pero el arbol de React
+     * sigue con el `running` que tenia al momento de retraerse. Al desplegar, el
+     * componente se registra con esas props viejas y --si el estado se toma de
+     * ahi-- un timer pausado vuelve a arrancar solo.
+     *
+     * Con el widget retraido el estado lo movio el reloj, que es el que escribe
+     * contra la API mientras no hay componente. Asi que el registro manda.
+     */
+    if (prev.state !== next.state) {
+      next.state = prev.state;
+      next.phase = prev.phase;
+      /*
+       * Se escribe de vuelta porque la API tiene el estado viejo: lo que pausó
+       * fue el modulo mientras no habia componente, y el arbol de React --lo que
+       * se persiste al recargar-- seguia con el `running` del momento del
+       * repliegue. Sin esto, recargar la pagina devuelve el timer arrancado.
+       */
+      write({ ...next });
+    }
+    /*
+     * El ciclo NO va con el estado: lo avanza el tick cuando una fase termina,
+     * y eso deja `state` y `phase` como estaban. Si las props lo traen en cero,
+     * el contador de pomodoros se reinicia cada vez que se despliega el widget.
+     */
+    if (prev.cycleCount !== next.cycleCount) {
+      next.cycleCount = prev.cycleCount;
+    }
+
+    /*
+     * Y el tiempo. Hay dos casos y por eso va aparte del estado:
+     *
+     * - Si el reloj CORRE, el autoritativo es el del reloj de pared, o en countup
+     *   el acumulado que el tick ya lleva. Se escribe de vuelta para que el
+     *   componente vea el valor real en el mismo render en vez de dar un salto y
+     *   corregirse al segundo siguiente.
+     *
+     * - Si el reloj esta PARADO, el ultimo valor que escribio el tick --o el boton
+     *   del readout-- es el que vale. Las props traigan un `remainingSeconds` de
+     *   antes del repliegue, que es un numero viejo: usarlo reiniciaria el
+     *   restante a la duracion completa. Mismo motivo con `elapsedMs` en countup.
+     */
+    if (next.state === 'running') {
+      if (next.technique === 'countup') {
+        // El ms manda: el entero solo no distingue dos ticks del mismo segundo.
+        if (prev.elapsedMs > next.elapsedMs) {
+          next.elapsedMs = prev.elapsedMs;
+          next.elapsedSeconds = Math.floor(prev.elapsedMs / 1000);
+          write({ ...next });
+        }
+      } else {
+        const live = progress(prev, entry.startTime).remaining;
+        if (live !== next.remainingSeconds) {
+          next.remainingSeconds = live;
+          write({ ...next });
+        }
       }
     } else {
-      const live = progress(prev, entry.startTime).remaining;
-      if (live !== next.remainingSeconds) {
-        next.remainingSeconds = live;
-        write({ ...next });
-      }
+      /*
+       * Parado: se adopta el valor del registro sin escribir de vuelta. No hace
+       * falta --el componente ya monta con estas props-- y las props son las que
+       * quedan como config persistido, asi que hay que modificar `next` en su
+       * lugar para que el arbol de React no muestre el numero viejo.
+       */
+      next.remainingSeconds = prev.remainingSeconds;
+      next.elapsedMs = prev.elapsedMs;
+      next.elapsedSeconds = prev.elapsedSeconds;
     }
   }
 
@@ -390,6 +448,82 @@ export function disposePomodoroTimer(widgetId: string) {
   entries.delete(widgetId);
   clearLiveConfig(widgetId);
   syncWorker();
+}
+
+/**
+ * Play/pausa desde el readout retraido.
+ *
+ * Vive en el modulo y no en el componente por el motivo de siempre: retraido no
+ * hay componente montado, asi que un handler ahi no existiria. Es el mismo
+ * argumento que sostiene `task:rename` y `task:deleted` mas abajo.
+ *
+ * Replica la logica de `start`/`pause` del widget --incluido el init desde
+ * `paused` y el calculo de la duracion de la fase-- para que el boton del
+ * readout haga exactamente lo que el del cuerpo. Si diverge, el mismo control
+ * arrancaria dos cosas distintas segun donde se apriete.
+ *
+ * Devuelve si el estado quedo corriendo. Lo usa el readout para no tener que
+ * esperar el store y redibujar el icono en el mismo clic.
+ */
+export function togglePomodoro(widgetId: string): boolean {
+  const entry = entries.get(widgetId);
+  // Widget que nunca estuvo montado: sin entrada no hay reloj. NORMALmente no
+  // pasa --un pomodoro retraido tuvo que estar montado alguna vez-- pero si el
+  // registro se perdio, que el boton no reviente es mejor que un throw en el handler.
+  if (!entry) return false;
+
+  const cfg = entry.cfg;
+
+  if (cfg.state === 'running') {
+    commit(entry, { ...cfg, state: 'paused' });
+    if (cfg.linkedTaskId) {
+      widgetBus.emit('timer:pause', { taskId: cfg.linkedTaskId });
+    }
+    syncWorker();
+    return false;
+  }
+
+  const next = startConfig(cfg);
+  /*
+   * El anclaje va ACA y no en el `register` del componente, porque con el widget
+   * retraido ese `register` no corre: nadie esta montado. Sin esto el reloj
+   * arranca midiendo desde el `startTime` viejo y el primer tick se come el
+   * tiempo que paso retraido.
+   */
+  entry.startTime = anchorFor(next);
+  entry.baselineMs = next.elapsedMs;
+  commit(entry, asConfig(next));
+  if (cfg.linkedTaskId) {
+    widgetBus.emit('timer:start', {
+      taskId: cfg.linkedTaskId,
+      taskName: cfg.linkedTaskName ?? '',
+      technique: cfg.technique,
+    });
+  }
+  syncWorker();
+  return true;
+}
+
+/**
+ * El config con el reloj arrancado, tal como lo arma el `start` del widget.
+ *
+ * Compartido por el modulo y el componente para que no puedan separarse: el
+ * boton del readout retraido y el del cuerpo tienen que arrancar lo mismo.
+ */
+export function startConfig(cfg: PomodoroConfig): PomodoroConfig {
+  if (cfg.technique === 'countup') {
+    return { ...cfg, state: 'running' };
+  }
+  const isBreak = cfg.phase === 'break' || cfg.state === 'break';
+  const totalSecs = isBreak ? cfg.restMinutes * 60 : cfg.workMinutes * 60;
+  // Reanudar sigue donde estaba; arrancar de cero carga la duracion de la fase.
+  const remainingSeconds = cfg.state === 'paused' ? cfg.remainingSeconds : totalSecs;
+  return {
+    ...cfg,
+    state: 'running',
+    remainingSeconds,
+    phase: isBreak ? 'break' : 'work',
+  };
 }
 
 /*

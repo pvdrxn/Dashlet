@@ -7,6 +7,7 @@ import {
   todoListSummary,
   habitSummary,
   pomodoroSummary,
+  pomodoroActions,
   calculatorSummary,
   diarySummary,
   notesSummary,
@@ -33,6 +34,9 @@ registerWidget('pomodoro', {
   icon: FiClock,
   defaultConfig: { title: 'Timer', technique: 'pomodoro', workMinutes: 25, restMinutes: 5, state: 'idle', remainingSeconds: 1500, elapsedSeconds: 0, cycleCount: 0 },
   collapsedSummary: pomodoroSummary,
+  // Play/pausa tambien en el readout: con el widget retraido el cuerpo esta
+  // desmontado y sin esto no habria forma de arrancar el reloj sin desplegarlo.
+  collapsedActions: pomodoroActions,
   // Su tick sigue corriendo con el widget retraido, o sea que el readout tiene
   // que leer el estado vivo y no el config congelado del arbol de React.
   live: true,

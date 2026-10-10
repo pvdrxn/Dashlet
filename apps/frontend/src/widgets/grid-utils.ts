@@ -252,16 +252,150 @@ export function findFirstSlot(
   }
 }
 
+/** Hacia donde se empuja a los widgets que el que se mueve va a tapar. */
+export type PushDirection = 'down' | 'up' | 'left' | 'right';
+
+/**
+ * Hacia donde se empuja, segun de donde venga el widget.
+ *
+ * Es la direccion del GESTO y no la del lugar de destino: se usa solo para
+ * desempatar cuando el widget cae encima de otro y no hay un lado mas corto.
+ * Ver `awayDirection`, que es la que manda en realidad.
+ */
+export function pushDirectionFor(dx: number, dy: number): PushDirection {
+  if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'right' : 'left';
+  if (dy > 0) return 'down';
+  if (dy < 0) return 'up';
+  return 'down';
+}
+
+/**
+ * Hacia donde se va un widget para dejarle el lugar a `drop`.
+ *
+ * Lo que manda no es de donde vino el gesto sino DONDE QUEDO: si al soltar el
+ * widget este quedo a la izquierda del otro, el otro se va a la derecha, y al
+ * reves. O sea, cada uno huye del rect soltado por el lado mas corto, que es el
+ * que menos hueco tiene que abrir.
+ *
+ * Se comparan los centros con signo, asi que la aritmetica da el lado en que
+ * hay que EXPULSAR, no el lado desde el que se entra: si el otro esta a la
+ * derecha de `drop`, sale a la derecha.
+ *
+ * Cuando los dos centros caen en el mismo lugar -- que es justo cuando el
+ * widget se solto encima del otro y no al lado -- no hay lado mas corto, y ahi
+ * se vuelve al gesto: es la unica informacion que queda.
+ */
+function awayDirection(drop: Position, other: Position, gesture: PushDirection): PushDirection {
+  const dx = other.x + other.w / 2 - (drop.x + drop.w / 2);
+  const dy = other.y + other.h / 2 - (drop.y + drop.h / 2);
+  const ax = Math.abs(dx);
+  const ay = Math.abs(dy);
+  // Diagonal exacta: los dos lados pesan igual y no hay criterio para elegir.
+  if (ax === ay) return gesture;
+  if (ax > ay) return dx > 0 ? 'right' : 'left';
+  return dy > 0 ? 'down' : 'up';
+}
+
+/**
+ * Orden en que se recorren los widgets: del mas cercano al rect soltado al mas
+ * lejano.
+ *
+ * Asi el empuje se propaga HACIA AFUERA: el que se recorre despues todavia puede
+ * estar corrido por el anterior. El desempate es el de lectura, para que dos
+ * widgets a la misma distancia no cambien entre si.
+ */
+function dropOrder(drop: Position): (a: WidgetData, b: WidgetData) => number {
+  const gap = (p: Position): number => {
+    const dx = Math.max(0, Math.max(drop.x - (p.x + p.w), p.x - (drop.x + drop.w)));
+    const dy = Math.max(0, Math.max(drop.y - (p.y + p.h), p.y - (drop.y + drop.h)));
+    return dx + dy;
+  };
+  return (a, b) => gap(a.position) - gap(b.position) || a.position.y - b.position.y || a.position.x - b.position.x;
+}
+
+/** Un paso del empuje: lo que se pisa queda del lado del que viene el empuje. */
+function pushStep(pos: Position, hits: Position[], dir: PushDirection): Position {
+  switch (dir) {
+    case 'up':
+      return { ...pos, y: Math.min(...hits.map((s) => s.y)) - pos.h };
+    case 'left':
+      return { ...pos, x: Math.min(...hits.map((s) => s.x)) - pos.w };
+    case 'right':
+      return { ...pos, x: Math.max(...hits.map((s) => s.x + s.w)) };
+    default:
+      return { ...pos, y: Math.max(...hits.map((s) => s.y + s.h)) };
+  }
+}
+
+/** ¿El rect sigue entrando en la grilla? */
+function insideGrid(pos: Position, cols: number): boolean {
+  return pos.x >= 0 && pos.y >= 0 && pos.x + pos.w <= cols;
+}
+
+/** Una pasada de empuje. `fits` dice si el resultado entro entero en la grilla. */
+function pushPass(
+  widgets: WidgetData[],
+  id: string,
+  rect: Position,
+  cols: number,
+  gesture: PushDirection,
+  forced: PushDirection | null,
+): { shifted: { id: string; position: Position }[]; fits: boolean } {
+  // Todo lo ya resuelto. Empieza solo con el widget que se esta moviendo.
+  const settled: Position[] = [rect];
+  const shifted: { id: string; position: Position }[] = [];
+  let fits = true;
+
+  const others = widgets.filter((w) => w.id !== id).sort(dropOrder(rect));
+
+  for (const other of others) {
+    let pos = clampRect(other.position, other.type, cols, minHeightOf(other));
+    const before = pos;
+
+    /*
+     * La direccion se decide UNA vez, contra el rect soltado. Recalcularla en
+     * cada vuelta haría que el widget zigzaguease entre dos lados en vez de
+     * alejarse de una.
+     */
+    const dir = forced ?? awayDirection(rect, pos, gesture);
+
+    // Cada vuelta lo corre hasta quedar justo del otro lado de lo que lo pisa.
+    // El limite evita un bucle infinito si algo quedara encajonado.
+    for (let guard = 0; guard < MAX_PUSH_STEPS; guard++) {
+      const hits = settled.filter((s) => rectsOverlap(s, pos));
+      if (hits.length === 0) break;
+      pos = pushStep(pos, hits, dir);
+    }
+
+    // No se re-clampa el resultado: el clamp volveria a meter al widget encima
+    // de lo que lo pisa. Si se salio de la grilla, la pasada se descarta.
+    if (!insideGrid(pos, cols)) fits = false;
+
+    settled.push(pos);
+    if (pos.y !== before.y || pos.x !== before.x) {
+      shifted.push({ id: other.id, position: pos });
+    }
+  }
+
+  return { shifted, fits };
+}
+
 /**
  * Resuelve un drop.
  *
- * No hay intercambio: el widget llega a su celda y **empuja hacia abajo** a los
- * que encuentra en el camino, igual que las apps del home de iOS. Cada widget
- * desplazado baja lo justo para quedar debajo del que lo tapaba, y si ese a su
- * vez choca con otro, tambien baja (el efecto se propaga hacia abajo).
+ * No hay intercambio: el widget llega a su celda y **empuja** a los que
+ * encuentra en el camino, igual que las apps del home de iOS. Cada widget
+ * desplazado se corre lo justo para quedar del otro lado del que lo tapaba, y
+ * si ese a su vez choca con otro, tambien se corre (el efecto se propaga).
  *
- * Los widgets que quedan por encima del destino no se mueven: solo se recalcula
- * lo que esta debajo o al mismo nivel.
+ * Hacia donde se empuja sale de DONDE QUEDO el widget, no de como se trajo: al
+ * soltarlo a la izquierda de otro, ese otro se va a la derecha, y al soltarlo
+ * arriba, baja. Ver `awayDirection`.
+ *
+ * Hacia abajo siempre hay espacio -- el canvas crece con el widget mas bajo --
+ * pero hacia arriba, a la izquierda y a la derecha no: la grilla tiene borde.
+ * Si en la direccion que le tocaba alguien se queda afuera, la pasada se tira
+ * entera y se repite empujando todos hacia abajo.
  *
  * Devuelve null si el widget arrastrado no existe.
  */
@@ -270,6 +404,7 @@ export function resolveDrop(
   id: string,
   target: Position,
   cols: number = GRID_COLS,
+  gesture: PushDirection = 'down',
 ): { moved: WidgetData; shifted: { id: string; position: Position }[] } | null {
   const moving = widgets.find((w) => w.id === id);
   if (!moving) return null;
@@ -277,35 +412,13 @@ export function resolveDrop(
   // Piso por widget: arrastrar un widget retraido no lo despliega.
   const rect = clampRect(target, moving.type, cols, minHeightOf(moving));
 
-  // Todo lo ya resuelto. Empieza solo con el widget que se esta moviendo.
-  const settled: Position[] = [rect];
-  const shifted: { id: string; position: Position }[] = [];
+  // Primero cada uno por su lado. Si alguno se queda sin grilla, la pasada se
+  // descarta completa -- no se reintenta solo el que no entra, porque dejandolo
+  // atado al rect soltado volveria a chocar con el -- y se repite hacia abajo.
+  const first = pushPass(widgets, id, rect, cols, gesture, null);
+  const result = first.fits ? first : pushPass(widgets, id, rect, cols, gesture, 'down');
 
-  // Orden de lectura: lo de arriba se resuelve antes que lo de abajo, que es lo
-  // que hace que el empuje vaya hacia abajo y no hacia arriba.
-  const others = widgets
-    .filter((w) => w.id !== id)
-    .sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x);
-
-  for (const other of others) {
-    let pos = clampRect(other.position, other.type, cols, minHeightOf(other));
-    const before = pos;
-
-    // Cada vuelta lo baja hasta quedar justo debajo de lo que lo pisa.
-    // El limite evita un bucle infinito si algo quedara encajonado.
-    for (let guard = 0; guard < MAX_PUSH_STEPS; guard++) {
-      const hits = settled.filter((s) => rectsOverlap(s, pos));
-      if (hits.length === 0) break;
-      pos = { ...pos, y: Math.max(...hits.map((s) => s.y + s.h)) };
-    }
-
-    settled.push(pos);
-    if (pos.y !== before.y || pos.x !== before.x) {
-      shifted.push({ id: other.id, position: pos });
-    }
-  }
-
-  return { moved: { ...moving, position: rect }, shifted };
+  return { moved: { ...moving, position: rect }, shifted: result.shifted };
 }
 
 /** Cuantas filas hay que dibujar para que quepa todo, con un margen. */

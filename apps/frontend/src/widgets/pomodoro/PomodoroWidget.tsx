@@ -13,7 +13,7 @@ import {
   playSound,
   type Technique,
 } from './shared';
-import { registerPomodoroTimer, unregisterPomodoroTimer } from './timer';
+import { registerPomodoroTimer, unregisterPomodoroTimer, startConfig } from './timer';
 
 interface PomodoroWidgetProps {
   config: Record<string, unknown>;
@@ -150,30 +150,19 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
     return () => { offIdx(); };
   }, [widgetId]);
 
+  /*
+   * El armado del config al arrancar vive en `startConfig`, en el modulo, y no
+   * aca. Lo consume tambien el play del readout retraido, y con dos copias
+   * divergen: el mismo boton arrancaria cosas distintas segun donde se apriete.
+   * Aca solo queda la parte que es de UI, que es avisar a la tarea vinculada.
+   */
   const start = useCallback(() => {
-    if (technique === 'countup') {
-      onConfigChange({
-        ...config,
-        state: 'running',
-      });
-      if (linkedTaskId) {
-        widgetBus.emit('timer:start', { taskId: linkedTaskId, taskName: linkedTaskName ?? '', technique });
-      }
-      return;
-    }
-    const isBreak = phase === 'break' || state === 'break';
-    const totalSecs = isBreak ? restMinutes * 60 : workMinutes * 60;
-    const init = state === 'paused' ? remainingSeconds : totalSecs;
-    onConfigChange({
-      ...config,
-      state: 'running',
-      remainingSeconds: init,
-      phase: isBreak ? 'break' : 'work',
-    });
+    const next = startConfig(c);
+    onConfigChange(next as unknown as Record<string, unknown>);
     if (linkedTaskId) {
       widgetBus.emit('timer:start', { taskId: linkedTaskId, taskName: linkedTaskName ?? '', technique });
     }
-  }, [state, phase, technique, remainingSeconds, workMinutes, restMinutes, linkedTaskId, linkedTaskName, config, onConfigChange]);
+  }, [c, linkedTaskId, linkedTaskName, technique, onConfigChange]);
 
   const pause = useCallback(() => {
     onConfigChange({ ...config, state: 'paused' });

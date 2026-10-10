@@ -1,5 +1,5 @@
 ﻿import { memo, useState, useCallback, useRef, useEffect, useSyncExternalStore, Suspense } from 'react';
-import { FiChevronUp, FiChevronDown, FiX, FiMoreVertical } from 'react-icons/fi';
+import { FiChevronUp, FiChevronDown, FiX, FiMoreVertical, FiPlay, FiPause } from 'react-icons/fi';
 import { widgetBus } from './widget-bus';
 import { getWidget } from './registry';
 import { getLiveConfig, subscribeLiveConfig } from './live-config';
@@ -118,18 +118,21 @@ function CollapsedBody({
   config: Record<string, unknown>;
 }) {
   const effective = useEffectiveConfig(type, widgetId, config);
-  const summary = getWidget(type)?.collapsedSummary?.(effective);
-  if (!summary) return null;
-  const bar = summary.bar && summary.bar.total > 0 ? summary.bar : null;
-  const ring = summary.ring && summary.ring.total > 0 ? summary.ring : null;
+  const def = getWidget(type);
+  const summary = def?.collapsedSummary?.(effective);
+  const actions = def?.collapsedActions?.(widgetId, effective) ?? [];
   /*
-   * Sin `aria-hidden`: el readout es informacion, no decorado. "3/5" o "24:31"
-   * tienen que llegar a un lector de pantalla. Lo que si es decorativo es el
-   * anillo, que va marcado por separado y repite un dato que el texto ya dice.
+   * El readout puede no existir --el pomodoro sin resumen, el todo-list vacio-- y
+   * la botonera igual se dibuja. `if (!summary && !actions.length) return null`
+   * seria correcto pero dejaria sin play a un widget que solo tiene boton, que es
+   * justo el caso que se quiere cubrir.
    */
+  if (!summary && !actions.length) return null;
+  const bar = summary?.bar && summary.bar.total > 0 ? summary.bar : null;
+  const ring = summary?.ring && summary.ring.total > 0 ? summary.ring : null;
   return (
     <div className="flex min-h-0 flex-1 items-center gap-2 px-3">
-      {ring && <MiniRing done={ring.done} total={ring.total} tone={summary.tone} />}
+      {ring && <MiniRing done={ring.done} total={ring.total} tone={summary!.tone} />}
       {/*
        * Todo el readout va al MISMO tamano que el texto de tarea del todo-list
        * (`text-sm`), que es donde el usuario ya lee texto de esta app. No hay
@@ -141,22 +144,24 @@ function CollapsedBody({
        * importante de la fila, y un nombre de tarea cortado se lee peor que un
        * "24:31" que se ve entero.
        */}
-      {summary.formula && (
+      {summary?.formula && (
         <span className="min-w-0 truncate text-sm text-gray-500">{summary.formula}</span>
       )}
-      <span className="shrink-0 text-sm tabular-nums" style={{ color: toneColor(summary.tone) }}>
-        {summary.value}
-      </span>
+      {summary && (
+        <span className="shrink-0 text-sm tabular-nums" style={{ color: toneColor(summary.tone) }}>
+          {summary.value}
+        </span>
+      )}
       {/*
        * El objetivo va pegado al valor y en `gray-500`, no en el tono del widget:
        * es una referencia, no el dato. La barra de "/" es lo que lo separa del
        * reloj sin necesitar otra fila -- en el widget desplegado va debajo por lo
        * mismo, pero alli no entra al lado a `text-xl`.
        */}
-      {summary.target && (
+      {summary?.target && (
         <span className="shrink-0 text-sm tabular-nums text-gray-500">/ {summary.target}</span>
       )}
-      {summary.detail && (
+      {summary?.detail && (
         <span className="min-w-0 truncate text-sm text-gray-500">{summary.detail}</span>
       )}
       {bar && (
@@ -176,6 +181,55 @@ function CollapsedBody({
             }}
           />
         </span>
+      )}
+      {/*
+       * La botonera va al extremo derecho con `ml-auto`, y no pegada al readout
+       * como la barra: es la unica accion de la fila, asi que tiene que cair en
+       * un lugar estable -- el que se mueve al respirar el texto o al cambiar
+       * la fase es el que hay que acertar a ciegas con el mouse.
+       *
+       * El color lo decide el estado, no el widget: en `p2` esta corriendo y el
+       * boton se lee como "esto sigue vivo" sinacificarle el mouse encima.
+       */}
+      {actions.length > 0 && (
+        <div className="ml-auto flex shrink-0 items-center gap-1 pl-2">
+          {actions.map((a) => (
+            <button
+              key={a.label}
+              type="button"
+              onClick={(e) => {
+                /*
+                 * El header de arriba usa long-press para retraer, y `pointerdown`
+                 * en el boton caeria dentro de ese gesto. Con `stopPropagation` el
+                 * boton es un boton y no un disparador del colapso.
+                 */
+                e.stopPropagation();
+                a.onSelect();
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              /*
+               * `h-8` y no `h-6` como los del header: el readout es la fila que
+               * se mira de pasada y el play es la unica accion de ahi. Con 24px
+               * competia en escala con los botones de la barra de arriba, que ya
+               * son chicos de por si; a 32px se lee como el control principal
+               * del widget y no como un icono mas de la fila.
+               *
+               * El cuerpo del retraido mide 55px (80 de celda menos los 25 del
+               * header), asi que 32 entra de sobra y el `items-center` del padre
+               * lo centra sin empujar el readout.
+               */
+              className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors active:scale-90 ${
+                a.tone === 'p2'
+                  ? 'bg-p2/15 text-p2 hover:bg-p2/25'
+                  : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-gray-200'
+              }`}
+              title={a.label}
+              aria-label={a.label}
+            >
+              {a.label === 'Pause' ? <FiPause size={17} /> : <FiPlay size={17} className="ml-0.5" />}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );

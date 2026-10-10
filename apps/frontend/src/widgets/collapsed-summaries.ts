@@ -1,5 +1,6 @@
-import type { CollapsedSummary } from './registry';
+import type { CollapsedAction, CollapsedSummary } from './registry';
 import { normalizeConfig, formatStopwatch, formatTarget } from './pomodoro/shared';
+import { togglePomodoro } from './pomodoro/timer';
 
 /*
  * Que muestra cada widget cuando esta retraido.
@@ -166,4 +167,30 @@ export function diarySummary(config: Record<string, unknown>): CollapsedSummary 
  */
 export function notesSummary(): CollapsedSummary | null {
   return null;
+}
+
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Botonera del pomodoro retraido.
+ *
+ * `togglePomodoro` va al modulo y no al componente justamente porque esto se
+ * dibuja con el widget COLLAPSADO, o sea sin componente montado. El readout no
+ * puede llamar a un handler del cuerpo que no existe.
+ *
+ * El estado sale del config que le pasa el frame, que ya viene del store vivo:
+ * asi el icono cambia en el mismo clic, sin esperar el siguiente tick.
+ */
+export function pomodoroActions(widgetId: string, config: Record<string, unknown>): CollapsedAction[] {
+  const cfg = normalizeConfig(config);
+  const running = cfg.state === 'running';
+  return [
+    {
+      label: running ? 'Pause' : 'Start',
+      tone: running ? 'p2' : 'neutral',
+      onSelect: () => {
+        togglePomodoro(widgetId);
+      },
+    },
+  ];
 }

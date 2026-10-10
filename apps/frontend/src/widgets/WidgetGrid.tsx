@@ -36,6 +36,7 @@ import {
   clampRect,
   findFirstSlot,
   resolveDrop,
+  pushDirectionFor,
   normalizeLayout,
   minSize,
   COLLAPSED_CELLS_H,
@@ -49,8 +50,8 @@ import {
  * mas bajo, con un par de filas de sobra para tener donde soltar.
  *
  * Invariante: ningun par de widgets se solapa. Lo mantiene `resolveDrop`, que
- * intercambia posiciones cuando el destino esta ocupado por uno solo y rechaza
- * el drop si hay mas de uno.
+ * empuja a los que encuentra en el camino hacia el lado del que viene el gesto,
+ * y se cae a la pasada hacia abajo si en esa direccion no hay grilla.
  */
 const CACHE_VERSION = 3;
 const UNDO_TOAST_MS = 5000;
@@ -481,8 +482,12 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
   }, [handleAddWidget, onAddWidgetRef, tabId]);
 
   /*
-   * Suelte del menu "+": el widget nace en la celda donde se solto y empuja
-   * hacia abajo lo que quede debajo, igual que mover uno que ya existe.
+   * Suelte del menu "+": el widget nace en la celda donde se solto y empuja a lo
+   * que quede en el camino, igual que mover uno que ya existe.
+   *
+   * Aca no hay gesto del cual sacar la direccion -- el widget no viene de
+   * ningun lado de la grilla, sale del menu -- asi que empuja hacia abajo, que
+   * es la direccion donde siempre hay espacio.
    *
    * El empuje se PERSISTE. `normalizeLayout` tambien lo reparte, pero solo en
    * memoria: si no se guarda, al recargar los demas vuelven a su sitio y el
@@ -882,7 +887,8 @@ function readCollapsedSize(config: Record<string, unknown>): { w: number; h: num
       const candidate = current.map((w) =>
         w.id === id ? { ...w, position: safe } : w,
       );
-      // Al agrandar, los vecinos que quedan tapados bajan, igual que en un drop.
+      // Al agrandar, los vecinos que quedan tapados se corren de lado, igual que
+      // en un drop. Sin gesto del cual sacar la direccion, se va hacia abajo.
       const resolved = resolveDrop(current, id, safe, cols);
       const finalWidget = resolved?.moved ?? { ...widget, position: safe };
       const updates = [
@@ -954,9 +960,17 @@ function readCollapsedSize(config: Record<string, unknown>): { w: number; h: num
         x: widget.position.x + shift.dx,
         y: widget.position.y + shift.dy,
       };
-      const resolved = resolveDrop(widgets, widgetId, target, cols);
+      /*
+       * El empuje no lo decide este gesto: lo decide DONDE QUEDO el widget, y
+       * `resolveDrop` lo ve solo. El gesto va como desempate para cuando el
+       * widget cae encima de otro y no hay un lado mas corto que abrir. Se
+       * pasa en celdas y no en px porque en px un arrastre oblicuo seria
+       * indistinguible de uno recto.
+       */
+      const gesture = pushDirectionFor(shift.dx, shift.dy);
+      const resolved = resolveDrop(widgets, widgetId, target, cols, gesture);
       if (!resolved) return;
-      // El que se movio mas los que el empuje corrio hacia abajo.
+      // El que se movio mas los que el empuje corrio de lado.
       commitPositions([
         { id: widgetId, position: resolved.moved.position },
         ...resolved.shifted,
