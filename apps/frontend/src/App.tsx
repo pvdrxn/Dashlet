@@ -1,9 +1,12 @@
-import { useCallback, useState, useRef, useEffect } from 'react';
+import { useCallback, useState, useRef, useEffect, Suspense } from 'react';
 import { WidgetGrid } from './widgets';
 import { Toolbar } from './components/Toolbar';
 import { TabBar } from './components/TabBar';
 import { TrashWindow } from './components/TrashWindow';
 import { TaskPickerModal } from './components/TaskPickerModal';
+import { ViewSidebar } from './components/ViewSidebar';
+import { CalendarView, getView, type ViewId } from './views';
+import { FiMenu } from 'react-icons/fi';
 import { widgetBus } from './widgets/widget-bus';
 import * as tabsApi from './api/tabs';
 import * as widgetsApi from './api/widgets';
@@ -17,10 +20,29 @@ import {
 } from './widgets/drag-session';
 
 const ACTIVE_TAB_KEY = 'dashlet-active-tab';
+const ACTIVE_VIEW_KEY = 'dashlet-active-view';
+
+/*
+ * Lee la vista guardada. Un id desconocido -- de una version anterior de la app,
+ * o escrito a mano en localStorage -- cae en la vista de widgets: es mejor
+ * arrancar en el dashboard que dejar la app sin shell.
+ */
+function readStoredView(): ViewId {
+  const stored = localStorage.getItem(ACTIVE_VIEW_KEY);
+  return stored && getView(stored as ViewId) ? (stored as ViewId) : 'widgets';
+}
 
 function App() {
   const [trashOpen, setTrashOpen] = useState(false);
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
+  /*
+   * Vista de nivel superior: `widgets` (el dashboard de siempre) o `calendar`.
+   * Elige la sidebar y determina que barra de pestañas va arriba. Es un estado
+   * aparte del `activeTabId`: las tabs son internas a la vista de widgets y no
+   * existen en la de calendario, que tiene su propia eje de meses.
+   */
+  const [activeView, setActiveView] = useState<ViewId>(readStoredView);
+  const [viewSidebarOpen, setViewSidebarOpen] = useState(false);
   /*
    * Que timer pidio el selector. Va en un ref y no en estado porque solo se lee
    * cuando el modal elige una tarea, y guardarlo en estado provocaria un render
@@ -97,7 +119,9 @@ function App() {
       taskPickerTargetRef.current = data.widgetId;
       setTaskPickerOpen(true);
     });
-    return () => { off(); };
+    return () => {
+      off();
+    };
   }, []);
 
   useEffect(() => {
@@ -109,13 +133,19 @@ function App() {
         widgetBus.emit('timer-index', { widgetId: t.id, timerIndex: timers.length - i });
       });
     });
-    return () => { off(); };
+    return () => {
+      off();
+    };
   }, [activeTabId]);
 
   useEffect(() => {
     if (activeTabId) localStorage.setItem(ACTIVE_TAB_KEY, activeTabId);
     else localStorage.removeItem(ACTIVE_TAB_KEY);
   }, [activeTabId]);
+
+  useEffect(() => {
+    localStorage.setItem(ACTIVE_VIEW_KEY, activeView);
+  }, [activeView]);
 
   const handleSelectTab = useCallback((id: string) => {
     setActiveTabId(id);
@@ -245,7 +275,9 @@ function App() {
         widgetBus.emit('task:select', { ...data, targetWidgetId: freeTimer.id });
       }
     });
-    return () => { off(); };
+    return () => {
+      off();
+    };
   }, [activeTabId, handleAddWidget]);
 
   const registerPredictAddRef = useCallback(
@@ -285,60 +317,114 @@ function App() {
       .catch(() => {});
   }, []);
 
-  if (!tabsLoaded) {
-    return (
-      <main className="min-h-screen bg-gray-900">
-        <div className="flex flex-col gap-2 px-4 py-3" aria-hidden="true">
-          <div className="skeleton h-8 w-full rounded-lg" />
-          <div className="skeleton h-8 w-56 rounded-lg" />
-          <div className="skeleton mt-4 h-56 w-80 rounded-lg" />
-        </div>
-      </main>
-    );
-  }
+  /*
+   * El esqueleto de carga es SOLO de la vista de widgets.
+   *
+   * Antes cubria la app entera, y con el calendario quedaria mal: el calendario
+   * no depende de las tabs, asi que si la carga de tabs se demora -- o el
+   * backend esta caido y el reintento de 1s sigue -- la vista de calendario
+   * quedaria clavada en un esqueleto que no describe lo que esta pasando. Cada
+   * superficie muestra su propio estado de carga.
+   */
+  const widgetsSkeleton = (
+    <main className="min-h-screen bg-gray-900">
+      <div className="flex flex-col gap-2 px-4 py-3" aria-hidden="true">
+        <div className="skeleton h-8 w-full rounded-lg" />
+        <div className="skeleton h-8 w-56 rounded-lg" />
+        <div className="skeleton mt-4 h-56 w-80 rounded-lg" />
+      </div>
+    </main>
+  );
+
+  /*
+   * Boton que abre la sidebar de vistas. Va como `leading` de la barra de
+   * pestañas en vez de en un contenedor propio: es UN solo elemento y las dos
+   * barras -- la de dashboards y la de meses -- lo reciben por prop. Asi el
+   * shell no tiene que saber de que barra se trata, y el boton queda dentro de
+   * la zona sticky en los dos casos.
+   */
+  const viewSwitchButton = (
+    <button
+      type="button"
+      onClick={() => setViewSidebarOpen(true)}
+      title="Change view"
+      aria-label="Change view"
+      aria-haspopup="dialog"
+      aria-expanded={viewSidebarOpen}
+      className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded text-gray-400 transition-all duration-150 hover:bg-white/5 hover:text-gray-200 active:scale-90"
+    >
+      <FiMenu size={15} />
+    </button>
+  );
 
   return (
     <main className="min-h-screen bg-gray-900">
-      <div ref={tabBarRef}>
-        <TabBar
-          tabs={tabs}
-          activeTabId={activeTabId}
-          onSelectTab={handleSelectTab}
-          onCreateTab={handleCreateTab}
-          onRenameTab={handleRenameTab}
-          onDeleteTab={handleDeleteTab}
-          onReorderTabs={handleReorderTabs}
-          editingTabId={editingTabId}
-          onEditingTabIdChange={setEditingTabId}
-          widgetDragActive={widgetDragActive}
-        />
-      </div>
-      <Toolbar
-        onAddWidget={handleAddWidget}
-        onAddWidgetDeferred={handleAddWidgetDeferred}
-        onPredictAdd={handlePredictAdd}
-        onRevealWidgets={handleRevealWidgets}
-        onOpenTrash={() => setTrashOpen(true)}
-        topOffset={tabBarHeight}
-      />
-      <div className="p-4">
-        {tabs.map((tab) => (
-          <div key={tab.id} className={activeTabId === tab.id ? '' : 'hidden'}>
-            <WidgetGrid
-              tabId={tab.id}
-              onAddWidgetRef={registerAddWidgetRef}
-              onPredictAddRef={registerPredictAddRef}
-              onRevealRef={registerRevealRef}
-              onRefreshRef={registerRefreshRef}
-              onTransferRef={registerTransferRef}
-              onWidgetDragStart={handleWidgetDragStart}
-              onWidgetDragEnd={handleWidgetDragEnd}
-              onWidgetTransferred={handleWidgetTransferred}
-              onWidgetSynced={handleWidgetSynced}
+      {activeView === 'widgets' ? (
+        !tabsLoaded ? (
+          widgetsSkeleton
+        ) : (
+          <>
+            <div ref={tabBarRef}>
+              <TabBar
+                tabs={tabs}
+                activeTabId={activeTabId}
+                onSelectTab={handleSelectTab}
+                onCreateTab={handleCreateTab}
+                onRenameTab={handleRenameTab}
+                onDeleteTab={handleDeleteTab}
+                onReorderTabs={handleReorderTabs}
+                editingTabId={editingTabId}
+                onEditingTabIdChange={setEditingTabId}
+                widgetDragActive={widgetDragActive}
+                leading={viewSwitchButton}
+              />
+            </div>
+            <Toolbar
+              onAddWidget={handleAddWidget}
+              onAddWidgetDeferred={handleAddWidgetDeferred}
+              onPredictAdd={handlePredictAdd}
+              onRevealWidgets={handleRevealWidgets}
+              onOpenTrash={() => setTrashOpen(true)}
+              topOffset={tabBarHeight}
             />
-          </div>
-        ))}
-      </div>
+            <div className="p-4">
+              {tabs.map((tab) => (
+                <div key={tab.id} className={activeTabId === tab.id ? '' : 'hidden'}>
+                  <WidgetGrid
+                    tabId={tab.id}
+                    onAddWidgetRef={registerAddWidgetRef}
+                    onPredictAddRef={registerPredictAddRef}
+                    onRevealRef={registerRevealRef}
+                    onRefreshRef={registerRefreshRef}
+                    onTransferRef={registerTransferRef}
+                    onWidgetDragStart={handleWidgetDragStart}
+                    onWidgetDragEnd={handleWidgetDragEnd}
+                    onWidgetTransferred={handleWidgetTransferred}
+                    onWidgetSynced={handleWidgetSynced}
+                  />
+                </div>
+              ))}
+            </div>
+          </>
+        )
+      ) : (
+        <Suspense
+          fallback={
+            <div className="flex min-h-screen flex-col gap-3 p-4" aria-hidden="true">
+              <div className="skeleton h-9 w-full rounded-lg" />
+              <div className="skeleton h-64 w-full rounded-lg" />
+            </div>
+          }
+        >
+          <CalendarView leading={viewSwitchButton} />
+        </Suspense>
+      )}
+      <ViewSidebar
+        open={viewSidebarOpen}
+        activeViewId={activeView}
+        onSelect={setActiveView}
+        onClose={() => setViewSidebarOpen(false)}
+      />
       {trashOpen && (
         <TrashWindow
           onClose={() => setTrashOpen(false)}

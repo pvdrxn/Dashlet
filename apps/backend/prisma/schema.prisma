@@ -8,12 +8,14 @@ datasource db {
 }
 
 model User {
-  id       String     @id @default(uuid())
-  email    String     @unique
+  id       String   @id @default(uuid())
+  email    String   @unique
   password String
   widgets  Widget[]
   tabs     Tab[]
   lists    TodoList[]
+  events   CalendarEvent[]
+  tags     Tag[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -65,4 +67,63 @@ model TodoItem {
   urgency   Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// Bloque del calendario: una tarea con hora dentro de un dia.
+///
+/// `date` es texto `YYYY-MM-DD` y no DateTime a proposito. Es el mismo criterio
+/// que esta en CalendarEventDto: el dia es la unidad con la que piensa el
+/// usuario, y un timestamp obliga a fijar zona horaria en cada lectura, con el
+/// clasico evento corrido de dia al cambiar el horario de verano.
+///
+/// La hora va en `startMin` (0..1439) y no en una columna `time`: asi el dia
+/// completo es `date` a secas y la grilla de horas es una division.
+model CalendarEvent {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  date        String
+  startMin    Int
+  durationMin Int       @default(60)
+  title       String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  /// UNA etiqueta por bloque. `onDelete: SetNull` para que borrar una etiqueta
+  /// le SAQUE la etiqueta a sus bloques en vez de borrarlos: los bloques
+  /// sobreviven y quedan sin etiqueta.
+  tagId       String?
+  tag         Tag?      @relation(fields: [tagId], references: [id], onDelete: SetNull)
+
+  /// Toda lectura de la vista es un rango sobre `date`, asi que el indice va
+  /// por ahi y no por `createdAt`: es la unica consulta que se hace siempre.
+  @@index([userId, date])
+  /// El filtro por etiqueta es un `WHERE tagId = ?` sobre el mes entero. Con el
+  /// indice del rango alcanza, pero este evita recorrer el mes para contar.
+  @@index([tagId])
+}
+
+/// Etiqueta creada por el usuario.
+///
+/// Es entidad y no un texto dentro del evento a proposito: renombrarla tiene que
+/// ser UNA operacion, y con el nombre adentro de cada bloque habria que
+/// reescribir todos los que la usan.
+///
+/// `name` guarda como la escribio el usuario; `nameLower` fuerza la unicidad.
+/// SQLite no tiene collation case-insensitive por defecto, asi que sin la
+/// columna auxiliar "Work" y "work" coexistirian como dos etiquetas.
+model Tag {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  name      String
+  nameLower String
+  /// Hex de `TAG_COLORS` (packages/shared). Texto y no enum porque la paleta
+  /// vive en el frontend y agregar un tono no debe ser una migracion.
+  color     String   @default("#4E8FD4")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  events    CalendarEvent[]
+
+  @@unique([userId, nameLower])
 }

@@ -143,12 +143,7 @@ function TabPill({
         la conecta con el contenido de abajo y con el mismo token que marca
         "esto esta activo" (Pomodoro corriendo, widget en arrastre).
       */}
-      {isActive && (
-        <span
-          aria-hidden="true"
-          className="absolute inset-x-0 bottom-0 h-0.5 bg-p2"
-        />
-      )}
+      {isActive && <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-0.5 bg-p2" />}
       {isEditing ? (
         <div className="relative min-w-0">
           <span aria-hidden className="invisible whitespace-nowrap text-sm">
@@ -221,6 +216,13 @@ interface TabBarProps {
   onReorderTabs: (orderedIds: string[]) => void;
   editingTabId: string | null;
   onEditingTabIdChange: (id: string | null) => void;
+  /**
+   * Nodo a la izquierda de la primera pestaña: el botón que abre la sidebar de
+   * vistas. Vive acá, dentro del `TabBar`, y no en un contenedor por fuera,
+   * para que quede en la barra sticky y la acompañe al scroll en vez de
+   * quedarse pegado arriba mientras las pestañas se van.
+   */
+  leading?: React.ReactNode;
 }
 
 export function TabBar({
@@ -234,6 +236,7 @@ export function TabBar({
   onReorderTabs,
   editingTabId,
   onEditingTabIdChange,
+  leading,
 }: TabBarProps) {
   const [draftName, setDraftName] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -309,6 +312,7 @@ export function TabBar({
       className="sticky top-0 z-[var(--z-sticky)] flex items-center gap-1.5 overflow-hidden border-b border-gray-700/60 bg-gray-900/90 px-4 backdrop-blur-sm"
       style={{ top: 0 }}
     >
+      {leading}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
           <div className="flex min-w-0 items-center gap-1.5">
