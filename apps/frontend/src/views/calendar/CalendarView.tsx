@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { FiPlus, FiTrash2, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import { TabStrip } from '../../components/TabStrip';
 import { TagPicker } from './TagPicker';
-import { TagFilterRow } from './TagFilterRow';
+import { TagFilterChips } from './TagFilterChips';
 import * as api from '../../api/calendar';
 import * as tagsApi from '../../api/tags';
 import type { CalendarEventDto, TagDto, UpdateTagDto } from '@widget-master/shared';
@@ -44,6 +44,13 @@ import {
  * vista lo que el usuario quiere ver es lo que tiene que pasar hoy, no un mes
  * entero por delante.
  */
+
+/**
+ * Cuantos puntos de etiqueta caben en una celda del mes antes de resumir en un
+ * "+N". Una celda mide ~57px: cuatro puntos de 5px con separacion de 3px son 29,
+ * y el "+N" se lleva unos 14 mas.
+ */
+const MAX_DAY_TAG_DOTS = 4;
 
 /** Los meses de la tira: una ventana fija alrededor del actual. */
 function buildMonthTabs(anchorMonth: string): string[] {
@@ -168,8 +175,6 @@ export function CalendarView({ leading }: { leading?: ReactNode }) {
   /* Etiquetas: filtro y resolucion                                        */
   /* ---------------------------------------------------------------------- */
 
-  const tagById = useMemo(() => new Map(tags.map((t) => [t.id, t])), [tags]);
-
   /**
    * Los eventos que pasan el filtro.
    *
@@ -226,6 +231,34 @@ export function CalendarView({ leading }: { leading?: ReactNode }) {
     }
     return map;
   }, [visibleEvents]);
+
+  const tagById = useMemo(() => new Map(tags.map((t) => [t.id, t])), [tags]);
+
+  /**
+   * Etiquetas DISTINTAS de cada dia, para los puntos de color de la celda.
+   *
+   * Sale de los eventos ya filtrados, igual que `countsByDate`: si el filtro dice
+   * "solo work", la celda tiene que mostrar los puntos de work y de nada mas.
+   *
+   * Sin distinguir, un dia con cinco bloques de `trabajo` pondria cinco puntos
+   * del mismo color y no dirian nada. Lo que interesa es que colores hay.
+   *
+   * El orden es el GLOBAL de las etiquetas y no el de aparicion: asi la misma
+   * etiqueta ocupa la misma posicion en todos los dias del mes y el color se lee
+   * de memoria en vez de tener que ir a la leyenda otra vez.
+   */
+  const tagsByDate = useMemo(() => {
+    const map = new Map<string, string[]>();
+    const rank = new Map(tags.map((t, i) => [t.id, i]));
+    for (const e of visibleEvents) {
+      if (!e.tagId) continue;
+      const list = map.get(e.date);
+      if (!list) map.set(e.date, [e.tagId]);
+      else if (!list.includes(e.tagId)) list.push(e.tagId);
+    }
+    for (const list of map.values()) list.sort((a, b) => (rank.get(a) ?? 0) - (rank.get(b) ?? 0));
+    return map;
+  }, [visibleEvents, tags]);
 
   const dayEvents = useMemo(
     () =>
@@ -289,16 +322,23 @@ export function CalendarView({ leading }: { leading?: ReactNode }) {
    */
   const resolveTagId = useCallback(
     async (tagId: string | null, pendingTagName: string): Promise<string | null> => {
-      if (!pendingTagName) return tagId;
+      /*
+       * La etiqueta pudo BORRARSE desde el desplegable con este bloque abierto:
+       * el chip desaparece solo porque se busca en `tags`, pero `editor.tagId`
+       * seguia apuntando a una etiqueta que ya no existe y el guardado mandaba su
+       * id. El bloque se iba con una etiqueta fantasma o directo fallaba.
+       */
+      const live = tagId && tags.some((t) => t.id === tagId) ? tagId : null;
+      if (!pendingTagName) return live;
       try {
         const created = await tagsApi.createTag({ name: pendingTagName });
         setTags((prev) => (prev.some((t) => t.id === created.id) ? prev : [...prev, created]));
         return created.id;
       } catch {
-        return tagId;
+        return live;
       }
     },
-    [],
+    [tags],
   );
 
   /** Refresca las cuentas de la fila sin bajar los eventos. */
@@ -477,23 +517,6 @@ export function CalendarView({ leading }: { leading?: ReactNode }) {
          * por defecto de los items flex. Es lo que hacia que esta caja midiera
          * lo que quisieran sus hijos en vez de lo que le sobra.
          */}
-        {/*
-         * Fila de etiquetas: arriba de las dos columnas y a ancho completo.
-         *
-         * A ancho completo y no dentro de una de las dos secciones porque el
-         * filtro afecta a las DOS: esconde bloques del panel del dia Y cambia
-         * los contadores de la grilla del mes. Ponerlo en el mes lo haria parecer
-         * que filtra solo el mes, que es justo la confusion a evitar.
-         */}
-        <TagFilterRow
-          tags={tags}
-          activeIds={activeTagIds}
-          onToggle={handleToggleTag}
-          onClear={handleClearTags}
-          onRename={handleRenameTag}
-          onDelete={handleDeleteTag}
-        />
-
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden p-4 lg:flex-row">
         {/* ---------------------------------------------------------------- */}
         {/* Grilla del mes                                                     */}
@@ -504,17 +527,35 @@ export function CalendarView({ leading }: { leading?: ReactNode }) {
            * `lg:flex-none` y el panel del dia se lleva el resto.
            */}
           <section className="flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-lg border border-gray-600 bg-gray-800/90 lg:w-[420px] lg:flex-none">
-          <header className="flex items-baseline justify-between border-b border-gray-700/60 px-4 py-3">
-            <h2 className="text-sm font-medium text-white">{formatMonthLabel(activeMonth)}</h2>
-            <span className="text-xs text-gray-500">
-              {/*
-                * Cuenta de los eventos YA FILTRADOS, como los contadores de las
-                * celdas. Con el filtro puesto, decir el total sin filtrar
-                * mientras abajo solo se ven tres hace pensar que el filtro no
-                * esta haciendo nada.
-                */}
+          {/*
+           * El filtro vive en la cabecera del mes, a la derecha.
+           *
+           * Afecta a las DOS columnas -- esconde bloques del panel del dia Y
+           * cambia los contadores de la grilla -- pero esta es la unica cabecera
+           * donde cabe: la fila aparte que hubo antes arriba de todo occupies
+           * ancho completo para un control de 30px de alto. Pegado al borde
+           * derecho se lee como parte del encabezado y no como algo suelto.
+           */}
+          <header className="flex items-center gap-3 border-b border-gray-700/60 px-4 py-2.5">
+            {/* El contador va PEGADO al mes, no al borde opuesto: separado se
+                leia como el total de la columna y con el filtro puesto daba la
+                impresion de que el filtro no hacia nada. */}
+            <div className="flex shrink-0 items-baseline gap-2">
+              <h2 className="text-sm font-medium text-white">{formatMonthLabel(activeMonth)}</h2>
+              <span className="text-xs text-gray-500">
+                {/*
+                 * Cuenta de los eventos YA FILTRADOS, como los contadores de las
+                 * celdas.
+                 */}
                 {visibleEvents.length} {visibleEvents.length === 1 ? 'event' : 'events'}
-            </span>
+              </span>
+            </div>
+            <TagFilterChips
+              tags={tags}
+              activeIds={activeTagIds}
+              onToggle={handleToggleTag}
+              onClear={handleClearTags}
+            />
           </header>
 
           <div className="grid grid-cols-7 border-b border-gray-700/60">
@@ -541,6 +582,23 @@ export function CalendarView({ leading }: { leading?: ReactNode }) {
                 const isSelected = cell.key === selectedDate;
                 const isCurrentMonth = cell.inMonth;
                 const count = countsByDate.get(cell.key) ?? 0;
+                const dayTagIds = tagsByDate.get(cell.key) ?? [];
+                const dayTags = dayTagIds
+                  .map((id) => tagById.get(id))
+                  .filter((t): t is TagDto => Boolean(t));
+                /*
+                 * El nombre de las etiquetas va en el title del celda, no
+                 * dibujado: una celda mide 57px y ahi no cabe "reuniones
+                 * semanales". El color es la referencia rapida y el title da el
+                 * nombre al pasar por encima.
+                 */
+                const cellTitle = [
+                  formatDayLabel(cell.key),
+                  count ? `${count} ${count === 1 ? 'event' : 'events'}` : null,
+                  dayTags.length ? dayTags.map((t) => t.name).join(', ') : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ');
                 return (
                   <button
                     key={`${ri}-${cell.key}`}
@@ -556,7 +614,8 @@ export function CalendarView({ leading }: { leading?: ReactNode }) {
                       if (!cell.inMonth) setActiveMonth(cell.key.slice(0, 7));
                     }}
                     onDoubleClick={() => startCreate(cell.key, 9 * 60)}
-                    aria-label={`${formatDayLabel(cell.key)}${count ? `, ${count} ${count === 1 ? 'event' : 'events'}` : ''}`}
+                    aria-label={cellTitle}
+                    title={cellTitle}
                     aria-current={isToday(cell.key) ? 'date' : undefined}
                     className={`relative flex flex-col items-center justify-start gap-1 border-r border-b border-gray-700/30 p-1 text-sm transition-colors [&:nth-child(7n)]:border-r-0 [&:nth-child(n+36)]:border-b-0 ${
                       isSelected
@@ -597,6 +656,46 @@ export function CalendarView({ leading }: { leading?: ReactNode }) {
                         }`}
                       >
                         {count}
+                      </span>
+                    )}
+                    {/*
+                     * Los tags del dia, como puntos de color.
+                     *
+                     * El chip del panel de horas ya dice el nombre de la etiqueta
+                     * de cada bloque; aca lo que hace falta es la VISTA GENERAL:
+                     * de un vistazo, que dias se parecen entre si y cuales se
+                     * van a los seis puntos. Con nombres seria ilegible.
+                     *
+                     * Van DEBAJO del numero y no al lado: la cuenta es lo primero
+                     * que uno busca en un mes, y al lado lo empujaba.
+                     */}
+                    {dayTags.length > 0 && (
+                      <span className="flex items-center justify-center gap-[3px]">
+                        {dayTags.slice(0, MAX_DAY_TAG_DOTS).map((t) => (
+                          <span
+                            key={t.id}
+                            title={t.name}
+                            className={`h-[5px] w-[5px] rounded-full ${
+                              isCurrentMonth ? '' : 'opacity-40'
+                            }`}
+                            style={{ backgroundColor: tagColorHex(t.color) }}
+                          />
+                        ))}
+                        {/* Sobran y no caben: el "+" lo dice sin inventingar un
+                            color que no corresponde a ninguna etiqueta. */}
+                        {dayTags.length > MAX_DAY_TAG_DOTS && (
+                          <span
+                            title={dayTags
+                              .slice(MAX_DAY_TAG_DOTS)
+                              .map((t) => t.name)
+                              .join(', ')}
+                            className={`text-[9px] leading-none ${
+                              isCurrentMonth ? 'text-gray-600' : 'text-gray-700'
+                            }`}
+                          >
+                            +{dayTags.length - MAX_DAY_TAG_DOTS}
+                          </span>
+                        )}
                       </span>
                     )}
                   </button>
@@ -863,6 +962,8 @@ export function CalendarView({ leading }: { leading?: ReactNode }) {
                 tagId={editor.tagId}
                 pendingName={editor.pendingTagName}
                 onChange={(next) => setEditor({ ...editor, tagId: next.tagId, pendingTagName: next.pendingName })}
+                onRename={handleRenameTag}
+                onDelete={handleDeleteTag}
               />
               <button
                 type="button"

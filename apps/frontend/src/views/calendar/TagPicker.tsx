@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FiX, FiTag } from 'react-icons/fi';
-import { tagColorHex, tagKey, nextTagColorId } from '@widget-master/shared';
-import type { TagDto } from '@widget-master/shared';
+import { FiX, FiTag, FiEdit2, FiTrash2 } from 'react-icons/fi';
+import { TAG_COLORS, tagColorHex, tagKey, nextTagColorId, MAX_TAG_NAME_LENGTH } from '@widget-master/shared';
+import type { TagDto, UpdateTagDto } from '@widget-master/shared';
 
 /*
  * Selector de etiqueta del editor.
  *
  * UNA sola etiqueta por bloque.
+ *
+ * El desplegable hace las TRES cosas del vocabulario de una persona: elegir,
+ * renombrar y borrar. Renombrar y borrar estan ahi y no en otra parte del
+ * calendario porque la fila que vas a renombrar es la misma que acabas de elegir:
+ * tenerla abierta y editable a la vista es la mitad del trabajo.
  *
  * El campo ESCRIBE. No hay un paso previo de "crear" ni un boton para eso: lo
  * que se escribe resuelve solo. Al Enter -- o al sacar el foco -- el texto se
@@ -40,13 +45,30 @@ interface TagPickerProps {
   /** Nombre escrito que todavia no existe como etiqueta. */
   pendingName: string;
   onChange: (next: { tagId: string | null; pendingName: string }) => void;
+  onRename: (id: string, dto: UpdateTagDto) => Promise<unknown>;
+  onDelete: (id: string) => Promise<unknown>;
   disabled?: boolean;
 }
 
-export function TagPicker({ tags, tagId, pendingName, onChange, disabled = false }: TagPickerProps) {
+export function TagPicker({
+  tags,
+  tagId,
+  pendingName,
+  onChange,
+  onRename,
+  onDelete,
+  disabled = false,
+}: TagPickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  /** Id de la etiqueta que se esta renombrando, o `null` si ninguna. */
+  const [editingId, setEditingId] = useState<string | null>(null);
+  /** Id de la etiqueta cuya confirmacion de borrado esta abierta. */
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState('');
+  const [draftColor, setDraftColor] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const renameRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   const current = useMemo(() => (tagId ? tags.find((t) => t.id === tagId) : undefined), [tags, tagId]);
@@ -83,6 +105,8 @@ export function TagPicker({ tags, tagId, pendingName, onChange, disabled = false
   const select = (id: string) => {
     onChange({ tagId: id, pendingName: '' });
     setQuery('');
+    setEditingId(null);
+    setDeletingId(null);
     setOpen(false);
     focus();
   };
@@ -91,6 +115,8 @@ export function TagPicker({ tags, tagId, pendingName, onChange, disabled = false
   const clear = () => {
     onChange({ tagId: null, pendingName: '' });
     setQuery('');
+    setEditingId(null);
+    setDeletingId(null);
     setOpen(false);
     focus();
   };
@@ -120,13 +146,66 @@ export function TagPicker({ tags, tagId, pendingName, onChange, disabled = false
     // 4. Varias sin exacta: hay que afinar. No se hace nada a proposito.
   };
 
+  const startRename = (tag: TagDto) => {
+    setDeletingId(null);
+    setEditingId(tag.id);
+    setDraftName(tag.name);
+    setDraftColor(tag.color);
+  };
+
+  const commitRename = async () => {
+    if (!editingId) return;
+    const id = editingId;
+    const name = draftName.trim();
+    const original = tags.find((t) => t.id === id);
+    setEditingId(null);
+    if (!name || !original) return;
+    const dto: UpdateTagDto = {};
+    if (name !== original.name) dto.name = name;
+    if (draftColor !== original.color) dto.color = draftColor as never;
+    // Sin cambios no se manda nada: un PATCH sin campos solo gasta un viaje.
+    if (Object.keys(dto).length) await onRename(id, dto);
+    focus();
+  };
+
+  const commitDelete = async () => {
+    if (!deletingId) return;
+    const id = deletingId;
+    setDeletingId(null);
+    await onDelete(id);
+    focus();
+  };
+
+  /*
+   * Renombrar o borrar saca el foco del campo de texto, y eso disparaba
+   * `commitText` con lo que hubiera escrito: abrir el lapiz con "perso" a medio
+   * teclear asignaba `personal` y ademas abria el renombrado. El `preventDefault`
+   * en `mousedown` cancela el cambio de foco -- y por lo tanto el blur -- sin
+   * tocar el estado del campo.
+   */
+  const enterManagement = (fn: () => void) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // El filtro escrito se cae: la fila que se esta renombrando puede no estar
+    // entre las que el filtro deja, y desaparecer a mitad de editarla confunde.
+    setQuery('');
+    fn();
+  };
+
+  useEffect(() => {
+    if (editingId) renameRef.current?.focus();
+  }, [editingId]);
+
   // Click afuera cierra la lista sin confirmar nada: perder el foco esta
   // justamente entre las dos formas de confirmar, asi que cerrarlo es una
   // tercera, que es solo cerrar.
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+      if (rootRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+      setEditingId(null);
+      setDeletingId(null);
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
@@ -227,27 +306,163 @@ export function TagPicker({ tags, tagId, pendingName, onChange, disabled = false
           {listed.length > 0 ? (
             <div className="max-h-48 overflow-y-auto">
               {listed.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  // `onMouseDown` y no `onClick`, con `preventDefault`: el click
-                  // sobre el boton leeria como un blur del input, que dispara
-                  // `onBlur` y confirmaria el texto a medio elegir. Con mousedown
-                  // previene el blur y el click llega con el foco intacto.
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    select(t.id);
-                  }}
-                  className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-gray-300 hover:bg-white/5"
-                >
-                  <span
-                    aria-hidden="true"
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: tagColorHex(t.color) }}
-                  />
-                  <span className="min-w-0 flex-1 truncate">{t.name}</span>
-                  <span className="shrink-0 text-xs tabular-nums text-gray-600">{t.eventCount}</span>
-                </button>
+                <div key={t.id} className="flex items-center pr-1">
+                  {/* ---- Editando el nombre de esta etiqueta ---- */}
+                  {editingId === t.id ? (
+                    <div className="w-full px-2 py-2">
+                      {/*
+                       * Los swatches van en su propia linea y no al lado del
+                       * input: seis botones de 14px mas el campo y los botones no
+                       * entran en el ancho del desplegable y el lapiz se abria
+                       * sin campo donde escribir.
+                       */}
+                      <div className="flex flex-wrap items-center gap-1">
+                        {TAG_COLORS.map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => setDraftColor(c.id)}
+                            aria-label={`Use color ${c.id}`}
+                            title={c.id}
+                            className={`h-3.5 w-3.5 rounded-full ring-offset-1 ring-offset-gray-900 ${
+                              draftColor === c.id ? 'ring-2 ring-white' : ''
+                            }`}
+                            style={{ backgroundColor: c.hex }}
+                          />
+                        ))}
+                      </div>
+                      <div className="mt-1.5 flex items-center gap-1.5">
+                        <input
+                          ref={renameRef}
+                          value={draftName}
+                          maxLength={MAX_TAG_NAME_LENGTH}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onChange={(e) => setDraftName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              void commitRename();
+                            }
+                            if (e.key === 'Escape') {
+                              e.preventDefault();
+                              setEditingId(null);
+                              focus();
+                            }
+                          }}
+                          aria-label={`Rename tag ${t.name}`}
+                          className="min-w-0 flex-1 rounded bg-gray-700 px-1.5 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-gray-500/50"
+                        />
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => void commitRename()}
+                          className="shrink-0 rounded px-1.5 py-1 text-xs text-p2 transition-colors hover:bg-p2/15"
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setEditingId(null);
+                            focus();
+                          }}
+                          className="shrink-0 rounded px-1.5 py-1 text-xs text-gray-400 transition-colors hover:bg-white/5"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : /* ---- Confirmando el borrado de esta etiqueta ---- */ deletingId ===
+                    t.id ? (
+                    <div className="w-full border-l-2 border-danger/60 bg-danger/10 px-2 py-1.5">
+                      {/*
+                       * Decir CUANTOS bloques toca. Sin el numero, borrar se lee
+                       * como borrar una etiqueta y no como sacarla de todos lados.
+                       */}
+                      <p className="text-xs text-gray-300">
+                        Remove <span className="text-white">{t.name}</span> from{' '}
+                        <span className="text-white">
+                          {t.eventCount} {t.eventCount === 1 ? 'block' : 'blocks'}
+                        </span>
+                        ?
+                      </p>
+                      <div className="mt-1.5 flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => void commitDelete()}
+                          className="rounded px-1.5 py-1 text-xs text-danger transition-colors hover:bg-danger/15"
+                        >
+                          Delete
+                        </button>
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setDeletingId(null);
+                            focus();
+                          }}
+                          className="rounded px-1.5 py-1 text-xs text-gray-400 transition-colors hover:bg-white/5"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* ---- Fila normal: elegir, editar o borrar ---- */
+                    <>
+                      <button
+                        type="button"
+                        // `onMouseDown` y no `onClick`, con `preventDefault`: el
+                        // click sobre el boton leeria como un blur del input, que
+                        // dispara `onBlur` y confirmaria el texto a medio elegir.
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          select(t.id);
+                        }}
+                        className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-1 pl-2 text-left text-sm text-gray-300 hover:bg-white/5"
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="h-2 w-2 shrink-0 rounded-full"
+                          style={{ backgroundColor: tagColorHex(t.color) }}
+                        />
+                        <span className="min-w-0 flex-1 truncate">{t.name}</span>
+                        <span className="shrink-0 text-xs tabular-nums text-gray-600">
+                          {t.eventCount}
+                        </span>
+                      </button>
+                      {/*
+                       * Siempre visibles y no con `group-hover`: en un menu
+                       * desplegado el puntero pasa por encima de camino a otro
+                       * sitio y un boton que solo aparece al hover se va antes de
+                       * poder apuntarlo.
+                       */}
+                      <button
+                        type="button"
+                        onMouseDown={enterManagement(() => startRename(t))}
+                        disabled={disabled}
+                        aria-label={`Edit tag ${t.name}`}
+                        title="Rename"
+                        className="shrink-0 rounded p-1 text-gray-500 transition-colors hover:bg-white/5 hover:text-gray-200"
+                      >
+                        <FiEdit2 size={11} />
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={enterManagement(() => setDeletingId(t.id))}
+                        disabled={disabled}
+                        aria-label={`Delete tag ${t.name}`}
+                        title="Delete"
+                        className="shrink-0 rounded p-1 text-gray-500 transition-colors hover:bg-danger/10 hover:text-danger"
+                      >
+                        <FiTrash2 size={11} />
+                      </button>
+                    </>
+                  )}
+                </div>
               ))}
             </div>
           ) : (
