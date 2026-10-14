@@ -96,6 +96,18 @@ export const WIDGET_DEFAULT_SIZE: Record<string, { w: number; h: number }> = {
   calculator: { w: 3, h: 5 },
   'habit-tracker': { w: 4, h: 4 },
   diary: { w: 4, h: 3 },
+  /*
+ * data-table: una fila compacta mide 28px (14 de texto a lh 20 + 4 de padding por
+ * arriba y por abajo) y el encabezado lo mismo. Cinco celdas de alto son 432px,
+ * menos los 49px que se come el frame --25 de barra y 24 de padding--, y menos el
+ * encabezado y el pie: quedan 331px, once filas. Se leen sin scrollear.
+ *
+ * En ancho, cuatro columnas cortas miden 345px --el padding compacto es `px-1.5`
+ * justamente para que entren--, mas 52 de cromo, sobre 406px de grilla: entran
+ * justas. Con 4 celdas (344px) el titulo y el boton de "abrir completo" ya se
+ * pisan.
+ */
+  'data-table': { w: 5, h: 5 },
 };
 
 /*
@@ -119,6 +131,12 @@ export const WIDGET_DEFAULT_SIZE: Record<string, { w: number; h: number }> = {
  *   asi que el minimo son 4 (295px, medida de pagina).
  * - diary: paginado, con la barra de paginas arriba y una sola entrada por
  *   pagina. 3 celdas alcanzan en las dos direcciones.
+ * - data-table: el minimo lo mandan el ANCHO y el PIE. Cuatro celdas (344px)
+ *   dejan 318px de grilla, menos 52 de cromo --28 de acciones y 24 del "+"--, o
+ *   sea 266px para columnas: entran dos o tres y el resto scrollea, que es lo
+ *   razonable para un resumen. En alto 3 celdas (256px) no alcanzaba ni para las
+ *   filas del ancho minimo: el pie "Add row" se caia y la tabla quedaba
+ *   scrolleando en las dos direcciones. Con 4 (344px) entran ocho filas y el pie.
  */
 export const WIDGET_MIN_SIZE: Record<string, { w: number; h: number }> = {
   'todo-list': { w: 4, h: 3 },
@@ -127,6 +145,7 @@ export const WIDGET_MIN_SIZE: Record<string, { w: number; h: number }> = {
   calculator: { w: 3, h: 4 },
   'habit-tracker': { w: 3, h: 3 },
   diary: { w: 3, h: 3 },
+  'data-table': { w: 4, h: 4 },
 };
 
 /*
@@ -144,6 +163,9 @@ export const WIDGET_MAX_SIZE: Record<string, { w: number; h: number }> = {
   calculator: { w: 4, h: 8 },
   'habit-tracker': { w: 8, h: 10 },
   diary: { w: 8, h: 8 },
+  // 12 celdas de ancho: una tabla con muchas columnas scrollea en horizontal, y
+  // el tope alto es justamente para que eso sea util en vez de un castigo.
+  'data-table': { w: 12, h: 12 },
 };
 
 export const FALLBACK_SIZE = { w: 4, h: 3 };

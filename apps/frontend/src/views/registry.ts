@@ -8,6 +8,7 @@ import type { ComponentType } from 'react';
  *
  *   - la vista de widgets, que es el dashboard de siempre (la de `App.tsx`)
  *   - la vista de calendario, con meses y bloques por hora
+ *   - la vista de tabla, con columnas que define el usuario y filas que edita
  *
  * La diferencia con un widget no es el tamano: es que la vista no vive dentro
  * de la grilla de 80px, no se arrastra, no se redimensiona y no compite por
@@ -18,7 +19,7 @@ import type { ComponentType } from 'react';
  * rompe la preferencia guardada de quien ya la tenga.
  */
 
-export type ViewId = 'widgets' | 'calendar';
+export type ViewId = 'widgets' | 'calendar' | 'table';
 
 export interface ViewDefinition {
   id: ViewId;

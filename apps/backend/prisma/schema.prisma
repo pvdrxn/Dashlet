@@ -16,6 +16,7 @@ model User {
   lists    TodoList[]
   events   CalendarEvent[]
   tags     Tag[]
+  tables   DataTable[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -126,4 +127,55 @@ model Tag {
   events    CalendarEvent[]
 
   @@unique([userId, nameLower])
+}
+
+/// Tabla de datos propia del usuario, con columnas que el usuario define.
+///
+/// El esquema y los datos van SEPARADOS en dos modelos en vez de meter las filas
+/// como un array JSON dentro de esta. Con el array, cada lectura trae la tabla
+/// entera y dos ediciones simultaneas se pisan sobre el mismo blob.
+///
+/// `columns` es el ESQUEMA y `DataRow.values` son los datos de cada fila contra
+/// ese esquema. No hay relacion Prisma entre las dos: una columna no tiene filas,
+/// es una clave dentro del JSON.
+///
+/// Sin `deletedAt` a proposito. La tabla se referencia desde el `config` del
+/// widget --su id vive ahi--, no desde la fila de `Widget`, asi que sobrevive a que
+/// el widget se borre y se restaure.
+model DataTable {
+  id     String   @id @default(uuid())
+  userId String
+  user   User     @relation(fields: [userId], references: [id])
+  name   String
+  /// JSON con `[{ id, name, type }]`, donde `type` es `'text'` o `'number'`.
+  /// Texto y no `Json` por el mismo criterio que `Widget.config`: el schema no
+  /// usa el tipo `Json` en ninguna parte y SQLite lo soporta en cualquier forma
+  /// que no sea la que ya se usa aca.
+  columns String    @default("[]")
+  rows    DataRow[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, updatedAt])
+}
+
+/// Fila de una `DataTable`: un registro, no un fragmento.
+///
+/// Una fila por registro es lo que permite paginar, ordenar y filtrar sin cargar
+/// la tabla entera. `position` es un Float y no un Int para que reordenar no
+/// obligue a renumerar el resto: el nuevo `position` es el promedio de los dos
+/// vecinos.
+model DataRow {
+  id       String   @id @default(uuid())
+  tableId  String
+  table    DataTable @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  /// JSON con `{ [columnId]: string | number | null }`. Las claves son los `id`
+  /// de `DataTable.columns`, no los nombres: asi renombrar una columna no toca
+  /// ni un valor.
+  values   String   @default("{}")
+  position Float    @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tableId, position])
 }

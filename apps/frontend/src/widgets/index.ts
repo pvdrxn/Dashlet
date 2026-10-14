@@ -2,7 +2,9 @@ import { lazy } from 'react';
 import { FiCheckSquare, FiClock, FiEdit3, FiBook } from 'react-icons/fi';
 import { LuListChecks } from 'react-icons/lu';
 import { LuCalculator } from 'react-icons/lu';
+import { LuTable2 } from 'react-icons/lu';
 import { registerWidget } from './registry';
+import { formatNumber } from './data-table/DataTableWidget';
 import {
   todoListSummary,
   habitSummary,
@@ -19,6 +21,7 @@ const NotesWidget = lazy(() => import('./notes/NotesWidget').then(m => ({ defaul
 const CalculatorWidget = lazy(() => import('./calculator/CalculatorWidget').then(m => ({ default: m.CalculatorWidget })));
 const HabitTrackerWidget = lazy(() => import('./habit-tracker/HabitTrackerWidget').then(m => ({ default: m.HabitTrackerWidget })));
 const DiaryWidget = lazy(() => import('./diary/DiaryWidget').then(m => ({ default: m.DiaryWidget })));
+const DataTableWidget = lazy(() => import('./data-table/DataTableWidget').then(m => ({ default: m.DataTableWidget })));
 
 registerWidget('todo-list', {
   component: TodoListWidget,
@@ -72,6 +75,29 @@ registerWidget('diary', {
   icon: FiBook,
   defaultConfig: { title: 'Diary', entries: {} },
   collapsedSummary: diarySummary,
+});
+
+registerWidget('data-table', {
+  component: DataTableWidget,
+  label: 'Table',
+  icon: LuTable2,
+  /*
+   * `tableId: null` es lo que dispara la creacion perezosa: el widget se hace su
+   * tabla al montarse. `rows` y `sum` los escribe el widget para que este
+   * readout --que es una funcion PURA sobre el config-- tenga algo que mostrar con
+   * el cuerpo desmontado.
+   */
+  defaultConfig: { title: 'Table', tableId: null, rows: 0, sum: null },
+  collapsedSummary: (config) => {
+    const rows = typeof config.rows === 'number' ? config.rows : 0;
+    const sum = typeof config.sum === 'number' ? config.sum : null;
+    return {
+      value: `${rows} ${rows === 1 ? 'row' : 'rows'}`,
+      // El `Σ` solo aparece si hay una columna numerica con algo dentro. Un
+      // `Σ 0` en una tabla de texto seria mentira.
+      detail: sum === null ? undefined : `Σ ${formatNumber(sum)}`,
+    };
+  },
 });
 
 export { WidgetGrid } from './WidgetGrid';

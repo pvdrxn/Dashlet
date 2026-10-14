@@ -1,6 +1,7 @@
 import { lazy } from 'react';
 import { FiGrid } from 'react-icons/fi';
 import { LuCalendar } from 'react-icons/lu';
+import { LuTable2 } from 'react-icons/lu';
 import { registerView } from './registry';
 
 /*
@@ -19,7 +20,16 @@ const CalendarView = lazy(() =>
   import('./calendar/CalendarView').then((m) => ({ default: m.CalendarView })),
 );
 
-export { CalendarView };
+/*
+ * La tabla va con `lazy()` por la misma razon que el calendario: la mayoria de las
+ * sesiones van a estar en la vista de widgets y no hay que bajar el cliente HTTP
+ * ni la grilla hasta que se abre.
+ */
+const TableView = lazy(() =>
+  import('./table/TableView').then((m) => ({ default: m.TableView })),
+);
+
+export { CalendarView, TableView };
 export type { ViewId, ViewDefinition } from './registry';
 export { getView, getAllViews } from './registry';
 
@@ -35,4 +45,11 @@ registerView({
   label: 'Calendar View',
   description: 'Agenda by months and hours',
   icon: LuCalendar,
+});
+
+registerView({
+  id: 'table',
+  label: 'Table View',
+  description: 'Your data tables',
+  icon: LuTable2,
 });

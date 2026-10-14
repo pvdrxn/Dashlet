@@ -278,7 +278,7 @@ export interface TodoItemDto {
 }
 
 export type WidgetType =
-  'todo-list' | 'pomodoro' | 'notes' | 'calculator' | 'habit-tracker' | 'diary';
+  'todo-list' | 'pomodoro' | 'notes' | 'calculator' | 'habit-tracker' | 'diary' | 'data-table';
 
 export const WIDGET_TYPES: WidgetType[] = [
   'todo-list',
@@ -287,4 +287,132 @@ export const WIDGET_TYPES: WidgetType[] = [
   'calculator',
   'habit-tracker',
   'diary',
+  'data-table',
 ];
+
+/*
+ * Tablas de datos.
+ *
+ * El esquema de la tabla y sus filas viajan en el MISMO dto (`TableDto`), no en
+ * dos: la vista siempre dibuja las columnas contra las filas y separarlas
+ * obligaria a dos requests para pintar una pantalla. `TableSummaryDto` es la
+ * version liviana, sin filas, para el selector de tablas.
+ */
+
+export type ColumnType = 'text' | 'number';
+
+export const COLUMN_TYPES: ColumnType[] = ['text', 'number'];
+
+/** Alto maximo del nombre de una columna. */
+export const MAX_COLUMN_NAME_LENGTH = 40;
+
+/** Tope de filas que devuelve el backend, para que una tabla enorme no reviente el widget. */
+export const MAX_ROWS_PER_TABLE = 500;
+
+/**
+ * Valor de una celda.
+ *
+ * `null` y no `undefined` porque es lo que se guarda: una celda vacia esta
+ * VACIA, no ausente. Un `number` nunca es `NaN` -- lo valida el backend.
+ */
+export type CellValue = string | number | null;
+
+/** Los valores de una fila, indexados por `columnId` y NO por nombre. */
+export type RowValues = Record<string, CellValue>;
+
+export interface TableColumnDto {
+  /** Estable entre renombrar: es la clave de `RowValues`. */
+  id: string;
+  name: string;
+  type: ColumnType;
+}
+
+export interface TableRowDto {
+  id: string;
+  values: RowValues;
+  position: number;
+}
+
+export interface TableDto {
+  id: string;
+  name: string;
+  columns: TableColumnDto[];
+  rows: TableRowDto[];
+  /**
+   * Filas REALES de la tabla, que puede ser mas que `rows.length`.
+   *
+   * `rows` viene capado a `MAX_ROWS_PER_TABLE` para que una tabla enorme no
+   * reviente el widget. Sin este numero el cliente no puede distinguir "esta
+   * tabla tiene 12 filas" de "esta tabla tiene 12 de 2.400", y acabaria
+   * mostrando un total que no es el de la tabla.
+   */
+  rowCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TableSummaryDto {
+  id: string;
+  name: string;
+  rowCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Columns iniciales de una tabla: `Name` (texto) y `Value` (numerico).
+ *
+ * Es el punto de partida, no una imposicion: el usuario renombra, borra y agrega
+ * las que quiera. Se siembran dos porque una tabla sin ninguna columna es una
+ * pantalla en blanco de la que no se puede salir, y una sola no muestra la
+ * diferencia entre los dos tipos.
+ */
+export const DEFAULT_TABLE_COLUMNS: { name: string; type: ColumnType }[] = [
+  { name: 'Name', type: 'text' },
+  { name: 'Value', type: 'number' },
+];
+
+export interface CreateTableDto {
+  name?: string;
+  columns?: TableColumnDto[];
+}
+
+export interface UpdateTableDto {
+  name?: string;
+  columns?: TableColumnDto[];
+}
+
+export interface CreateTableRowDto {
+  values?: RowValues;
+}
+
+export interface UpdateTableRowDto {
+  values?: RowValues;
+  position?: number;
+}
+
+/**
+ * Las columnas iniciales, cada una con un id nuevo.
+ *
+ * El id se genera en el cliente y NO en el servidor a proposito: la vista y el
+ * widget agregan columnas optimistas --la fila nueva se dibuja antes de que
+ * llegue la respuesta-- y para eso hace falta el id antes de llamar al backend.
+ * El servidor tambien genera uno propio cuando `POST /tables` no recibe columnas,
+ * que es el caso de la creacion automatica del widget.
+ *
+ * Usa el `crypto` global, que existe en Node y en navegador. En navegador pide
+ * contexto seguro: los dos casos de esta app --el dev server y el servidor
+ * estatico de Electron-- son `localhost`, asi que lo son.
+ */
+export function defaultTableColumns(): TableColumnDto[] {
+  return DEFAULT_TABLE_COLUMNS.map((c) => ({
+    id: crypto.randomUUID(),
+    name: c.name,
+    type: c.type,
+  }));
+}
+
+/** Columna nueva suelta, para el boton "+" de la grilla. */
+export function newTableColumn(type: ColumnType = 'text'): TableColumnDto {
+  return { id: crypto.randomUUID(), name: type === 'number' ? 'Value' : 'Name', type };
+}

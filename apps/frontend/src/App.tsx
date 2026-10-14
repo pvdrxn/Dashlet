@@ -1,11 +1,12 @@
 import { useCallback, useState, useRef, useEffect, Suspense } from 'react';
 import { WidgetGrid } from './widgets';
+import { OPEN_TABLE_EVENT } from './widgets/data-table/DataTableWidget';
 import { Toolbar } from './components/Toolbar';
 import { TabBar } from './components/TabBar';
 import { TrashWindow } from './components/TrashWindow';
 import { TaskPickerModal } from './components/TaskPickerModal';
 import { ViewSidebar } from './components/ViewSidebar';
-import { CalendarView, getView, type ViewId } from './views';
+import { CalendarView, TableView, getView, type ViewId } from './views';
 import { FiMenu } from 'react-icons/fi';
 import { widgetBus } from './widgets/widget-bus';
 import * as tabsApi from './api/tabs';
@@ -43,6 +44,27 @@ function App() {
    */
   const [activeView, setActiveView] = useState<ViewId>(readStoredView);
   const [viewSidebarOpen, setViewSidebarOpen] = useState(false);
+
+  /*
+   * El widget de tabla pide abrirse en pantalla completa.
+   *
+   * Es un evento y no solo una llave en `localStorage` porque la vista activa vive
+   * en estado de React: escribir la preference no vuelve a renderizar nada y el
+   * clic no pasaria. El widget deja el `tableId` pendiente en `localStorage` --
+   * eso si lo puede escribir, no tiene paso por el estado de la app-- y dispara
+   * este evento nomas para que la vista cambie.
+   *
+   * Cerrar el sidebar tambien: si "Abrir completo" lo dejaba abierto, el usuario
+   * llegaria a la tabla con un panel encima.
+   */
+  useEffect(() => {
+    const onOpenTable = () => {
+      setViewSidebarOpen(false);
+      setActiveView('table');
+    };
+    window.addEventListener(OPEN_TABLE_EVENT, onOpenTable);
+    return () => window.removeEventListener(OPEN_TABLE_EVENT, onOpenTable);
+  }, []);
   /*
    * Que timer pidio el selector. Va en un ref y no en estado porque solo se lee
    * cuando el modal elige una tarea, y guardarlo en estado provocaria un render
@@ -416,7 +438,17 @@ function App() {
             </div>
           }
         >
-          <CalendarView leading={viewSwitchButton} />
+          {/*
+           * Calendario y tabla son la misma forma de render: lienzo completo, su
+           * propia barra y `leading` con el boton de vistas. Lo que cambia es el
+           * componente, asi que se decide con el id en vez de con otro ternario
+           * anidado que cada vista nueva tuviera que venir a agrandar.
+           */}
+          {activeView === 'calendar' ? (
+            <CalendarView leading={viewSwitchButton} />
+          ) : (
+            <TableView leading={viewSwitchButton} />
+          )}
         </Suspense>
       )}
       <ViewSidebar

@@ -305,6 +305,21 @@ export const WidgetFrame = memo(function WidgetFrame({
       holdPosRef.current = { x: e.clientX, y: e.clientY };
       clearHoldTimer();
       holdTimerRef.current = setTimeout(fireHoldToggle, HOLD_THRESHOLD);
+      /*
+       * El temporizador SIEMPRE arranca; lo que se salta es la captura.
+       *
+       * Capturar el puntero cambia el elemento destino del resto de los eventos:
+       * `mouseup`, `click` y `dblclick` pasan a entregarse a este frame y dejan de
+       * llegar al elemento que uno apunto. Como el frame es ancestro de la grilla
+       * de la tabla, esos eventos no bajan a la grilla, y todo lo que la tabla
+       * maneje con clic --renombrar con doble clic-- deja de funcionar dentro del
+       * widget. En la vista, sin frame, funcionaba, y por eso el fallo solo se
+       * veía aca.
+       *
+       * El long-press se conserva: el temporizador ya esta corriendo y sigue
+       * cancelandose con el movimiento, que le llega igual por burbujeo.
+       */
+      if ((e.target as HTMLElement).closest?.('[data-no-widget-capture]')) return;
       try {
         e.currentTarget.setPointerCapture(e.pointerId);
       } catch {}
@@ -505,7 +520,7 @@ export const WidgetFrame = memo(function WidgetFrame({
         <CollapsedBody type={type} widgetId={id} config={config} />
       ) : (
         <div
-          className="min-h-0 flex-1 overflow-hidden p-3"
+          className="flex min-h-0 flex-1 flex-col overflow-hidden p-3"
           onPointerDown={handleHoldPointerDown}
           onPointerMove={handleHoldPointerMove}
           onPointerUp={handleHoldPointerUp}
