@@ -146,7 +146,18 @@ function TabPill({
       {isActive && <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-0.5 bg-p2" />}
       {isEditing ? (
         <div className="relative min-w-0">
-          <span aria-hidden className="invisible whitespace-nowrap text-sm">
+          {/*
+           * El input no crece: es `absolute inset-0`, o sea que lo unico que le
+           * da ancho es ESTE span invisible, que mide el texto con las mismas
+           * reglas que lo va a contener.
+           *
+           * "Las mismas" incluye el `px-2`. Sin esta cosa el span media el texto
+           * pelado y el input se comia 16px de padding: su caja de texto quedaba
+           * mas angosta que el texto que tenia adentro, scrolleaba sola y --con
+           * el cursor al final-- mostraba el FINAL del nombre y tapaba el
+           * principio. Con el padding en los dos lados el input entra exacto.
+           */}
+          <span aria-hidden className="invisible whitespace-nowrap px-2 text-sm">
             {draftName || '\u00A0'}
           </span>
           <input
@@ -154,7 +165,7 @@ function TabPill({
             type="text"
             value={draftName}
             spellCheck={false}
-            maxLength={40}
+            maxLength={30}
             onChange={(e) => onDraftNameChange(e.target.value)}
             onBlur={onCommit}
             onKeyDown={(e) => {

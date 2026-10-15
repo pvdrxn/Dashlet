@@ -7,7 +7,9 @@ import {
   CreateTableDto,
   CreateTableRowDto,
   MAX_COLUMN_NAME_LENGTH,
+  MAX_COLUMN_WIDTH,
   MAX_ROWS_PER_TABLE,
+  MIN_COLUMN_WIDTH,
   RowValues,
   TableColumnDto,
   TableDto,
@@ -60,7 +62,7 @@ function normalizeColumns(input: unknown): TableColumnDto[] {
     const c = raw as Partial<TableColumnDto>;
     if (!isColumnType(c.type)) {
       throw new BadRequestException(
-        `Column ${i} has invalid type "${String(c.type)}", expected text or number`,
+        `Column ${i} has invalid type "${String(c.type)}", expected text, number or checkbox`,
       );
     }
     const name = typeof c.name === 'string' ? c.name.trim() : '';
@@ -77,7 +79,21 @@ function normalizeColumns(input: unknown): TableColumnDto[] {
       throw new BadRequestException(`Duplicate column id "${id}"`);
     }
     seen.add(id);
-    return { id, name, type: c.type };
+    /*
+     * El ancho se normaliza en vez de confiar: es un numero que el cliente manda
+     * arrastrando y arrastrar produce decimales, negativos y valores de NaN si el
+     * puntero se escapa de la pantalla. Un `NaN` en el ancho revienta el
+     * `gridTemplateColumns` entero, no solo la columna que lo tiene.
+     *
+     * Sin ancho se devuelve `undefined`, que el `JSON.stringify` se come: asi la
+     * columna vuelve a medirse por su contenido y no queda un `width: null` que el
+     * cliente tendria que distinguir del ausente.
+     */
+    const width =
+      typeof c.width === 'number' && Number.isFinite(c.width)
+        ? Math.min(Math.max(Math.round(c.width), MIN_COLUMN_WIDTH), MAX_COLUMN_WIDTH)
+        : undefined;
+    return { id, name, type: c.type, width };
   });
 }
 
@@ -136,6 +152,22 @@ function normalizeValues(input: unknown, columns: TableColumnDto[]): RowValues {
       out[key] = null;
       continue;
     }
+    if (column.type === 'checkbox') {
+      /*
+       * Solo `true` o `false`, y cualquier otra cosa es un 400.
+       *
+       * Aceptar "lo que se pueda leer como booleano" --truthiness, 1/0, "si"--
+       * deja pasar un valor que la grilla dibuja de una forma y que el usuario
+       * leyo de otra. Es el unico valor que la UI manda y el unico que tiene
+       * sentido: una casilla tiene dos estados y el que no se toco ya es `false`
+       * en pantalla.
+       */
+      if (typeof raw !== 'boolean') {
+        throw new BadRequestException(`Value for "${column.name}" must be true or false`);
+      }
+      out[key] = raw;
+      continue;
+    }
     out[key] = column.type === 'number' ? coerceNumber(raw, column.name) : String(raw);
   }
   return out;
@@ -187,12 +219,17 @@ function stripOrphanValues(
  * texto. Lo que de verdad no es un numero se descarta, y ese caso lo avisa el
  * cliente antes de aplicar el cambio.
  *
+ * A `checkbox` no se le puede dejar nada: sobrevive unicamente lo que ya es
+ * `true`/`false`, porque "algo truthy" no es un estado de una casilla. Todo lo
+ * demas se descarta, y el cliente lo cuenta antes de aplicar el cambio.
+ *
  * Devuelve `undefined` para "no hay valor guardable", que es distinto de `null`,
  * que es "vacio a proposito".
  */
 function coerceValue(type: ColumnType, value: CellValue): CellValue | undefined {
   if (value === null || value === undefined) return null;
   if (type === 'text') return typeof value === 'string' ? value : String(value);
+  if (type === 'checkbox') return typeof value === 'boolean' ? value : undefined;
   if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
   const trimmed = String(value).trim();
   if (!trimmed) return null;

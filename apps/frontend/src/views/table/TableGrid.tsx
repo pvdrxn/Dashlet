@@ -1,8 +1,21 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FiPlus, FiMoreVertical, FiChevronRight, FiCheck, FiMenu } from 'react-icons/fi';
+import type { IconType } from 'react-icons';
+import {
+  FiPlus,
+  FiChevronRight,
+  FiCheck,
+  FiMenu,
+  FiType,
+  FiHash,
+  FiCheckSquare,
+} from 'react-icons/fi';
 import {
   MAX_COLUMN_NAME_LENGTH,
+  MAX_COLUMN_WIDTH,
+  MIN_COLUMN_WIDTH,
+  COLUMN_TYPES,
+  COLUMN_TYPE_LABELS,
   newTableColumn,
   type CellValue,
   type ColumnType,
@@ -39,8 +52,35 @@ interface Editing {
  *
  * Fijo y no `max-content` a proposito: si dependiera del contenido, la columna
  * creceria con cada boton y la grilla se moveria al vuelo.
+ *
+ * 24px y no 28: el asa de arrastre mide 20 y esta centrada, asi que el track es la
+ * medida del asa mas 2px de aire a cada lado. Antes el track era de 28 con un
+ * boton de 24 DENTRO del padding de la celda --6px por lado en compacto, 12 en la
+ * vista--, o sea que el contenido disponible eran 16px y el boton de 24 se salia
+ * 8px encima de la primera columna. Medido: el asa se veia pegada al borde y
+ * corridas respecto del centro de la fila.
+ *
+ * EN PX y no en `rem` porque `moveDrag` lo SUMA: es el ancho del track que esta
+ * antes de la primera columna, y sin el la columna arrastrada salia corrida
+ * exactamente 24px. Ser al mismo tiempo un valor de CSS y algo que se suma es
+ * justo la clase de bug que no se ve leyendo el arrastre.
  */
-const ACTION_COL = '1.75rem';
+const ACTION_COL = 24;
+
+/**
+ * El separador VERTICAL, con el mismo tono que el de fila.
+ *
+ * Un divisor mas claro que la regla de fila se lee como una jerarquia que no
+ * existe: los dos separan lo mismo --el dato de su vecino--, asi que con el mismo
+ * peso se leen como un sistema. Hay 44 lineas en pantalla en una tabla de cuatro
+ * columnas y no parece papel milimetrado justamente porque 1.65:1 no es un borde,
+ * es una sugerencia.
+ *
+ * Va en el `border-l` de cada celda y no en un pseudo-elemento: el divisor tiene
+ * que ACOMPANAR la transform cuando se arrastra una columna, y un `::before`
+ * habria que mover a mano lo mismo que se mueve la celda.
+ */
+const divisor = 'border-l border-gray-600/70';
 
 /**
  * Ancho de la ultima columna, la del boton "+" que agrega una columna.
@@ -48,8 +88,11 @@ const ACTION_COL = '1.75rem';
  * FIJO y no `auto` por una razon que no es de espacio: si el track es `auto`
  * empuja el sobrante y queda una columna vacia gigante a la derecha. Con un ancho
  * fijo el "+" queda pegado a la ultima columna, que es donde uno lo busca.
+ *
+ * En px, como `ACTION_COL`, por el mismo motivo de que los dos se arman en la
+ * misma plantilla.
  */
-const ADD_COL = '1.5rem';
+const ADD_COL = 24;
 
 /**
  * Gracia antes de cerrar el submenu de tipos.
@@ -66,8 +109,20 @@ const ADD_COL = '1.5rem';
  */
 const SUBMENU_CLOSE_MS = 300;
 
-/** Ancho del menu de "agregar columna". Va en el calculo de donde se ancla. */
-const ADD_MENU_W = 128;
+/**
+ * Medidas del menu de "+", para saber donde puede anclar sin salirse.
+ *
+ * El ancho lo fija el CAMPO del buscador, que es `w-36` mas el `p-1.5` del panel
+ * y su borde: 144 + 12 + 2 = 158. Los nombres de los tipos son mas angostos que
+ * eso, asi que el panel nunca pasa de ahi -- y si uno llegara a serlo, el `w-max`
+ * lo ampara y esta constante queda corta por los pixeles de mas, no al reves.
+ *
+ * El alto se sumo con el buscador, que le agrega una fila. Los dos van en el
+ * calculo de la esquina: sin el alto, un widget bajo en un tablero largo abria el
+ * menu cortado por el borde de abajo.
+ */
+const ADD_MENU_W = 158;
+const ADD_MENU_H = 130;
 
 /*
  * Las dos densidades.
@@ -95,6 +150,24 @@ const DENSITY = {
   full: { text: 'text-sm', pad: 'px-3 py-2', padY: 'py-2', head: 'text-xs' },
   compact: { text: 'text-sm', pad: 'px-1.5 py-0.5', padY: 'py-0.5', head: 'text-sm' },
 } as const;
+
+/**
+ * El icono de cada tipo, a la izquierda del nombre.
+ *
+ * Vive aca y no en `shared` porque son componentes de React y `shared` lo consume
+ * tambien el backend, que no tiene React.
+ *
+ * Los tres son del set que ya usa la grilla --Feather--, y dos de ellos son los
+ * glifos que dicen el tipo sin palabras: `Type` es el "Aa" y `Hash` el "#",
+ * que es literalmente lo que guarda la celda. `CheckSquare` es el mismo icono con
+ * el que esta registrado el widget de tareas: una columna de casillas y un widget
+ * de casillas se ven iguales por una razon, y no por casualidad.
+ */
+const TYPE_ICON: Record<ColumnType, IconType> = {
+  text: FiType,
+  number: FiHash,
+  checkbox: FiCheckSquare,
+};
 
 /** Como se muestra un valor guardado. El vacio es cadena vacia, nunca "null". */
 function display(value: CellValue): string {
@@ -152,6 +225,13 @@ interface TableGridProps {
    * colocarla entre los dos que la rodean y las demas no se tocan.
    */
   onRowReorder: (next: TableRowDto[], rowId: string, position: number) => void;
+  /**
+   * El usuario ajusto el ancho de UNA columna.
+   *
+   * Solo al soltar, nunca durante el arrastre: el padre guarda la columna con un
+   * PATCH, y a 60 cuadros por segundo eso seria 60 escrituras por gesto.
+   */
+  onColumnWidth?: (columnId: string, width: number) => void;
   /** Filas que quedaron sin cargar por el tope de `MAX_ROWS_PER_TABLE`. */
   hiddenRowCount?: number;
 }
@@ -164,6 +244,7 @@ export function TableGrid({
   onRowAdd,
   onColumnsChange,
   onRowReorder,
+  onColumnWidth,
   hiddenRowCount = 0,
 }: TableGridProps) {
   const [editing, setEditing] = useState<Editing | null>(null);
@@ -221,6 +302,44 @@ export function TableGrid({
 
   const rowOrder = rowPreview ?? rows;
 
+  /*
+   * La fila bajo el mouse, pintada por el DOM y no por estado.
+   *
+   * La grilla es plana --cada celda es un item del grid, no hay elemento de fila--
+   * asi que "resaltar la fila" no se puede con CSS: hay que saber que celdas
+   * comparten `data-row-id` y marcarlas. Con estado de React seria un render de
+   * las 40 filas en cada movimiento del mouse, que es justo lo que el `memo` de
+   * `RowCells` existe para evitar. Por eso va por el DOM, igual que `--dx` y
+   * `--dy` en los arrastres.
+   *
+   * Un solo listener en la grilla --`mouseover` burbujea-- y un atributo por celda.
+   */
+  const filaHoverRef = useRef<string | null>(null);
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    const pintar = (id: string | null) => {
+      if (id === filaHoverRef.current) return;
+      filaHoverRef.current = id;
+      for (const c of grid.querySelectorAll('.row-hover')) c.classList.remove('row-hover');
+      if (!id) return;
+      for (const c of grid.querySelectorAll(`[data-row-id="${id}"]`)) {
+        c.classList.add('row-hover');
+      }
+    };
+    const sobre = (e: MouseEvent) => {
+      const celda = (e.target as HTMLElement | null)?.closest?.('[data-row-id]');
+      pintar(celda?.getAttribute('data-row-id') ?? null);
+    };
+    const salio = () => pintar(null);
+    grid.addEventListener('mouseover', sobre);
+    grid.addEventListener('mouseleave', salio);
+    return () => {
+      grid.removeEventListener('mouseover', sobre);
+      grid.removeEventListener('mouseleave', salio);
+    };
+  }, []);
+
   /* ---------------------------------------------------------------------- */
   /* Arrastre de columnas                                                   */
   /* ---------------------------------------------------------------------- */
@@ -237,6 +356,26 @@ export function TableGrid({
    * mueven en vivo mientras se arrastra, en vez de saltar al soltar.
    */
   const [preview, setPreview] = useState<TableColumnDto[] | null>(null);
+  /**
+   * Cuanto se corre cada columna para que la arrastrada la EMPUJE a su lugar.
+   *
+   * El corrimiento va como `transform` y no como ancho de columna: cambiar el
+   * track de la grilla reacomodaria el texto y lo deformaria. Es el mismo
+   * desplazamiento visual, solo que por pasos en vez de de golpe.
+   *
+   * Vive en estado --y no como una propiedad del DOM-- porque lo tienen que
+   * seguir las celdas tambien, y eso ya es un render.
+   */
+  const [push, setPush] = useState<Record<string, number> | null>(null);
+  /**
+   * Donde estaba cada columna justo antes de que React reordenara.
+   *
+   * Se mide del DOM y no se calcula con los anchos: si el empuje anterior
+   * todavia esta corriendo, la columna esta a medio camino y hay que arrancar la
+   * animacion desde donde esta, no desde donde le tocaria. Con anchos, una
+   * animacion interrumpida saltaba para atras y volvia a arrancar.
+   */
+  const pushAntes = useRef<Record<string, number> | null>(null);
   /** Movimiento minimo antes de empezar a arrastrar, para no secuestrar el clic. */
   const DRAG_THRESHOLD_PX = 4;
   const dragRef = useRef<{
@@ -249,6 +388,12 @@ export function TableGrid({
     grabOffset: number;
     /** Transform aplicado, en px. */
     dx: number;
+    /**
+     * Donde el puntero quiere el borde izquierdo de la columna, en px desde la
+     * grilla. Vive aca porque el `--dx` hay que recalcularlo cuando React cambia
+     * el orden; ver el `useLayoutEffect` de mas abajo.
+     */
+    objetivo: number;
     /** Ancho de cada columna, cacheado al empezar el arrastre. */
     ancho: Record<string, number>;
   } | null>(null);
@@ -282,25 +427,49 @@ export function TableGrid({
   const order = preview ?? columns;
 
   /*
-   * El destino se saca de las posiciones VIVAS de los encabezados, no de un
-   * indice acumulado. Como las otras columnas ya se movieron, sus rectangulos
-   * son los que dicen donde cae el puntero ahora mismo.
+   * Donde cae la columna: cuando uno de sus DOS bordes pasa la mitad de un vecino.
    *
-   * Se usa `offsetLeft` y NO `getBoundingClientRect` porque el encabezado que se
-   * esta arrastrando ya lleva `translateX`, y su rectangulo mide la posicion
-   * desplazada: comparada contra el puntero, esa columna daria siempre el centro
-   * equivocado y no se podria dejar en su propia ranura.
+   * Los dos bordes, y no el centro. Con el centro hay que recorrer un ancho de
+   * columna entero para cambiar de lugar; con el borde, el cambio dispara cuando
+   * la columna todavia esta a medio camino de la vecina --que es justo cuando el
+   * ojo dice que se cruzaron--. Mira el borde que va primero: el derecho yendo
+   * hacia la derecha, el izquierdo yendo hacia la izquierda.
+   *
+   * Se CALCULA con los anchos cacheados y NO se mide del DOM. No por precision:
+   * midiendo con `getBoundingClientRect`, las posiciones de los vecinos
+   * INCLUYEN el `translateX` del empuje, y con la animacion a medio camino el
+   * centro de un vecino se movia solo. La columna cruzaba el centro y volvia a
+   * cruzarlo al terminar la animacion, yendo y viniendo sola. Los anchos no se
+   * mueven.
+   *
+   * El destino es el vecino MAS LEJAN que ya se cruzo --hacia la derecha, el
+   * indice mas grande; hacia la izquierda, el mas chico-- porque el recorrido va
+   * de izquierda a derecha: sin `min`/`max` se queda el de al lado y la columna
+   * cruzaria de a uno.
+   *
+   * SIN MARGEN, y es el precio de la regla: al cruzarse, el borde que dispara
+   * queda parado sobre la mitad de la vecina que acaba de correr, o sea que el
+   * umbral para volver a cruzarla es el mismo punto. Entrar y salir del cambio
+   * queda a un pixel. Si molesta en la practica, el margen va en la comparacion
+   * del `derecha`.
    */
-  const destinoBajo = (x: number): number => {
-    const grid = gridRef.current;
-    if (!grid) return order.length - 1;
-    const heads = [...grid.querySelectorAll('[data-column-id]')] as HTMLElement[];
-    const origen = grid.getBoundingClientRect().left;
-    for (let i = 0; i < heads.length; i++) {
-      const centro = origen + heads[i].offsetLeft + heads[i].offsetWidth / 2;
-      if (x < centro) return i;
+  const destinoBajo = (
+    borde: number,
+    lista: TableColumnDto[],
+    desde: number,
+    ancho: Record<string, number>,
+  ): number => {
+    const derecha = borde + (ancho[lista[desde].id] ?? 0);
+    let destino = desde;
+    let slot = ACTION_COL;
+    for (let i = 0; i < lista.length; i++) {
+      const w = ancho[lista[i].id] ?? 0;
+      const centro = slot + w / 2;
+      if (i > desde && derecha > centro) destino = Math.max(destino, i);
+      else if (i < desde && borde < centro) destino = Math.min(destino, i);
+      slot += w;
     }
-    return heads.length - 1;
+    return destino;
   };
 
   /**
@@ -313,6 +482,28 @@ export function TableGrid({
    */
   const pintarDx = (dx: number) => {
     gridRef.current?.style.setProperty('--dx', `${Math.round(dx)}px`);
+  };
+
+  /**
+   * Donde esta el borde izquierdo de una columna dentro de la grilla, en px.
+   *
+   * Se CALCULA con los anchos cacheados y no se mide del DOM, porque el DOM va
+   * siempre un commit atras: leer `offsetLeft` daria la ranura del orden
+   * anterior y quedaria un residuo de una columna entera en cada cambio de
+   * lugar.
+   *
+   * Arranca en `ACTION_COL` y no en cero porque ese track --las acciones de
+   * fila-- va antes de la primera columna. Sin sumarlo, `dx` salia corrido
+   * exactamente 24px: la arrastrada se iba adelante del puntero y mas adelante
+   * cuanto mas se arrastraba.
+   */
+  const slotDe = (lista: TableColumnDto[], id: string, ancho: Record<string, number>) => {
+    let slot = ACTION_COL;
+    for (const c of lista) {
+      if (c.id === id) return slot;
+      slot += ancho[c.id] ?? 0;
+    }
+    return slot;
   };
 
   const startDrag = (
@@ -335,7 +526,7 @@ export function TableGrid({
     ) as HTMLElement[]) {
       ancho[h.dataset.columnId ?? ''] = h.offsetWidth;
     }
-    dragRef.current = { id: columnId, startX: clientX, movido: false, pointerId, grid, grabOffset, dx: 0, ancho };
+    dragRef.current = { id: columnId, startX: clientX, movido: false, pointerId, grid, grabOffset, dx: 0, objetivo: 0, ancho };
     tragarseClick.current = false;
   };
 
@@ -388,7 +579,15 @@ export function TableGrid({
     const base = preview ?? columns;
     const from = base.findIndex((c) => c.id === d0.id);
     if (from < 0) return;
-    const to = destinoBajo(clientX);
+    /*
+     * El borde izquierdo que quiere la arrastrada, en px desde la grilla. Se
+     * calcula ACA y no despues porque es lo que decide el destino: decide por
+     * donde se ve la columna, no por donde esta el puntero --que puede estar a
+     * media columna de distancia, segun donde la agarraste--. En `destinoBajo` se
+     * compara con el borde izquierdo y con el derecho.
+     */
+    d0.objetivo = clientX - d0.grabOffset - grid.getBoundingClientRect().left;
+    const to = destinoBajo(d0.objetivo, base, from, d0.ancho);
 
     const next = to === from ? base : (() => {
       const n = [...base];
@@ -397,29 +596,89 @@ export function TableGrid({
     })();
 
     /*
-     * La posicion natural se CALCULA, no se mide.
+     * El desplazamiento sale de la ranura que esta EN PANTALLA, no de `next`.
      *
-     * Se podria leer `offsetLeft` del encabezado, pero eso obliga a adivinar en
-     * que estado esta el DOM: el `offsetLeft` que se lee es del orden ANTERIOR
-     * porque React todavia no aplico el nuevo, y el ancho que se necesita para
-     * compensar es del orden NUEVO. Los dos.times no coinciden nunca del todo y
-     * queda un residuo de unos 17px en cada cambio de ranura.
-     *
-     * Con los anchos cacheados al empezar el arrastre --que no cambian mientras
-     * se arrastra, porque el ancho lo decide el contenido-- la cuenta es exacta y
-     * usa el MISMO orden que se va a dibujar. No hay carrera con el commit.
+     * `setPreview` no reordena el DOM: encola el render. Entre este cuadro y el
+     * commit hay un hueco en el que el navegador puede pintar, y si el `--dx`
+     * fuera el del orden nuevo la columna se veria corrida una columna entera
+     * hasta que el commit llegara. Medido: los tirones al entrar en cada ranura
+     * nueva. Con `base` --el orden que esta dibujado-- el cuadro sale bien, y el
+     * `useLayoutEffect` de mas abajo corrige el `--dx` cuando el orden cambia.
      */
-    let natural = 0;
-    for (const c of next) {
-      if (c.id === d0.id) break;
-      natural += d0.ancho[c.id] ?? 0;
-    }
-    const objetivo = clientX - d0.grabOffset - grid.getBoundingClientRect().left;
-    d0.dx = objetivo - natural;
+    d0.dx = d0.objetivo - slotDe(base, d0.id, d0.ancho);
 
-    if (to !== from) setPreview(next);
+    if (to !== from) {
+      /*
+       * Se mide antes de `setPreview`, que es lo unico que todavia no paso: con
+       * el DOM en el orden viejo, `getBoundingClientRect` da donde esta VISTA la
+       * columna, empuje anterior a medio camino incluido.
+       */
+      const antes: Record<string, number> = {};
+      for (const h of Array.from(
+        grid.querySelectorAll('[data-column-id]'),
+      ) as HTMLElement[]) {
+        if (h.dataset.columnId) antes[h.dataset.columnId] = h.getBoundingClientRect().left;
+      }
+      pushAntes.current = antes;
+      setPreview(next);
+    }
     pintarDx(d0.dx);
   };
+
+  /*
+   * El `--dx` se vuelve a calcular DESPUES de que React reordena.
+   *
+   * La columna arrastrada esta en dos lugares a la vez: la ranura que le da la
+   * grilla --que cambia cuando el orden cambia-- y el `--dx` que la corre. Si el
+   * `--dx` quedara con el valor de la ranura anterior, al commit la columna
+   * saltaria de golpe el ancho de la que se le cruzó. Por eso se recalcula
+   * apenas React aplico el orden nuevo, y se pinta antes de que el navegador
+   * dibuje: `useLayoutEffect` corre entre el commit y el pintado, donde
+   * `useEffect` corre despues y dejaria ver el salto.
+   */
+  useLayoutEffect(() => {
+    const d0 = dragRef.current;
+    if (!d0?.movido) return;
+    d0.dx = d0.objetivo - slotDe(preview ?? columns, d0.id, d0.ancho);
+    pintarDx(d0.dx);
+
+    /*
+     * El empuje se calcula con React ya ordenada la grilla: cada columna que se
+     * corrio recibe el `transform` que la devuelve a donde estaba, y de ahi el
+     * navegador la lleva a su ranura con la transicion que ya tenia.
+     *
+     * Va en este mismo efecto y no en uno aparte porque los dos necesitan del
+     * mismo commit: primero se corrige la arrastrada y despues se empujan las
+     * demas, en el mismo cuadro y antes de que se pinte nada.
+     */
+    const grid = gridRef.current;
+    const antes = pushAntes.current;
+    pushAntes.current = null;
+    if (!grid || !antes) return;
+    const empuje: Record<string, number> = {};
+    for (const h of Array.from(grid.querySelectorAll('[data-column-id]')) as HTMLElement[]) {
+      const id = h.dataset.columnId;
+      if (!id || id === d0.id || antes[id] === undefined) continue;
+      const corre = antes[id] - h.getBoundingClientRect().left;
+      // menos de medio pixel no es un desplazamiento, es redondeo
+      if (Math.abs(corre) > 0.5) empuje[id] = corre;
+    }
+    setPush(empuje);
+  }, [preview, columns]);
+
+  /*
+   * El empuje se suelta en el CUADRO siguiente, no en el mismo.
+   *
+   * Es el truco de toda animacion tipo FLIP: primero se pinta la columna donde
+   * estaba, sin transicion, y recien despues se la suelta. Sin el cuadro de
+   * espera, el navegador tendria los dos valores en el mismo estilo y no habria
+   * nada que animar.
+   */
+  useLayoutEffect(() => {
+    if (!push) return;
+    const cuadro = requestAnimationFrame(() => setPush(null));
+    return () => cancelAnimationFrame(cuadro);
+  }, [push]);
 
   /* ---------------------------------------------------------------------- */
   /* Arrastre de filas: movimiento, destino y cierre                          */
@@ -656,7 +915,7 @@ export function TableGrid({
   }, [editingKey]);
 
   /**
-   * Cada columna mide exactamente lo que mide su contenido.
+   * Cada columna mide lo que mide su contenido, o lo que le fijo el usuario.
    *
    * `max-content` y NO `minmax(max-content, auto)`: el `auto` del max le deja
    * absorber el espacio sobrante y con dos columnas cortas la tabla se estiraba
@@ -664,16 +923,47 @@ export function TableGrid({
    * cuando su contenido crece -- que es lo que prohibe el truncate-- pero no se
    * infla cuando el contenido es corto.
    *
+   * Cuando la columna trae `width`, el track es fijo: eso es lo que hace el arrastre
+   * del divisor, porque con `max-content` el arrastre se desharía en la medida en
+   * que el contenido empuja el track de vuelta.
+   *
    * Si la tabla no entra en el ancho disponible, el contenedor la scrollea en
    * horizontal, que se ve que hay mas, en vez de comerse el texto.
    *
    * El ultimo track es el del "+" y TODA fila tiene que emitir su celda, aunque
    * estea vacia. Ver `RowCells`: sin esa celda la grilla se desalinea entera.
+   *
+   * La dependencia es la FIRMA de los anchos y no `order`: `order` es un array
+   * nuevo en cada render, asi que con el no se recordaria nada. Y si el memo se
+   * recalculara durante el arrastre, React reescribiria el `gridTemplateColumns`
+   * sobre lo que el gesto esta pintando y el ancho en curso se perderia.
    */
+  const firmaAnchos = order.map((c) => c.width ?? 0).join(',');
   const template = useMemo(
-    () => [ACTION_COL, ...order.map(() => 'max-content'), ADD_COL].join(' '),
-    [order.length],
+    () =>
+      [
+        `${ACTION_COL}px`,
+        ...order.map((c) => (c.width ? `${c.width}px` : 'max-content')),
+        `${ADD_COL}px`,
+      ].join(' '),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [firmaAnchos, order.length],
   );
+
+  /*
+   * El relleno del encabezado, y por que son DOS.
+   *
+   * Es el mismo color que la superficie donde esta la tabla, y difiere porque las
+   * superficies difieren: el cuerpo del widget es `gray-800/90` sobre el canvas
+   * (#121212), o sea #181818; y la vista es el panel de `gray-900` pelado (#121212).
+   * Un solo color no puede ser "el mismo que el fondo" en las dos, asi que va por
+   * densidad.
+   *
+   * NO puede ser transparente, aunque es lo mas fiel: el encabezado es `sticky` y
+   * sin relleno las filas se ven pasar POR DEBAJO al scrollear. Tiene que ser
+   * opaco.
+   */
+  const banda = density === 'compact' ? 'bg-gray-800' : 'bg-gray-900';
 
   /** Orden de lectura de las celdas: la fila entera y despues la siguiente. */
   const cells = useMemo(
@@ -750,6 +1040,104 @@ export function TableGrid({
     });
   };
 
+  /**
+   * Una celda de `checkbox`.
+   *
+   * Escribe SIEMPRE `true` o `false`, nunca borra la clave: "sin marcar" y
+   * "marcado en falso" se ven igual, asi que borrar la clave no aportaria nada y
+   * dejaria la fila con menos informacion de la que tenia.
+   */
+  const toggleCell = (row: TableRowDto, column: TableColumnDto) => {
+    onCellChange(row.id, column.id, row.values[column.id] === true ? false : true);
+  };
+
+  /*
+   * REDIMENSIONAR UNA COLUMNA, arrastrando su divisor.
+   *
+   * El ancho en curso se pinta en el DOM, como la transform del arrastre de
+   * columnas: el puntero se mueve unas 60 veces por segundo y un setState por
+   * movimiento repintaria las 500 celdas de la columna en cada cuadro.
+   *
+   * Se reconstruye el `gridTemplateColumns` entero --con el ancho nuevo en su
+   * posicion y el resto de los tracks como estaban-- en vez de tocar un solo
+   * track: el grid no tiene forma de cambiar UN track y recalcular el resto, y
+   * tocar el string a mano por indice es donde se cuelan los desalineos.
+   *
+   * Los anchos de los OTROS tracks salen de los encabezados vivos, no de `order`:
+   * durante un arrastre de columnas el DOM muestra el orden de prueba, y leer de
+   * ahi es leer lo que esta en pantalla.
+   */
+  const anchoEnCursoRef = useRef<{ id: string; px: number } | null>(null);
+
+  const pintarAncho = (id: string, px: number) => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    const tracks: string[] = [`${ACTION_COL}px`];
+    for (const h of Array.from(grid.querySelectorAll('[data-column-id]'))) {
+      const cid = (h as HTMLElement).dataset.columnId ?? '';
+      if (cid === id) {
+        tracks.push(`${px}px`);
+        continue;
+      }
+      const col = order.find((c) => c.id === cid);
+      tracks.push(col?.width ? `${col.width}px` : 'max-content');
+    }
+    tracks.push(`${ADD_COL}px`);
+    grid.style.gridTemplateColumns = tracks.join(' ');
+  };
+
+  const startResize = (columnId: string, clientX: number) => {
+    const grid = gridRef.current;
+    const head = grid?.querySelector(`[data-column-id="${columnId}"]`) as HTMLElement | null;
+    if (!grid || !head) return;
+    const startW = head.offsetWidth;
+    let px = startW;
+
+    const move = (ev: PointerEvent) => {
+      const crudo = Math.round(startW + ev.clientX - clientX);
+      px = Math.min(Math.max(crudo, MIN_COLUMN_WIDTH), MAX_COLUMN_WIDTH);
+      anchoEnCursoRef.current = { id: columnId, px };
+      pintarAncho(columnId, px);
+    };
+    const finish = () => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', finish);
+      window.removeEventListener('blur', finish);
+      const curso = anchoEnCursoRef.current;
+      anchoEnCursoRef.current = null;
+      // Sin movimiento no hay cambio, y sin cambio no hay PATCH: un clic solo sobre
+      // el divisor no debe escribir nada.
+      if (!curso || curso.px === startW) return;
+      onColumnWidth?.(columnId, curso.px);
+    };
+
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', finish);
+    window.addEventListener('blur', finish);
+  };
+
+  /**
+   * El ancho desde el teclado, para el divider.
+   *
+   * Un `separator` que no se puede mover sin raton no es un control: es un
+   * adorno. Las flechas mueven 8px, que es un paso que se ve sin salirse de la
+   * columna, y con Shift son 24.
+   */
+  const nudgeResize = (columnId: string, delta: number) => {
+    const head = gridRef.current?.querySelector(
+      `[data-column-id="${columnId}"]`,
+    ) as HTMLElement | null;
+    const col = columns.find((c) => c.id === columnId);
+    if (!head || !col) return;
+    const px = Math.min(
+      Math.max(Math.round(col.width ?? head.offsetWidth) + delta, MIN_COLUMN_WIDTH),
+      MAX_COLUMN_WIDTH,
+    );
+    if (px === col.width) return;
+    pintarAncho(columnId, px);
+    onColumnWidth?.(columnId, px);
+  };
+
   /** Cancelar: cerrar sin guardar. Es lo que hace Escape. */
   const cancel = () => setEditing(null);
 
@@ -777,8 +1165,17 @@ export function TableGrid({
     const from = cells.findIndex(
       (x) => x.r.id === editing?.rowId && x.c.id === editing?.columnId,
     );
-    const next = cells[from + delta];
-    if (next) startEditing(next.r, next.c);
+    /*
+     * Las casillas se SALTEAN, no se aterrizan: no dibujan input, asi que dejar
+     * el estado `editing` apuntando a una de ellas deja una edicion que no
+     * existe y un foco que no tiene donde estar. Se busca la siguiente celda
+     * editable en el sentido del Tab, que es lo que uno espera al apretarlo.
+     */
+    for (let i = from + delta; i >= 0 && i < cells.length; i += delta) {
+      if (cells[i].c.type === 'checkbox') continue;
+      startEditing(cells[i].r, cells[i].c);
+      return;
+    }
   };
 
   /* ---------------------------------------------------------------------- */
@@ -834,6 +1231,36 @@ export function TableGrid({
     onColumnsChange([...columns, newTableColumn(type)]);
   };
 
+  /*
+   * La pista de "hay mas a la derecha", por el DOM.
+   *
+   * Misma razon que el hover de fila: cambiar una clase en cada `scroll` con estado
+   * de React repintaria la grilla entera en cada cuadro del desplazamiento. Se
+   * togglea `.scroll-hint` --ver `index.css`-- y se recalcula en el `scroll`, en un
+   * `ResizeObserver` del contenedor --cambio de ventana-- y en otro del contenido
+   * --columnas y filas--, porque agrandar la tabla tambien crea desbordamiento sin
+   * que el contenedor cambie de tamano.
+   */
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    const contenido = gridRef.current;
+    if (!el || !contenido) return;
+    const check = () => {
+      const sobra = el.scrollWidth - el.clientWidth - el.scrollLeft > 1;
+      el.classList.toggle('scroll-hint', sobra);
+    };
+    check();
+    el.addEventListener('scroll', check, { passive: true });
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    observer.observe(contenido);
+    return () => {
+      el.removeEventListener('scroll', check);
+      observer.disconnect();
+    };
+  }, []);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/*
@@ -841,7 +1268,7 @@ export function TableGrid({
        * tabla, nunca empuja la pagina. El encabezado va `sticky` para que siga
        * visible al bajar por las 500 filas.
        */}
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
         <div
           ref={gridRef}
           data-grid=""
@@ -883,7 +1310,11 @@ export function TableGrid({
           }}
         >
           <div
-            className={`sticky top-0 z-[var(--z-sticky)] bg-gray-800 ${d.pad}`}
+            /*
+             * Mismo relleno y mismo borde que los encabezados, por el mismo
+             * motivo: comparten fila y un salto de tono se lee como una costura.
+             */
+            className={`sticky top-0 z-[var(--z-sticky)] border-b border-gray-600/80 ${banda} ${d.pad}`}
             aria-hidden="true"
           />
           {order.map((c, i) => (
@@ -894,6 +1325,7 @@ export function TableGrid({
               total={order.length}
               pad={d.pad}
               head={d.head}
+              banda={banda}
               /* Cuantas filas tienen ALGO en esta columna. Es el numero que hace
                  falta para borrar: "remove la columna" suena a borrar el titulo,
                  y lo que pasa es que las celdas pierden su valor. */
@@ -914,14 +1346,18 @@ export function TableGrid({
                 );
               }).length}
               dragging={dragId === c.id}
+              push={push ?? undefined}
               onDragStart={startDrag}
+              onResizeStart={startResize}
+              onResizeNudge={nudgeResize}
               onRename={renameColumn}
               onTypeChange={changeColumnType}
               onDelete={deleteColumn}
             />
-          ))}          <AddColumn
-            density={density}
+          ))}
+          <AddColumn
             padY={d.padY}
+            banda={banda}
             onAdd={addColumn}
             open={addOpen}
             onOpenChange={setAddOpen}
@@ -943,12 +1379,21 @@ export function TableGrid({
               inputRef={inputRef}
               pad={d.pad}
               text={d.text}
+              /*
+               * El tope va aca y no adentro porque es una decision de DENSIDAD, no
+               * de columna: la misma celda se dibuja distinta en el widget y en la
+               * vista, y en la vista el valor entero tiene que verse.
+               */
+              anchoCelda={density === 'compact' ? 'max-w-[12rem] truncate' : ''}
+              truncar={density === 'compact'}
               onStart={startEditing}
+              onToggle={toggleCell}
               onDraft={editDraft}
               onBlur={blur}
               onCancel={cancel}
               onMove={move}
               draggingColId={dragId}
+              push={push ?? undefined}
               /* Esta fila es la que se esta arrastrando de arriba abajo. */
               lifting={dragRowId === row.id}
               onGrabRow={(clientY, pointerId) => {
@@ -1008,7 +1453,12 @@ export function TableGrid({
           Add row
         </button>
         {hiddenRowCount > 0 && (
-          <span className="text-xs text-gray-600" title="These rows were not loaded">
+          /*
+           * `gray-500` y no `gray-600`: este texto dice cuantos datos NO se
+           * cargaron, que es informacion, no adorno. En `gray-600` daba 2.2:1 --
+           * por debajo del minimo AA y con 12px encima.
+           */
+          <span className="text-xs text-gray-500" title="These rows were not loaded">
             showing {rows.length} of {rows.length + hiddenRowCount}
           </span>
         )}
@@ -1038,12 +1488,16 @@ interface ColumnHeaderProps {
   total: number;
   pad: string;
   head: string;
+  /** Relleno del encabezado: el de la superficie donde vive la tabla. Ver `banda`. */
+  banda: string;
   /** Filas con un valor guardado en esta columna. */
   filledRows: number;
   /** Valores que se perderian si esta columna pasara a `number`. */
   pierdeAlPonerNumero: number;
   /** Esta columna es la que se esta arrastrando. */
   dragging: boolean;
+  /** Corrimiento del empuje, en px, mientras la arrastrada la mueve de lugar. */
+  push?: Record<string, number>;
   onDragStart: (
     columnId: string,
     clientX: number,
@@ -1051,6 +1505,10 @@ interface ColumnHeaderProps {
     grid: HTMLElement | null,
     grabOffset: number,
   ) => void;
+  /** El usuario arrastro el divisor de esta columna. */
+  onResizeStart: (columnId: string, clientX: number) => void;
+  /** El usuario movio el divisor con el teclado. */
+  onResizeNudge: (columnId: string, delta: number) => void;
   onRename: (columnId: string, name: string) => void;
   onTypeChange: (columnId: string, type: ColumnType) => void;
   onDelete: (columnId: string) => void;
@@ -1062,9 +1520,13 @@ const ColumnHeader = memo(function ColumnHeader({
   total,
   pad,
   head,
+  banda,
+  onResizeStart,
+  onResizeNudge,
   filledRows,
   pierdeAlPonerNumero,
   dragging,
+  push,
   onDragStart,
   onRename,
   onTypeChange,
@@ -1098,22 +1560,30 @@ const ColumnHeader = memo(function ColumnHeader({
   /*
    * Donde va pegado el menu, en coordenadas de ventana.
    *
-   * Se mide el boton al abrir y se dibuja con `position: fixed` en un portal,
-   * porque dentro de la grilla no se puede: la tabla vive en un `overflow-auto`
-   * y TODO lo que cuelgue del encabezado se recorta con el. Medido: con dos
-   * filas, "Delete column" quedaba a 188px de un contenedor que terminaba en
-   * 160, invisible, y el clic caia en el boton de "Add row" de abajo.
+   * Se dibuja con `position: fixed` en un portal, porque dentro de la grilla no se
+   * puede: la tabla vive en un `overflow-auto` y TODO lo que cuelgue del
+   * encabezado se recorta con el. Medido: con dos filas, "Delete column" quedaba a
+   * 188px de un contenedor que terminaba en 160, invisible, y el clic caia en el
+   * boton de "Add row" de abajo.
    *
-   * El panel de borrar el mismoerror lo tenia antes y arrastraba desde elmenu.
+   * El panel de borrar el mismo error lo tenia antes y arrastraba desde el menu.
    */
   const [ancla, setAncla] = useState<{ top: number; left: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const botonRef = useRef<HTMLButtonElement>(null);
 
-  const abrirMenu = () => {
-    const b = botonRef.current?.getBoundingClientRect();
-    if (!b) return;
-    setAncla({ top: b.bottom, left: b.left });
+  /*
+   * Abrir con clic DERECHO sobre el encabezado.
+   *
+   * El ancla es el puntero y no un boton: con el menu contextual no hay boton que
+   * medir, y ademas tiene que abrirse en la posicion donde uno apunto, que es lo
+   * que espera de un menu de ese tipo.
+   *
+   * Se corrige contra el borde derecho de la ventana: un clic cerca del borde
+   * abriria el menu --160px de ancho-- enteramente fuera de la pantalla.
+   */
+  const MENU_W = 160;
+  const abrirMenu = (x: number, y: number) => {
+    setAncla({ top: y, left: Math.max(8, Math.min(x, window.innerWidth - MENU_W - 8)) });
     setMenuAbierto(true);
     setTiposAbiertos(false);
     setTiposFijados(false);
@@ -1178,6 +1648,20 @@ const ColumnHeader = memo(function ColumnHeader({
     setTiposAbiertos(true);
   };
 
+  /**
+   * Cuantos valores se limpian al pasar a `type`.
+   *
+   * A `number` sobrevive lo que ya se puede leer como numero --"10" pasa a 10--,
+   * asi que lo que se cuenta es lo que NO se puede. A `checkbox` no sobrevive
+   * nada que no sea `true`/`false`, asi que se cuenta todo lo que tiene algo
+   * escrito: por eso el `filledRows` y no un filtro mas.
+   */
+  const perdidosAlTipo = (type: ColumnType): number => {
+    if (type === 'number') return pierdeAlPonerNumero;
+    if (type === 'checkbox') return filledRows;
+    return 0;
+  };
+
   const aplicarTipo = (type: ColumnType) => {
     // Elegir el tipo que ya tiene no es un cambio: no se gasta un PATCH.
     if (type === column.type) {
@@ -1185,7 +1669,8 @@ const ColumnHeader = memo(function ColumnHeader({
       return;
     }
     // Solo se pregunta cuando hay algo que perder. Si no, se aplica y listo.
-    if (type === 'number' && pierdeAlPonerNumero > 0) {
+    const perdidos = perdidosAlTipo(type);
+    if (perdidos > 0) {
       cerrarSoloMenu();
       setConfirmandoTipo(type);
     } else {
@@ -1193,6 +1678,8 @@ const ColumnHeader = memo(function ColumnHeader({
       onTypeChange(column.id, type);
     }
   };
+
+  const perdidosAlConfirmar = confirmandoTipo === null ? 0 : perdidosAlTipo(confirmandoTipo);
 
   const borrar = () => {
     // El menu se cierra pero el ancla se queda: el cartel de confirmacion se
@@ -1219,12 +1706,38 @@ const ColumnHeader = memo(function ColumnHeader({
     const fuera = (e: MouseEvent) => {
       const t = e.target as Node;
       if (menuRef.current?.contains(t)) return;
-      if (botonRef.current?.contains(t)) return;
       cerrarMenu();
     };
+    /*
+     * `contextmenu` y no solo `mousedown`: con el boton derecho el `mousedown` que
+     * abre el menu llega con `button: 2`, y el de cerrar tiene que ser el de
+     * CUALQUIER boton. Sin esto, hacer clic derecho afuera no cerraba nada y el
+     * menu quedaba pegado con el menu nativo del navegador encima.
+     */
     document.addEventListener('mousedown', fuera);
-    return () => document.removeEventListener('mousedown', fuera);
+    document.addEventListener('contextmenu', fuera);
+    return () => {
+      document.removeEventListener('mousedown', fuera);
+      document.removeEventListener('contextmenu', fuera);
+    };
     // `cerrarMenu` es estable en la practica: solo pone estado a null.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [menuAbierto]);
+
+  /*
+   * Escape cierra el menu.
+   *
+   * Sin esto el menu contextual es la unica parte de la tabla que no se puede
+   * cerrar con el teclado: se abria con el raton y no habia forma de salir sin
+   * volver a hacer clic.
+   */
+  useEffect(() => {
+    if (!menuAbierto) return;
+    const escape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') cerrarMenu();
+    };
+    document.addEventListener('keydown', escape);
+    return () => document.removeEventListener('keydown', escape);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [menuAbierto]);
 
@@ -1256,8 +1769,54 @@ const ColumnHeader = memo(function ColumnHeader({
     onRename(column.id, draft);
   };
 
-  const typeLabel = column.type === 'number' ? 'number' : 'text';
+  const typeLabel = COLUMN_TYPE_LABELS[column.type];
+  const IconoTipo = TYPE_ICON[column.type];
+  /** Corriente del empuje; 0 = no la esta empujando nadie. */
+  const empujada = push?.[column.id] ?? 0;
 
+  /*
+   * El encabezado tiene el COLOR DE SU FONDO, y se separa con el borde.
+   *
+   * Paso por dos bandas antes de llegar aca, y las dos estaban mal:
+   *
+   *   `gray-700`  era la superficie mas clara de la tabla --#383838 sobre #121212
+   *               o #181818--: el punto mas brillante de la pantalla. El nombre
+   *               daba 4.5:1, justo en el limite con 12px, y el icono del tipo
+   *               1.4:1, o sea invisible.
+   *   `black/40`  la hundia a #0f0f0f, por debajo de las dos superficies. Menos
+   *               ruido, pero se leia como una banda metida adentro en vez de
+   *               como parte de la tabla.
+   *
+   * Ahora es exactamente el fondo donde esta: en el widget `gray-800` y en la
+   * vista `gray-900`, que es lo que hay debajo de el. Son dos colores porque las
+   * superficies son dos -- ver la nota de `banda` en `TableGrid` -- y no puede ser
+   * transparente porque el encabezado es `sticky`.
+   *
+   * La separacion la carga el BORDE, que es lo unico que hace falta entre dos
+   * superficies identicas, y un borde no se nota cuando la banda se mueve.
+   *
+   * La jerarquia va por BRILLO, en tres pasos medidos, todos sobre AA. Antes
+   * estaba atada al fondo y por eso el icono no tenia donde caer; ahora se
+   * sostiene sola:
+   *
+   *   valor    gray-200   13:1   el dato, lo mas brillante
+   *   nombre   gray-400    7:1
+   *   icono    gray-500    4:1   el tipo, un paso atras del nombre
+   *
+   * El nombre bajo a `gray-400` porque el `gray-300` se leia casi blanco y una
+   * fila de encabezados de 14px con texto casi blanco compite con los datos, que
+   * son la razon de estar de la tabla. Con `gray-400` sigue en 7:1 y el ojo va a
+   * los valores primero.
+   *
+   * El icono baja con el porque si no compartirian tono: nombre e icono en el
+   * mismo gris los convierte en una mancha. 4:1 alcanza porque es un glifo --la
+   * WCAG pide 3:1 para lo que no es texto--, y no baja mas por la misma razon que
+   * el nombre: seria esconder el tipo de la columna.
+   *
+   * Las TRES celdas de esta fila --la esquina, los encabezados y el "+"-- van con
+   * el mismo relleno y el mismo borde: comparten fila, y un salto de tono se lee
+   * como una costura.
+   */
   return (
     <div
       role="columnheader"
@@ -1265,26 +1824,39 @@ const ColumnHeader = memo(function ColumnHeader({
       /* Necesario para que `destinoBajo` mida el encabezado VIVO mientras se
          arrastra, que es lo que define donde cae el puntero. */
       data-column-id={column.id}
+      /*
+       * El menu es de clic derecho, que es un gesto solo de raton, asi que el
+       * encabezado se hace alcanzable con el Tab y abre con Enter, Espacio o la
+       * tecla de menu del teclado. Sin esto, renombrar o borrar una columna --las
+       * dos unicas cosas que hay en el menu-- serian imposibles sin mouse.
+       *
+       * `aria-haspopup` y `aria-expanded` van en la celda y no en un boton
+       * interior, porque la celda es la que abre el menu ahora.
+       */
+      tabIndex={0}
+      aria-haspopup="menu"
+      aria-expanded={menuAbierto}
+      onKeyDown={(e) => {
+        if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'ContextMenu') return;
+        // Sin puntero, el menu se ancla al borde derecho del encabezado.
+        e.preventDefault();
+        const r = e.currentTarget.getBoundingClientRect();
+        abrirMenu(r.right - 160, r.bottom);
+      }}
       title={`${column.name} · ${typeLabel} · drag to reorder`}
       /*
-       * `bg-gray-750` no existe, asi que la banda sube de `gray-800` a `gray-700`
-       * y el texto de `gray-300` a `gray-400`.
+       * `flex items-center` y no nada: la celda es un item del grid, asi que se
+       * estira a la fila y su contenido se pegaba ARRIBA.
        *
-       * En el widget el encabezado y los valores estan los dos a 14px, asi que no
-       * hay diferencia de tamano que los separe --y con el mismo tamano y el mismo
-       * peso, la banda es lo unico que dice "esto rotula, esto es dato". Con
-       * `gray-800` contra el fondo del cuerpo la diferencia era de un paso, y no
-       * se leia.
-       *
-       * El texto se aparta a `gray-400` para que el encabezado se vea como
-       * etiqueta y los valores (`gray-200`) como contenido: la jerarquia va al reves
-       * de lo que haria un fondo mas claro, porque aca el dato es lo que tiene que
-       * saltar.
+       * Importa porque la fila no la fija el encabezado: la fija el "+", que es un
+       * boton de 24px. En `full` el texto del encabezado mide 16px de alto y la
+       * celda 40 --8 de padding--, o sea que el nombre quedaba 8px mas arriba que
+       * el "+" de al lado y los dos no parecian de la misma fila.
        */
-      className={`group/col sticky top-0 z-[var(--z-sticky)] select-none border-b border-gray-600 bg-gray-700 font-medium text-gray-400 ${pad} ${head} ${
+      className={`group/col sticky top-0 z-[var(--z-sticky)] flex select-none items-center border-b border-gray-600/80 ${divisor} ${banda} font-medium text-gray-400 ${pad} ${head} ${
         dragging
-          ? 'z-[calc(var(--z-sticky)+1)] cursor-grabbing bg-gray-700 shadow-lg shadow-black/50'
-          : 'cursor-grab hover:bg-gray-700/40'
+          ? 'z-[calc(var(--z-sticky)+1)] cursor-grabbing shadow-lg shadow-black/50'
+          : 'cursor-grab hover:bg-white/[0.04]'
       }`}
       /*
        * Arrastre desde cualquier parte del encabezado, con umbral en la grilla.
@@ -1293,6 +1865,14 @@ const ColumnHeader = memo(function ColumnHeader({
        * encabezado es de 90px y un asa seria un blanco de 10px, imposible de
        * acertar. El umbral de 4px --que aplica `moveDrag`-- deja pasar el doble
        * clic del renombrado, que no mueve el puntero.
+       *
+       * El clic DERECHO no arma arrastre --el `button !== 0` de abajo-- asi que el
+       * menu contextual y el arrastre conviven en la misma celda sin pelear: son
+       * botones distintos y cada uno hace lo suyo.
+       *
+       * Y desde el divisor NO se arrastra, porque el divisor corta la propagacion
+       * para redimensionar. Un asa que ademas moviera la columna seria lo peor de
+       * los dos: uno que empuja la columna en vez de correrle el borde.
        */
       onPointerDown={(e) => {
         if (e.button !== 0 || renaming || confirming) return;
@@ -1307,6 +1887,18 @@ const ColumnHeader = memo(function ColumnHeader({
         );
       }}
       /*
+       * El menu se abre con clic DERECHO en cualquier parte del encabezado, menos
+       * el divisor --que corta la propagacion de este mismo evento.
+       *
+       * El ancla es el puntero: con menu contextual no hay boton que medir, y
+       * ademas tiene que abrirse donde uno apunto.
+       */
+      onContextMenu={(e) => {
+        e.preventDefault();
+        if (renaming || confirming) return;
+        abrirMenu(e.clientX, e.clientY);
+      }}
+      /*
        * La transicion va en el estado NORMAL y no en el de arrastre, y al reves de
        * lo que parece.
        *
@@ -1317,11 +1909,18 @@ const ColumnHeader = memo(function ColumnHeader({
        *
        * Ponerla en el estado normal hace que al SOLTAR, cuando el transform se
        * quita de golpe y la columna vuelve a su ranura, ese retorno si se anime.
+       *
+       * El empuje tiene la misma forma pero al reves: `transition: none` mientras
+       * la columna esta corrida a la posicion vieja, y la transicion normal un
+       * cuadro despues, cuando el corrimiento se suelta y la columna viaja a su
+       * ranura sola.
        */
       style={
-        dragging
-          ? { transform: 'translateX(var(--dx, 0px))', transition: 'none' }
-          : { transition: 'transform 120ms ease-out' }
+        empujada
+          ? { transform: `translateX(${empujada}px)`, transition: 'none' }
+          : dragging
+            ? { transform: 'translateX(var(--dx, 0px))', transition: 'none' }
+            : { transition: 'transform 120ms ease-out' }
       }
     >
       {/*
@@ -1331,7 +1930,52 @@ const ColumnHeader = memo(function ColumnHeader({
        * lo recortaba: con pocas filas el cartel salia a medias y no se leia.
        */}
       {confirming ? null : (
-        <div className="flex items-center gap-1">
+        /*
+         * `justify-end` en las columnas de cifras.
+         *
+         * El contenido --icono y nombre-- termina en el mismo borde que el de las
+         * celdas, asi que con `justify-end` la etiqueta cae justo encima de sus
+         * numeros, que es lo que hace falta para que "Value" rotule una columna de
+         * cifras y no parezca un texto suelto al lado de otra cosa.
+         *
+         * Antes este `justify-end` existia por otra razon: el boton de menu era
+         * `absolute` y el nombre se alineaba a la derecha para compensar el hueco
+         * que dejaba. Ese boton ya no esta.
+         */
+        <div
+          className={`flex min-w-0 flex-1 items-center gap-1 ${
+            column.type === 'number' ? 'justify-end' : ''
+          }`}
+        >
+          {/*
+           * El icono del tipo, antes del nombre. Es el mismo del selector del "+",
+           * asi que el tipo se lee igual en los dos lugares donde se elige.
+           *
+           * Va FIJO y no al hover porque el tipo de una columna no es algo que se
+           * quiera descubrir: es la fila de arriba de la tabla y es lo primero que
+           * uno mira para saber que hay en cada columna.
+           *
+           * Un paso detras del nombre en brillo, no mas apagado: con el encabezado
+           * hundido la jerarquia se hace con el tono. Ver la nota de la banda.
+           */}
+      {/*
+       * El icono del tipo. NO es un asa: el arrastre vive en toda la celda del
+       * encabezado y el clic derecho abre el menu, asi que el icono es solo la
+       * marca de que tipo guarda la columna.
+       *
+       * Va con `block`: como hijo de un `flex items-center` lo alinea el flex,
+       * pero el `svg` en linea se apoya en la linea base del texto y queda un
+       * pixel --segun la fuente-- por debajo del centro. `block` lo saca de la
+       * linea base y lo deja donde dice `items-center`.
+       *
+       * `gray-500`, un paso detras del nombre: con el mismo gris los dos se
+       * vuelven una mancha y se pierde que el icono es el tipo y no parte del
+       * nombre. Ver la nota de la banda.
+       */}
+      <IconoTipo
+        size={12}
+        className="block shrink-0 text-gray-500 group-hover/col:text-gray-400"
+      />
           {renaming ? (
             <input
               ref={inputRef}
@@ -1382,46 +2026,99 @@ const ColumnHeader = memo(function ColumnHeader({
              */
             <span
               onDoubleClick={() => setRenaming(true)}
-              title={`${column.name} · ${typeLabel}. Double-click to rename, drag to move.`}
-              className="max-w-[12rem] cursor-inherit truncate whitespace-nowrap text-left transition-colors hover:text-white"
+              title={`${column.name} · ${typeLabel}. Double-click to rename, right-click for options, drag to move.`}
+              /*
+               * El nombre es lo unico que puede encogerse: con `flex-1` + `min-w-0`
+               * en el padre cede y se corta con puntos en vez de estirar el track.
+               *
+               * El `max-w-[12rem]` le pone un piso al truncate: sin el, el nombre se
+               * estira tanto como el texto y las demas columnas quedan fuera de
+               * vista. Es el mismo tope que usan las celdas en `compact`.
+               */
+              className="max-w-[12rem] min-w-0 cursor-inherit truncate whitespace-nowrap text-left transition-colors hover:text-white"
             >
               {column.name}
             </span>
           )}
-
-          {/*
-           * Solo queda borrar. Mover la columna es solo con el arrastre: las
-           * flechas aparecian al lado de la papelera, ocupaban el ancho del
-           * encabezado en un widget de 300px y decian dos veces lo mismo que
-           * arrastrar el titulo.
-           */}
-          {/*
-           * El boton del menu. Reemplaza a la papelera suelta: renombrar, cambiar
-           * tipo y borrar son las tres cosas que se pueden hacer con una columna,
-           * y con un solo boton el encabezado deja de reservar ancho para tres
-           * iconos en un widget de 300px.
-           *
-           * El menu en si NO va aqui: se dibuja en el portal del final.
-           */}
-          <span
-            className="flex shrink-0 items-center opacity-0 transition-opacity group-hover/col:opacity-100 focus-within:opacity-100"
-            aria-hidden={!renaming}
-          >
-            <button
-              ref={botonRef}
-              type="button"
-              onClick={() => (menuAbierto ? cerrarMenu() : abrirMenu())}
-              aria-label={`Options for column ${column.name}`}
-              aria-haspopup="menu"
-              aria-expanded={menuAbierto}
-              title="Column options"
-              className="flex size-6 items-center justify-center rounded text-gray-500 transition-colors hover:bg-white/5 hover:text-gray-200"
-            >
-              <FiMoreVertical size={11} />
-            </button>
-          </span>
         </div>
       )}
+
+      {/*
+       * EL DIVISOR: el asa para redimensionar la columna.
+       *
+       * Va en el borde DERECHO del encabezado y redimensiona ESA columna, que es
+       * el mismo lugar donde esta el `border-l` de la celda siguiente: la linea que
+       * se arrastra es la que ya se ve.
+       *
+       * Que sea el derecho y no el izquierdo es la convencion de toda planilla y
+       * de todo editor de tablas: el divisor pertenece al campo que tiene a su
+       * izquierda. Con el asa al borde izquierdo, apretar un divisor movia el
+       * limite agrandando el campo de la DERECHA --el que todavia no habia tocado
+       * el usuario--, que se lee como que el divisor no hace lo que uno espera.
+       * Asi el campo de la izquierda crece y el resto se corre, que es lo unico
+       * que se puede esperar de un limite.
+       *
+       * Hay UN asa por limite y no dos: como vive en el borde derecho de su
+       * columna, el limite entre dos columnas tiene el asa de la izquierda y la
+       * de la derecha no lo dibujaria encima. Por eso la primera columna no tiene
+       * asa a la izquierda --a su izquierda esta el track de las acciones, que no
+       * es una columna-- y la ultima si la tiene a la derecha, en el limite con
+       * el "+", donde no hay linea permanente pero el hover la dibuja.
+       *
+       * `stopPropagation` porque el encabezado tiene el arrastre de reordenar en su
+       * `pointerdown`: sin esto, agarrar el divisor mueve la columna de lugar y le
+       * cambia el tamano al mismo tiempo. Es el mismo motivo por el que el
+       * `button !== 0` de arriba no alcanza -- son dos gestos con el boton izquierdo
+       * sobre el mismo elemento.
+       *
+       * El asa mide 8px y no 1px porque 1px no se agarra, y va DENTRO de la celda y
+       * no encima del vecino porque un asa a medio camino depende de que la columna
+       * siguiente la pinte despues y la tape.
+       *
+       * El `after` es lo unico que se ve al pasar por encima: una linea de 1px en
+       * p2, el color de "esto esta activo" en la app. Sin ella el divisor es
+       * invisible y no hay nada que invite a arrastrarlo.
+       */}
+      <span
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={`Resize column ${column.name}`}
+        tabIndex={0}
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          /*
+           * SIN `preventDefault()`.
+           *
+           * Estaba puesto por la seleccion de texto durante el arrastre, pero el
+           * encabezado es `select-none`: no hay nada que seleccionar y el
+           * `preventDefault` no HacIA nada por eso.
+           *
+           * Y hacia MUCHO daño: en Chromium, cancelar el `pointerdown` cancela
+           * tambien el `contextmenu` -- o sea que en los 8px de este asa el menu
+           * de opciones no se abria nunca, en silencio y sin error. El `contextmenu`
+           * del encabezado se cancela en su propio handler, que es donde tiene que
+           * estar.
+           */
+          e.stopPropagation();
+          onResizeStart(column.id, e.clientX);
+        }}
+        onKeyDown={(e) => {
+          if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+          e.preventDefault();
+          // 8px es un paso que se ve; con Shift, 24, que es el ancho de un boton.
+          const paso = e.shiftKey ? 24 : 8;
+          onResizeNudge(column.id, e.key === 'ArrowLeft' ? -paso : paso);
+        }}
+        /*
+         * El menu NO se abre aca. Es lo unico que hay que exceptuar del "clic
+         * derecho en cualquier parte del encabezado": sobre el divisor uno va a
+         * redimensionar, y un menu que aparece ahi tapa justo la columna que
+         * esta mirando. `stopPropagation` y nada mas --no `preventDefault`--
+         * porque el menu nativo del navegador si interesa mostrarlo ahi.
+         */
+        onContextMenu={(e) => e.stopPropagation()}
+        className="absolute right-0 top-0 z-[2] flex h-full w-2 cursor-col-resize touch-none after:absolute after:right-0 after:top-0 after:h-full after:w-px after:bg-transparent after:content-[''] hover:after:bg-p2 focus-visible:after:bg-p2 focus-visible:outline-none"
+      />
 
       {/*
        * Los tres paneles --menu, confirmar tipo y confirmar borrado-- se dibujan
@@ -1525,7 +2222,7 @@ const ColumnHeader = memo(function ColumnHeader({
                           : 'left-full ml-1 before:-left-1'
                       }`}
                     >
-                      {(['text', 'number'] as const).map((t) => (
+                      {COLUMN_TYPES.map((t) => (
                         <button
                           key={t}
                           type="button"
@@ -1537,7 +2234,7 @@ const ColumnHeader = memo(function ColumnHeader({
                           }`}
                         >
                           {column.type === t && <FiCheck size={11} className="shrink-0" />}
-                          {t === 'text' ? 'Text' : 'Number'}
+                          {COLUMN_TYPE_LABELS[t]}
                         </button>
                       ))}
                     </div>
@@ -1558,20 +2255,21 @@ const ColumnHeader = memo(function ColumnHeader({
             {/*
              * Confirmar el cambio de tipo, y solo cuando hay algo que perder.
              *
-             * Pasar una columna de texto a numero descarta las celdas que no son
-             * numeros. El backend conserva lo numerico escrito como texto --"10"
-             * pasa a 10--, asi que lo que se cuenta aca es exactamente lo que se
-             * limpia, y sin este cartel esos valores desaparecerian sin que nadie
-             * se enterara.
+             * Pasar una columna a numero descarta las celdas que no son numeros,
+             * y pasarla a checkbox descarta todo lo que tenga escrito. El numero
+             * que se muestra es exactamente lo que `coerceValue` va a limpiar en
+             * el servidor, y sin este cartel esos valores desaparecerian sin que
+             * nadie se enterara.
              */}
             {confirmandoTipo !== null && (
               <div className="mt-0.5 w-56 rounded border border-gray-500/50 bg-gray-800 p-2 shadow-xl">
                 <p className="text-xs text-gray-300">
-                  Change <span className="text-white">{column.name}</span> to Number?{' '}
+                  Change <span className="text-white">{column.name}</span> to{' '}
+                  <span className="text-white">{COLUMN_TYPE_LABELS[confirmandoTipo]}</span>?{' '}
                   <span className="text-white">
-                    {pierdeAlPonerNumero} {pierdeAlPonerNumero === 1 ? 'value' : 'values'} that are
-                    not numbers will be cleared.
+                    {perdidosAlConfirmar} {perdidosAlConfirmar === 1 ? 'value' : 'values'}
                   </span>
+                  {confirmandoTipo === 'number' ? ' that are not numbers' : ''} will be cleared.
                 </p>
                 <div className="mt-1.5 flex items-center gap-1.5">
                   <button
@@ -1658,21 +2356,29 @@ const ColumnHeader = memo(function ColumnHeader({
 });
 
 /**
- * El "+" que agrega una columna.
+ * El "+" que agrega una columna: un selector de tipo con buscador.
  *
- * En `full` abre un menu para elegir el tipo, porque hay sitio. En `compact` no:
- * el widget no tiene donde poner un menu y agrega `text` de una, que es el tipo
- * por defecto y el que mas se usa.
+ * El buscador esta aunque hoy haya tres tipos y seijan a simple vista. Es el
+ * precio de agregar el cuarto: el menu es el unico lugar donde se ve la lista
+ * completa de lo que la tabla puede guardar, y sin buscador hay que scrollear
+ * para encontrar un tipo que la ventana tape.
+ *
+ * Abre en las DOS densidades. Antes en `compact` el "+" agrega `text` de una y no
+ * abria nada, con el argumento de que en el widget no hay lugar para un menu: el
+ * menu va en un portal y no ocupa lugar en la grilla, asi que ese argumento no se
+ * sostenia -- y sin esto, en el widget no habia forma de agregar una columna de
+ * casillas sin cambiarle el tipo a otra.
  */
 function AddColumn({
-  density,
   padY,
+  banda,
   onAdd,
   open,
   onOpenChange,
 }: {
-  density: TableDensity;
   padY: string;
+  /** Relleno de la celda del "+": el de la superficie. Ver `banda`. */
+  banda: string;
   onAdd: (type: ColumnType) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -1681,9 +2387,11 @@ function AddColumn({
   const botonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [ancla, setAncla] = useState<{ top: number; left: number } | null>(null);
+  const [busqueda, setBusqueda] = useState('');
 
   const cerrar = () => {
     setAncla(null);
+    setBusqueda('');
     onOpenChange(false);
   };
 
@@ -1691,17 +2399,26 @@ function AddColumn({
     const b = botonRef.current?.getBoundingClientRect();
     if (!b) return;
     /*
-     * Alineado al boton pero sin salirse de la pantalla.
+     * Alineado al boton pero sin salirse de la pantalla, en los dos ejes.
      *
      * El "+" vive en el ultimo track, o sea en el borde derecho de la tabla, y
-     * el menu mide 128px. Pegado a la izquierda del boton se iba 104px fuera del
+     * el menu mide 158px. Pegado a la izquierda del boton se iba 104px fuera del
      * contenedor --y fuera de la pantalla-- con cualquier tabla de 4 columnas o
-     * mas. Se ancla al boton pero se corrige contra el borde de la ventana.
+     * mas. Abajo es el mismo problema al reves: el menu se abre hacia abajo y un
+     * "+" cerca del borde inferior lo cortaba. Se ancla al boton y se corrige
+     * contra los bordes de la ventana.
      */
     const left = Math.max(8, Math.min(b.left, window.innerWidth - ADD_MENU_W - 8));
-    setAncla({ top: b.bottom, left });
+    const top = Math.max(8, Math.min(b.bottom, window.innerHeight - ADD_MENU_H - 8));
+    setAncla({ top, left });
+    setBusqueda('');
     onOpenChange(true);
   };
+
+  /** Los tipos que matchean lo escrito. Case-insensitive, y recortado por los dos lados. */
+  const visibles = COLUMN_TYPES.filter((t) =>
+    COLUMN_TYPE_LABELS[t].toLowerCase().includes(busqueda.trim().toLowerCase()),
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -1738,18 +2455,33 @@ function AddColumn({
          *
          * Los headers siguen con su `px-3` de siempre; esto solo necesita caber.
          */
-        className={`sticky top-0 z-[var(--z-sticky)] flex items-center justify-center border-b border-gray-600 bg-gray-800 ${padY}`}
+        /*
+         * SIN divisor y SIN `border-b`.
+         *
+         * El "+" no es un campo: es cromo colgado del costado. Con cualquiera de
+         * las dos lineas se leia como parte de la grilla --una columna vacia con un
+         * boton-- y las dos.extendian el dibujo mas alla del ultimo dato, que es
+         * justo la separacion que ahi no existe.
+         *
+         * Lo unico que comparte con la fila de arriba es el relleno. Ver `banda`.
+         */
+        className={`sticky top-0 z-[var(--z-sticky)] flex items-center justify-center ${banda} ${padY}`}
       >
         {!open && (
           <button
             ref={botonRef}
             type="button"
-            onClick={() => (density === 'full' ? abrir() : onAdd('text'))}
+            onClick={abrir}
             aria-label="Add column"
-            title={density === 'full' ? 'Add column' : 'Add a text column'}
+            title="Add column"
             className="flex size-6 items-center justify-center rounded text-gray-500 transition-colors hover:bg-white/5 hover:text-gray-200"
           >
-            <FiPlus size={12} />
+            {/*
+             * 15px y no 12. El boton NO crece: vive en un track de 24px de ancho
+             * --`ADD_COL`-- y pasaria a empujar la ultima columna. El icono era lo
+             * unico que se podia agrandar sin romper la grilla.
+             */}
+            <FiPlus size={15} />
           </button>
         )}
       </div>
@@ -1758,31 +2490,81 @@ function AddColumn({
        * El menu va en un portal, por el mismo motivo que el de la columna: cuelga
        * de una celda de una grilla que esta dentro de un `overflow-auto`, y todo lo
        * que cuelgue se recorta con el.
+       *
+       * `role="dialog"` y no `menu`: con un buscador adentro ya no es un menu --un
+       * menu no puede contener un campo de texto-- y el anuncio que corresponde es
+       * "un cuadro con un campo y unos botones".
        */}
       {open &&
         ancla &&
         createPortal(
           <div
             ref={menuRef}
-            role="menu"
+            role="dialog"
+            aria-label="Column type"
             style={{ position: 'fixed', top: ancla.top, left: ancla.left, zIndex: 'var(--z-menu)' }}
-            className="w-32 overflow-hidden rounded border border-gray-600 bg-gray-800 shadow-xl"
+            className="w-max overflow-hidden rounded border border-gray-600 bg-gray-800 shadow-xl"
           >
-            {(['text', 'number'] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                role="menuitem"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => {
-                  cerrar();
-                  onAdd(t);
+            <div className="border-b border-gray-700/60 p-1.5">
+              <input
+                autoFocus
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') cerrar();
                 }}
-                className="block w-full px-2 py-1.5 text-left text-xs text-gray-300 transition-colors hover:bg-white/5"
-              >
-                {t === 'text' ? 'Text column' : 'Number column'}
-              </button>
-            ))}
+                spellCheck={false}
+                placeholder="Search types"
+                aria-label="Search column types"
+                /*
+                 * Ancho FIJO, y el que fija el del panel: con `w-full` adentro de
+                 * un contenedor que se ajusta al contenido, el input devuelve su
+                 * ancho intrinseco --unos 170px en Chrome-- y el menu queda mas
+                 * ancho que ahora. Lo que se busca es el mas ancho de los hijos, y
+                 * ese es el campo. Ver `ADD_MENU_W`.
+                 */
+                className="w-36 rounded bg-gray-900/60 px-2 py-1 text-xs text-white placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500/50"
+              />
+            </div>
+            {visibles.length === 0 ? (
+              /* Sin esto el menu abierto queda en blanco, que parece roto. */
+              <p className="px-3 py-2 text-xs text-gray-500">No match</p>
+            ) : (
+              visibles.map((t) => {
+                const Icono = TYPE_ICON[t];
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      cerrar();
+                      onAdd(t);
+                    }}
+                    /*
+                     * `group` para que el icono tenga su propio paso en el hover:
+                     * el renglon entero es la accion, y el icono es lo que dice
+                     * que tipo es. Con el mismo tono que el nombre seria solo
+                     * decoracion; un paso mas apagado lo pone en segundo plano y
+                     * lo sube junto con el texto.
+                     */
+                    className="group flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-left text-xs text-gray-300 transition-colors hover:bg-white/5 hover:text-white"
+                  >
+                    <Icono size={12} className="shrink-0 text-gray-500 group-hover:text-gray-300" />
+                    {/*
+                     * Solo el nombre del tipo. Decia "Text column", "Number
+                     * column" y "Checkbox column": la misma palabra en los tres
+                     * renglones de un popup que ya ES el selector de columna.
+                     *
+                     * `whitespace-nowrap` porque con el panel ajustado al contenido
+                     * un renglon partido haria el ancho depender de donde este el
+                     * texto: el menu daria un salto al filtrar.
+                     */}
+                    {COLUMN_TYPE_LABELS[t]}
+                  </button>
+                );
+              })
+            )}
           </div>,
           document.body,
         )}
@@ -1807,13 +2589,21 @@ interface RowCellsProps {
   inputRef: React.RefObject<HTMLInputElement | null>;
   pad: string;
   text: string;
+  /** Tope de ancho de una celda, solo en `compact`. Ver `RowCells`. */
+  anchoCelda: string;
+  /** El texto se corta siempre, no solo en `compact`: la columna tiene ancho fijo. */
+  truncar: boolean;
   onStart: (row: TableRowDto, column: TableColumnDto) => void;
+  /** Marca o desmarca una celda de `checkbox`. No hay edicion: el clic es el cambio. */
+  onToggle: (row: TableRowDto, column: TableColumnDto) => void;
   onDraft: (draft: string) => void;
   onBlur: () => void;
   onCancel: () => void;
   onMove: (delta: number) => void;
   /** Columna que se esta arrastrando; sus celdas la siguen. */
   draggingColId: string | null;
+  /** Corrimiento del empuje, en px. Ver `push` en `TableGrid`. */
+  push?: Record<string, number>;
   /** Esta fila es la que se esta arrastrando de arriba abajo. */
   lifting: boolean;
   /** Arma el arrastre vertical desde el icono de la columna de acciones. */
@@ -1828,12 +2618,16 @@ const RowCells = memo(function RowCells({
   inputRef,
   pad,
   text,
+  anchoCelda,
+  truncar,
   onStart,
+  onToggle,
   onDraft,
   onBlur,
   onCancel,
   onMove,
   draggingColId,
+  push,
   lifting,
   onGrabRow,
 }: RowCellsProps) {
@@ -1853,6 +2647,18 @@ const RowCells = memo(function RowCells({
     ? { transform: 'translateY(var(--dy, 0px))', transition: 'none' }
     : undefined;
   const claseAlzada = lifting ? 'relative z-[1] bg-gray-900/80' : '';
+  /*
+   * El separador de fila, y por que no es el que habia.
+   *
+   * Era `gray-700/40`, que sobre la superficie del cuerpo daba 1.16:1: un 5% de
+   * diferencia en un canal, o sea que la fila no se leia como fila. En una grilla
+   * de 25px con texto de 14px esa linea es lo unico que separa una fila de la
+   * siguiente, asi que no es decoracion: es el ritmo de la tabla.
+   *
+   * `gray-600/70` lo deja en 1.65:1. No mas: una fila mas pesada que esto y la
+   * tabla parece papel milimetrado, que es el otro extremo.
+   */
+  const regla = 'border-b border-gray-600/70';
   return (
     <>
       {/*
@@ -1866,9 +2672,15 @@ const RowCells = memo(function RowCells({
        * El `onPointerDown` va en el boton y no en la celda para no competir con el
        * resto de la fila; el arrastre recien arranca con 4px de movimiento, asi que
        * un clic sin mover no hace nada.
+       *
+       * La celda va SIN padding y con `justify-center`: no tiene texto, solo el
+       * asa, y el padding lo que hacia era correr el boton contra el borde
+       * izquierdo --ademas de desbordarlo, porque el boton era mas grande que el
+       * hueco que le dejaba--. Centrado, el track queda con el aire que le toca.
        */}
       <div
-        className={`flex items-center border-b border-gray-700/40 ${pad} ${claseAlzada}`}
+        data-row-id={row.id}
+        className={`flex items-center justify-center ${regla} ${claseAlzada}`}
         style={transformFila}
       >
         <button
@@ -1881,11 +2693,31 @@ const RowCells = memo(function RowCells({
           }}
           aria-label={`Reorder row ${rowIndex + 1}`}
           title="Drag to reorder"
-          className={`flex size-6 shrink-0 cursor-grab touch-none items-center justify-center rounded transition-colors hover:bg-white/5 active:cursor-grabbing ${
+          /*
+           * 20px de dibujo con 24 de target: el `after:-inset-1` --el mismo truco
+           * que usan los botones de la barra del widget-- hace que el area de
+           * click siga siendo de 24 sin que el boton se vea de ese tamano. Bajar
+           * el dibujo era necesario para que el asa entre en el track: a 24px
+           * con el padding de la celda se salia encima de la primera columna.
+           *
+           * El glifo va a 14 sobre un dibujo de 20, o sea al 70%: es el tope antes
+           * de que `FiMenu` --tres barras con puntos-- empiece a tocarse con el
+           * borde del boton. Si hace falta mas, el paso siguiente es el boton y el
+           * track, no el glifo.
+           *
+           * SIN fondo en hover, a proposito. El asa esta siempre visible --no es un
+           * control que aparece--, y un rectangulo que se enciende al pasar por
+           * encima hace que la fila parezca una celda pulsable: el hover pertenece
+           * a la fila entera --`.row-hover`-- y este asa se le suma.
+           *
+           * El `transition-colors` queda para el unico cambio de color que le
+           * queda: el glifo se aclara cuando la fila se levanta.
+           */
+          className={`relative flex size-5 shrink-0 cursor-grab touch-none items-center justify-center rounded transition-colors after:pointer-events-auto after:absolute after:-inset-1 after:content-[''] active:cursor-grabbing ${
             lifting ? 'text-gray-300' : 'text-gray-600'
           }`}
         >
-          <FiMenu size={11} />
+          <FiMenu size={14} />
         </button>
       </div>
 
@@ -1911,20 +2743,39 @@ const RowCells = memo(function RowCells({
          * puntero: una fila a la que se le mueve una sola celda parece una fila rota.
          */
         const filaAlzada = lifting || lifted;
+        /*
+         * La celda de una columna que la arrastrada esta empujando se corre con
+         * ella. Sin esto solo se animan los encabezados y la tabla se ve como si
+         * el titulo se corriera solo mientras los datos quedan en su sitio.
+         */
+        const empujada = push?.[c.id] ?? 0;
         return (
           <div
             key={c.id}
+            data-row-id={row.id}
             style={
-              filaAlzada
-                ? {
-                    transform: lifted
-                      ? 'translateX(var(--dx, 0px))'
-                      : 'translateY(var(--dy, 0px))',
-                    transition: 'none',
-                  }
-                : { transition: 'transform 120ms ease-out' }
+              empujada
+                ? { transform: `translateX(${empujada}px)`, transition: 'none' }
+                : filaAlzada
+                  ? {
+                      transform: lifted
+                        ? 'translateX(var(--dx, 0px))'
+                        : 'translateY(var(--dy, 0px))',
+                      transition: 'none',
+                    }
+                  : { transition: 'transform 120ms ease-out' }
             }
-            className={`border-b border-gray-700/40 align-top ${pad} ${text} ${
+            className={`${regla} ${divisor} ${pad} ${text} ${
+              /*
+               * La casilla se CENTRA en la fila y las demas celdas se pegan
+               * arriba. `align-top` deja la celda con el alto de su contenido, y
+               * en una fila de texto eso ya es casi todo el alto; para un cuadro
+               * de 16px dentro de una fila de 36 se notaria flotando. Sin
+               * `align-top` la celda se estira a la fila y `items-center` la
+               * centra en ella.
+               */
+              c.type === 'checkbox' ? 'flex items-center' : 'align-top'
+            } ${
               filaAlzada
                 ? 'relative z-[1] bg-gray-900/80'
                 : isEditing
@@ -1932,7 +2783,31 @@ const RowCells = memo(function RowCells({
                   : ''
             }`}
           >
-            {isEditing ? (
+            {c.type === 'checkbox' ? (
+              /*
+               * La celda ES el control: no hay doble clic ni modo edicion, se
+               * marca y se guarda. Una casilla no tiene un texto adentro que
+               * editar.
+               *
+               * Un `input type="checkbox"` de verdad y no un `div` con un cuadrado
+               * dibujado, para que Space lo marque, el foco llegue con el Tab y el
+               * lector de pantalla lo anuncie como casilla y no como texto.
+               *
+               * Las clases son las del todo-list, copia exacta: se habian
+               * cambiado a `border-gray-600` y el borde paso a 2.2:1 contra su
+               * propio relleno, o sea que la casilla sin marcar era un cuadrado
+               * de 16px mas claro que la fila y con el borde casi borrado. El
+               * control tiene que leerse mas que la fila que lo contiene.
+               */
+              <input
+                type="checkbox"
+                /* `=== true` y no truthiness: el valor guardado puede ser texto. */
+                checked={raw === true}
+                onChange={() => onToggle(row, c)}
+                aria-label={`${c.name}, row ${rowIndex + 1}`}
+                className="h-4 w-4 shrink-0 cursor-pointer appearance-none rounded border border-gray-500 bg-gray-700 transition-colors checked:border-gray-400 checked:bg-gray-400 checked:bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2016%2016%27%20fill=%27none%27%20stroke=%27white%27%20stroke-width=%272.5%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%3E%3Cpath%20d=%27M3.5%208.5l3%203%206-7%27/%3E%3C/svg%3E')] checked:bg-center checked:bg-no-repeat checked:bg-[length:12px_12px] hover:border-gray-400"
+              />
+            ) : isEditing ? (
               <div>
                 <input
                   ref={inputRef}
@@ -1974,11 +2849,50 @@ const RowCells = memo(function RowCells({
                 type="button"
                 onClick={() => onStart(row, c)}
                 aria-label={`${c.name}, row ${rowIndex + 1}`}
-                className="flex min-h-6 w-full min-w-[3rem] items-center cursor-text whitespace-nowrap text-left text-gray-200 transition-colors hover:bg-white/[0.04]"
+                /*
+                 * Con el texto cortado el valor entero no esta en pantalla, asi que
+                 * el `title` es lo unico que lo deja disponible sin abrir la tabla en
+                 * otra vista. Solo cuando hay corte posible: un tooltip en cada celda
+                 * de una tabla que ya se lee entera es ruido.
+                 */
+                title={truncar || c.width ? shown || undefined : undefined}
+                /*
+                 * LAS CIFRAS A LA DERECHA, y con digitos de ancho fijo.
+                 *
+                 * Todo estaba alineado a la izquierda, y una columna de valores
+                 * --1.234, 56, 890-- alineada a la izquierda no se lee como
+                 * cifras: el borde de las unidades queda en zigzag y comparar
+                 * magnitudes obliga a leer numero por numero. A la derecha se
+                 * comparan por el borde, que es como se comparan.
+                 *
+                 * `tabular-nums` para que el 1 ocupe lo mismo que el 8: sin eso
+                 * los digitos se corren y la columna tiembla al escribir. La app
+                 * ya lo usa en el readout retraido.
+                 *
+                 * Y el tope SOLO en `compact`: en el widget un valor de 60
+                 * caracteres metia una columna de 400px y empujaba todo lo demas
+                 * fuera de la vista. En la vista el texto entero tiene que verse --
+                 * para eso esta el "Open" del widget--, asi que alla no se toca.
+                 *
+                 * EXCEPTO cuando la columna tiene ancho fijo, y ahi `truncate` es
+                 * obligatorio y no unadecision: sin `overflow-hidden`, el texto se
+                 * sale de la celda y se dibuja encima de la columna vecina. Un
+                 * track fijo con contenido sin recortar es texto encima de texto.
+                 */
+                className={`flex min-h-6 w-full min-w-[3rem] items-center cursor-text whitespace-nowrap text-gray-200 transition-colors hover:bg-white/[0.04] ${
+                  c.type === 'number' ? 'justify-end text-right tabular-nums' : 'text-left'
+                } ${truncar || c.width ? 'truncate' : ''} ${anchoCelda}`}
               >
-                {/* El vacio se ve porque hay algo que hacer clic, pero no como
-                    texto: "null" o "undefined" en la celda serian ruido. */}
-                {shown || <span className="text-gray-700">&mdash;</span>}
+                {/*
+                 * El vacio se ve porque hay algo que hacer clic, pero no como
+                 * texto: "null" o "undefined" en la celda serian ruido.
+                 *
+                 * `gray-600` y no `gray-700`: este guion estaba en 1.5:1, o sea
+                 * que el placeholder de una celda con algo que hacer era
+                 * invisible. Sigue siendo un placeholder apagado, solo que ahora se
+                 * ve.
+                 */}
+                {shown || <span className="text-gray-600">&mdash;</span>}
               </button>
             )}
           </div>
@@ -1996,11 +2910,13 @@ const RowCells = memo(function RowCells({
        * columna "Value" y el texto en la de acciones, y cada cuatro filas el
        * corrimiento daba la vuelta.
        *
-       * `border-b` y no nada, para que la linea de la fila siga siendo continua
-       * hasta el "+" del encabezado.
+       * Ni divisor ni `border-b`, igual que el "+" de arriba: este track es el
+       * del boton, no el de una columna, y cualquier linea aqui extenderia el
+       * dibujo de la tabla mas alla del ultimo dato.
        */}
       <div
-        className={`border-b border-gray-700/40 ${claseAlzada}`}
+        data-row-id={row.id}
+        className={`${claseAlzada}`}
         aria-hidden="true"
         style={transformFila}
       />

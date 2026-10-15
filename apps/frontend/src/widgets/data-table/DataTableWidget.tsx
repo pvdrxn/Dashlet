@@ -70,6 +70,26 @@ export function sumNumericColumns(table: TableDto | null): number | null {
 }
 
 /**
+ * Cuantas filas quedan con la PRIMERA columna de casillas marcada.
+ *
+ * Solo la primera: dos columnas de "hecho" con la misma semantica es un dato
+ * raro, y sumarlas daria un numero que no corresponde a nada. `null` cuando la
+ * tabla no tiene ninguna: no es lo mismo "0 de 12" que "esta tabla no lleva
+ * casillas".
+ */
+export function doneCount(table: TableDto | null): number | null {
+  if (!table) return null;
+  const checks = table.columns.filter((c) => c.type === 'checkbox');
+  if (!checks.length) return null;
+  const col = checks[0];
+  let n = 0;
+  for (const row of table.rows) {
+    if (row.values[col.id] === true) n += 1;
+  }
+  return n;
+}
+
+/**
  * "Abrir completo": deja la tabla apuntada y avisa a la app.
  *
  * Es una FUNCION suelta y no un boton del cuerpo porque el boton quedo en la
@@ -188,7 +208,11 @@ export function DataTableWidget({ config, onConfigChange }: DataTableWidgetProps
     const prev = parRef.current;
     parRef.current = { tabla: table.name, barra };
 
-    const resumen = { rows: table.rowCount, sum: sumNumericColumns(table) };
+    const resumen = {
+      rows: table.rowCount,
+      sum: sumNumericColumns(table),
+      done: doneCount(table),
+    };
     const guardar = (extra: Record<string, unknown>) => {
       const serial = JSON.stringify(resumen);
       if (serial === resumenRef.current && !Object.keys(extra).length) return;
@@ -319,6 +343,21 @@ export function DataTableWidget({ config, onConfigChange }: DataTableWidgetProps
     [table],
   );
 
+  /**
+   * El ancho ajustado a una columna.
+   *
+   * Mismo camino que `changeColumns`: el ancho es parte de la columna, asi que va
+   * en el mismo PATCH y no hay un segundo canal por donde el servidor pueda ver
+   * dos versiones de la misma columna.
+   */
+  const setColumnWidth = useCallback(
+    (columnId: string, width: number) => {
+      if (!table) return;
+      void changeColumns(table.columns.map((c) => (c.id === columnId ? { ...c, width } : c)));
+    },
+    [table, changeColumns],
+  );
+
   /*
    * Tres guardas y no una, porque son tres estados distintos que se ven igual de
    * vacios pero no son lo mismo: todavia no tiene tabla, la esta bajando, o la
@@ -366,6 +405,7 @@ export function DataTableWidget({ config, onConfigChange }: DataTableWidgetProps
           onCellChange={changeCell}
           onRowAdd={() => void addRow()}
           onColumnsChange={(next) => void changeColumns(next)}
+          onColumnWidth={setColumnWidth}
           onRowReorder={(next, rowId, position) => void changeRowOrder(next, rowId, position)}
           hiddenRowCount={Math.max(0, table.rowCount - table.rows.length)}
         />

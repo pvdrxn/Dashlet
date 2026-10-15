@@ -83,18 +83,32 @@ registerWidget('data-table', {
   icon: LuTable2,
   /*
    * `tableId: null` es lo que dispara la creacion perezosa: el widget se hace su
-   * tabla al montarse. `rows` y `sum` los escribe el widget para que este
+   * tabla al montarse. `rows`, `sum` y `done` los escribe el widget para que este
    * readout --que es una funcion PURA sobre el config-- tenga algo que mostrar con
    * el cuerpo desmontado.
    */
-  defaultConfig: { title: 'Table', tableId: null, rows: 0, sum: null },
+  defaultConfig: { title: 'Table', tableId: null, rows: 0, sum: null, done: null },
   collapsedSummary: (config) => {
     const rows = typeof config.rows === 'number' ? config.rows : 0;
     const sum = typeof config.sum === 'number' ? config.sum : null;
+    const done = typeof config.done === 'number' ? config.done : null;
+    /*
+     * Con columna de casillas, el readout habla de LAS CASILLAS y no de las
+     * filas: "3/12" con la barra al lado dice mas --y de un vistazo-- que "12
+     * rows". Es el mismo lenguaje que el de habitos, y el motivo por el que se
+     * escribio `done` en el config en vez de calcularlo en el readout.
+     */
+    if (done !== null) {
+      return {
+        value: `${done}/${rows}`,
+        bar: { done, total: rows },
+        // El `Σ` solo aparece si hay una columna numerica con algo dentro. Un
+        // `Σ 0` en una tabla de texto seria mentira.
+        detail: sum === null ? undefined : `Σ ${formatNumber(sum)}`,
+      };
+    }
     return {
       value: `${rows} ${rows === 1 ? 'row' : 'rows'}`,
-      // El `Σ` solo aparece si hay una columna numerica con algo dentro. Un
-      // `Σ 0` en una tabla de texto seria mentira.
       detail: sum === null ? undefined : `Σ ${formatNumber(sum)}`,
     };
   },

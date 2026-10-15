@@ -487,6 +487,20 @@ export const WidgetFrame = memo(function WidgetFrame({
           spellCheck={false}
           value={(config.title as string) ?? ''}
           onChange={(e) => onConfigChange(id, { ...config, title: e.target.value })}
+          onKeyDown={(e) => {
+            /*
+             * Enter sale del campo. El nombre YA esta guardado --se escribe en
+             * cada tecla-- asi que no hay nada que confirmar: lo que hace falta es
+             * sacar el foco, que si no se queda el cursor en el titulo con el
+             * borde de foco puesto encima.
+             *
+             * `stopPropagation` porque el header maneja el long-press del colapso
+             * y el Enter no tiene nada que ver con el. Mismo criterio que el resto
+             * de handlers de este input.
+             */
+            e.stopPropagation();
+            if (e.key === 'Enter') e.currentTarget.blur();
+          }}
           onClick={(e) => e.stopPropagation()}
           onPointerDown={handleTitleHoldPointerDown}
           onPointerMove={(e) => {

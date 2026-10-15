@@ -299,12 +299,38 @@ export const WIDGET_TYPES: WidgetType[] = [
  * version liviana, sin filas, para el selector de tablas.
  */
 
-export type ColumnType = 'text' | 'number';
+export type ColumnType = 'text' | 'number' | 'checkbox';
 
-export const COLUMN_TYPES: ColumnType[] = ['text', 'number'];
+export const COLUMN_TYPES: ColumnType[] = ['text', 'number', 'checkbox'];
+
+/**
+ * Como se llama cada tipo en la interfaz.
+ *
+ * Vive aca y no en la grilla porque lo necesitan TRES lugares --el submenu de
+ * "Change type", el menu del "+" y el `title` del encabezado-- y son tres copias
+ * de un `t === 'x' ? 'X' : 'Y'` que hay que actualizar cada vez que aparece un
+ * tipo nuevo. Olvidarse uno deja el menu diciendo "Text" donde deberia decir
+ * "Checkbox".
+ */
+export const COLUMN_TYPE_LABELS: Record<ColumnType, string> = {
+  text: 'Text',
+  number: 'Number',
+  checkbox: 'Checkbox',
+};
 
 /** Alto maximo del nombre de una columna. */
 export const MAX_COLUMN_NAME_LENGTH = 40;
+
+/**
+ * Piso y techo del ancho de una columna, en px.
+ *
+ * El piso es el `min-w-[3rem]` que ya tienen las celdas: por debajo, el track fijo
+ * queda mas angosto que su contenido y las dos reglas se pelean. El techo no es un
+ * limite de diseno sino de memoria: una columna de 4000px empuja a todas las demas
+ * fuera de la pantalla.
+ */
+export const MIN_COLUMN_WIDTH = 48;
+export const MAX_COLUMN_WIDTH = 720;
 
 /** Tope de filas que devuelve el backend, para que una tabla enorme no reviente el widget. */
 export const MAX_ROWS_PER_TABLE = 500;
@@ -313,9 +339,13 @@ export const MAX_ROWS_PER_TABLE = 500;
  * Valor de una celda.
  *
  * `null` y no `undefined` porque es lo que se guarda: una celda vacia esta
- * VACIA, no ausente. Un `number` nunca es `NaN` -- lo valida el backend.
+ * VACIA, no ausente. Un `number` nunca es `NaN` -- lo valida el backend-- y un
+ * `boolean` solo aparece en una columna `checkbox`.
+ *
+ * En una columna `checkbox`, "sin marcar" y "marcado en falso" se dibujan igual
+ * y NO son lo mismo guardado: lo primero es que la celda nunca se toco.
  */
-export type CellValue = string | number | null;
+export type CellValue = string | number | boolean | null;
 
 /** Los valores de una fila, indexados por `columnId` y NO por nombre. */
 export type RowValues = Record<string, CellValue>;
@@ -325,6 +355,18 @@ export interface TableColumnDto {
   id: string;
   name: string;
   type: ColumnType;
+  /**
+   * Ancho en px, cuando el usuario lo ajusto arrastrando el divisor.
+   *
+   * Ausente = `max-content`: la columna se mide por su contenido, que es el estado
+   * inicial de toda columna. Un numero la fija, y es lo que la hace dejar de
+   * crecer sola.
+   *
+   * Vive en la COLUMNA y no en el widget porque la tabla es una sola: si el ancho
+   * fuera del widget, la vista tendria otro y abrir la tabla a pantalla completa
+   * cambiaria todos los anchos.
+   */
+  width?: number;
 }
 
 export interface TableRowDto {
@@ -414,5 +456,6 @@ export function defaultTableColumns(): TableColumnDto[] {
 
 /** Columna nueva suelta, para el boton "+" de la grilla. */
 export function newTableColumn(type: ColumnType = 'text'): TableColumnDto {
-  return { id: crypto.randomUUID(), name: type === 'number' ? 'Value' : 'Name', type };
+  const name = type === 'number' ? 'Value' : type === 'checkbox' ? 'Done' : 'Name';
+  return { id: crypto.randomUUID(), name, type };
 }

@@ -277,6 +277,21 @@ export function TableView({ leading }: TableViewProps) {
     [table],
   );
 
+  /**
+   * El ancho ajustado a una columna.
+   *
+   * Va por `changeColumns` y no por un endpoint propio porque el ancho ES parte de
+   * la columna: es lo unico que hay, y asi un reorden que todavia no se guardo no
+   * pisa el ancho que el usuario acaba de ajustar.
+   */
+  const setColumnWidth = useCallback(
+    (columnId: string, width: number) => {
+      if (!table) return;
+      void changeColumns(table.columns.map((c) => (c.id === columnId ? { ...c, width } : c)));
+    },
+    [table, changeColumns],
+  );
+
   const addRow = useCallback(async () => {
     if (!table) return;
     try {
@@ -447,6 +462,7 @@ export function TableView({ leading }: TableViewProps) {
             onCellChange={changeCell}
             onRowAdd={() => void addRow()}
             onColumnsChange={(next) => void changeColumns(next)}
+            onColumnWidth={setColumnWidth}
             onRowReorder={(next, rowId, position) => void changeRowOrder(next, rowId, position)}
             hiddenRowCount={Math.max(0, table.rowCount - table.rows.length)}
           />

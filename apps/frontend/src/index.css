@@ -431,6 +431,49 @@ body {
   transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
 }
 
+/*
+ * Lo que la grilla necesita y no se puede escribir con una clase de Tailwind.
+ *
+ * Van en `@layer components` y no sueltas a proposito: Tailwind v4 mete sus
+ * utilidades en la capa `utilities`, y una regla sin capa le gana a TODAS. Sin
+ * esto, `.row-hover` taparia el fondo de la celda que se esta editando
+ * (`bg-gray-700/60`) y el de la fila que se esta arrastrando (`bg-gray-900/80`),
+ * que tienen que seguir mandando.
+ */
+@layer components {
+  /*
+   * La fila entera bajo el mouse, no la celda.
+   *
+   * Antes lo encendia el boton de cada celda por separado, y al recorrer una fila
+   * se veia un brillo que se movia sin llegar a cubrirla nunca. Una fila que se
+   * ilumina a trozos se lee como una fila rota.
+   *
+   * Debil a proposito (`white/2`): el boton de la celda que tiene el puntero
+   * encima suma su propio `white/4`, y asi la celda queda un pelo mas clara
+   * dentro de una fila clara, en vez de dos brillos compitiendo.
+   */
+  .row-hover {
+    background-color: rgb(255 255 255 / 0.02);
+  }
+
+  /*
+   * La pista de que hay mas columnas a la derecha.
+   *
+   * Un scrollbar de 6px con el pulgar en `gray-600` sobre un track casi del color
+   * de la superficie es, en la practica, invisible: en el widget chico es lo
+   * unico que dice que la tabla no termina donde termina.
+   *
+   * La mascara la pone y la saca el `scroll` de la grilla, NO siempre: fija de
+   * entrada se desvanecen las ultimas columnas estando al final del recorrido, que
+   * es peor que no avisar. Es el mismo recurso que usa `TabName` para los nombres
+   * de las pestanas, y el motivo de que sea una clase y no un estilo inline es el
+   * mismo: poder apagarla.
+   */
+  .scroll-hint {
+    mask-image: linear-gradient(to_right, #000 calc(100% - 28px), transparent 100%);
+  }
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
