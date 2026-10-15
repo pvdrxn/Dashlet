@@ -72,16 +72,21 @@
   --z-overlay: 4000;
 
   /*
-   * DURACION de los cambios de medidas de un widget: el repliegue del marco y
-   * el teÃ±ido de la barra de titulo.
+   * DURACION de los dos gestos de una caja: el repliegue del marco y el teñido de
+   * la barra de titulo, y la reubicacion -- cuando un widget cae sobre otro y los
+   * de abajo se corren, o cuando uno se despliega y empuja a quien tiene debajo.
    *
-   * Vive como token porque lo consumen dos cosas en archivos distintos -- la
-   * transicion en `.widget-sizing` y la clase del header en `WidgetFrame` -- y
-   * antes de que existiera cada una tenia su numero. A 100ms el repliegue se
-   * leia como un corte; 240 entra como un movimiento.
+   * Un solo numero para los dos a proposito: el tablero se esta reacomodando en el
+   * mismo gesto y tiene que leerse como una sola cosa. Antes cada uno tenia el
+   * suyo --`--motion-sizing` y `--motion-push`-- y las dos reglas de transicion se
+   * pisaban entre si, porque el atajo `transition` no se compone: el widget que se
+   * despliega lleva las dos clases a la vez y se perdia una de las dos
+   * propiedades. Ver la regla unica `.widget-sizing, .widget-pushing` mas abajo.
    *
-   * La caja y la barra usan el MISMO numero a proposito: si una fuera mas
-   * rapida, se leerian como dos gestos en vez de uno.
+   * Vive como token porque lo consumen dos archivos distintos -- la transicion de
+   * la caja y la clase del header en `WidgetFrame` -- y antes de que existiera
+   * cada una tenia su numero. A 100ms el repliegue se leia como un corte; 240 entra
+   * como un movimiento.
    *
    * Ojo: el timer que mantiene viva la clase (en `WidgetGrid`) tiene que ser
    * MAS LARGO que esto. Si se sacara antes, la transicion se cortaria a mitad de
@@ -89,16 +94,6 @@
    * existe para quitar.
    */
   --motion-sizing: 240ms;
-
-  /*
-   * DURACION de la reubicacion: cuando un widget cae sobre otro y los de abajo
-   * se corren, o cuando uno se despliega y empuja a quien tiene debajo.
-   *
-   * Acompana a `--motion-sizing` y va por separado porque son ejes distintos:
-   * uno cambia medidas, este cambia posicion. Mismo numero porque el tablero se
-   * esta reacomodando en el mismo gesto y tiene que leerse como una sola cosa.
-   */
-  --motion-push: 240ms;
 
   /*
    * RADIOS: dos valores, no cinco.
@@ -391,58 +386,49 @@ body {
 }
 
 /*
- * Cambio de medidas de un widget: redimensionado por tirador y repliegue con el
- * boton de la barra. Los dos gestos son el mismo movimiento -- la caja cambia de
- * tamano -- asi que comparten la misma transicion y el mismo token de duracion.
+ * Los DOS gestos de una caja en una sola regla: cambiar de medidas y cambiar de
+ * celda.
+ *
+ *   medidas  redimensionado por tirador y repliegue del widget
+ *   celda    lo que se corre por un empuje, al soltar un arrastre o al desplegar
  *
  * El redimensionado reporta en celdas enteras, igual que `pxToCells`, o sea que
  * sin esto el widget daba saltos de 88px mientras el mouse avanza en fino.
  *
- * Solo `width`/`height`. Durante ambos gestos `left`/`top` no se mueven (el ancla
- * es la esquina superior izquierda) y los widgets que se empujan por debajo
- * siguen saltando a proposito: ver el comentario de reubicacion en `WidgetBox`.
- * Esta regla no toca la reubicacion.
+ * Estaban separadas y cada una con el atajo `transition`, que no se compone:
+ * gano la ultima. Y hay un momento en que un widget lleva LAS DOS clases --el que
+ * se despliega trae `widget-sizing` porque acaba de cambiar de `collapsed`, y
+ * `widget-pushing` porque su empuje movio al de abajo--, con lo que se perdia
+ * `height` en la transicion: el widget abria de un tiron mientras el vecino se
+ * deslizaba. Era el unico gesto que se veía a medias.
  *
- * A diferencia de la silueta, `width`/`height` no se componen: el navegador
- * recalcula layout en cada frame. Con un solo widget alcanza; con la transicion
- * puesta de forma permanente habria que pagar eso en cada cambio de ventana o de
- * pestana, asi que la clase va solo durante el gesto.
- */
-.widget-sizing {
-  transition:
-    width var(--motion-sizing) cubic-bezier(0.2, 0, 0, 1),
-    height var(--motion-sizing) cubic-bezier(0.2, 0, 0, 1);
-}
-
-/*
- * Reubicacion: los widgets que se corren por un empuje.
+ * Ahora no hay atajo: la lista de propiedades va junta, y los dos gestos duran
+ * lo mismo --240ms-- porque el tablero se esta reacomodando en un solo gesto y
+ * tiene que leerse como una sola cosa.
+ *
+ * `transform` entra en la lista por el widget que se esta soltando: dnd-kit le
+ * escribe el desplazamiento vivo y al soltar lo quita de un golpe. Sin animarlo,
+ * ese widget primero salta a su celda y despues se desliza. Ese `transform` lo
+ * compone el compositor, asi que no reflowea.
+ *
+ * `left`/`top` si pasan por layout, pero solo cambian de coordenada: el ancho y el
+ * alto no se tocan, asi que el contenido no se re-arma ni re-envuelve. Por eso no
+ * hace falta medir nada ni montar un FLIP con refs.
  *
  * No es la reubicacion en vivo de iOS, y la diferencia es el fondo. Alli los de
  * abajo ya se abren SOLO mientras se arrastra, porque el hueco se calcula en
  * vivo y el soltado no empuja a nadie: confirma. Aca el empuje se resuelve al
  * soltar (`resolveDrop`), asi que el evento es discreto y una transicion de
- * duracion fija es el modelo honesto. Una fisica de resorte con interrupcion
- * solo se justifica si el layout responde mientras se arrastra.
+ * duracion fija es el modelo honesto.
  *
- * `transform` entra en la lista por el widget que se esta soltando: dnd-kit le
- * escribe el desplazamiento vivo en el `transform` y al soltar lo quita de un
- * golpe. Sin animarlo, ese widget primero salta a su celda y despues se
- * desliza -- con el transform incluido, se desliza de una. Ese `transform` lo
- * compone el compositor, asi que no reflowea.
- *
- * `left`/`top` si pasan por layout, pero solo cambian de coordenada: el ancho y
- * el alto no se tocan, asi que el contenido no se re-arma ni re-envuelve. Por eso
- * no hace falta medir nada ni montar un FLIP con refs.
- *
- * Va en `.widget-sizing` y no en una regla aparte: los dos gestos -- cambiar de
- * medidas, cambiar de celda -- pasan por la misma transicion y un solo selector
- * con `transition` sobre el mismo elemento no se pisan.
+ * La clase va solo durante el gesto, no de forma permanente: puesta siempre
+ * habria que pagar el recalculo de layout en cada cambio de ventana o de pestana.
  */
+.widget-sizing,
 .widget-pushing {
-  transition:
-    left var(--motion-push) cubic-bezier(0.2, 0, 0, 1),
-    top var(--motion-push) cubic-bezier(0.2, 0, 0, 1),
-    transform var(--motion-push) cubic-bezier(0.2, 0, 0, 1);
+  transition-property: width, height, left, top, transform;
+  transition-duration: var(--motion-sizing);
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
 }
 
 /* Scrollbar */

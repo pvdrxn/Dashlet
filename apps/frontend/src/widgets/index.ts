@@ -1,10 +1,10 @@
 import { lazy } from 'react';
-import { FiCheckSquare, FiClock, FiEdit3, FiBook } from 'react-icons/fi';
+import { FiCheckSquare, FiClock, FiEdit3, FiBook, FiMaximize2 } from 'react-icons/fi';
 import { LuListChecks } from 'react-icons/lu';
 import { LuCalculator } from 'react-icons/lu';
 import { LuTable2 } from 'react-icons/lu';
 import { registerWidget } from './registry';
-import { formatNumber } from './data-table/DataTableWidget';
+import { formatNumber, openTableView } from './data-table/DataTableWidget';
 import {
   todoListSummary,
   habitSummary,
@@ -96,6 +96,23 @@ registerWidget('data-table', {
       // El `Σ` solo aparece si hay una columna numerica con algo dentro. Un
       // `Σ 0` en una tabla de texto seria mentira.
       detail: sum === null ? undefined : `Σ ${formatNumber(sum)}`,
+    };
+  },
+  /*
+   * "Abrir completo" vive en la barra y no en el cuerpo: el cuerpo del widget es
+   * la tabla y cada linea de cromo le come alto. Ademas asi sigue disponible con
+   * el widget retraido, que es justo cuando uno quiere la tabla grande.
+   *
+   * El `tableId` sale del config --que es donde el widget lo escribe--, asi que
+   * el frame no necesita la tabla.
+   */
+  headerAction: (_widgetId, config) => {
+    const tableId = typeof config.tableId === 'string' ? config.tableId : null;
+    if (!tableId) return null;
+    return {
+      label: 'Open in Table View',
+      icon: FiMaximize2,
+      onSelect: () => openTableView(tableId),
     };
   },
 });

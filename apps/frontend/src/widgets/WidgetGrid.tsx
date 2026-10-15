@@ -67,7 +67,7 @@ const NEW_WIDGET_PROBE = '__new__';
  * vez de ser el mismo.
  */
 const SIZING_SETTLE_MS = 280;
-/** Igual que el anterior pero para `--motion-push`. Ver la nota de ahi. */
+/** Igual que el anterior, pero para la regla `.widget-pushing`. */
 const PUSH_SETTLE_MS = 280;
 function loadCache(cacheKey: string): WidgetData[] {
   try {
@@ -895,6 +895,15 @@ function readCollapsedSize(config: Record<string, unknown>): { w: number; h: num
         { id, position: finalWidget.position },
         ...(resolved?.shifted ?? []),
       ];
+      /*
+       * El empuje se desliza igual que en un drop, y por el mismo motivo: la clase
+       * tiene que quedar puesta antes de que las cajas cambien de celda.
+       *
+       * Faltaba, y por eso agrandar saltaba: los vecinos se movian igual --el
+       * `resolveDrop` es el mismo-- pero sin `widget-pushing` no habia quien
+       * interpolara el `top`.
+       */
+      if (resolved?.shifted.length) beginPush();
       setWidgets(
         normalizeLayout(
           candidate.map((w) => {
@@ -906,7 +915,7 @@ function readCollapsedSize(config: Record<string, unknown>): { w: number; h: num
       );
       for (const u of updates) void api.updateWidget(u.id, { position: u.position });
     },
-    [cols],
+    [cols, beginPush],
   );
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const handleDragStart = useCallback(

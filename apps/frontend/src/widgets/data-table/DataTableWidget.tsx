@@ -1,5 +1,5 @@
 ﻿import { useCallback, useEffect, useRef, useState } from 'react';
-import { FiMaximize2, FiX } from 'react-icons/fi';
+import { FiX } from 'react-icons/fi';
 import { TableGrid } from '../../views/table/TableGrid';
 import * as tablesApi from '../../api/tables';
 import { apiErrorMessage } from '../../api/error';
@@ -67,6 +67,21 @@ export function sumNumericColumns(table: TableDto | null): number | null {
     }
   }
   return hay ? total : null;
+}
+
+/**
+ * "Abrir completo": deja la tabla apuntada y avisa a la app.
+ *
+ * Es una FUNCION suelta y no un boton del cuerpo porque el boton quedo en la
+ * barra del frame, y el frame no tiene la tabla -- solo el `config`, donde el
+ * `tableId` ya esta escrito.
+ *
+ * Escribir la llave en `localStorage` NO alcanza por si solo: `App.tsx` tiene la
+ * vista en estado de React y no se entera de que cambio. Por eso el evento.
+ */
+export function openTableView(tableId: string): void {
+  localStorage.setItem(PENDING_TABLE_KEY, tableId);
+  window.dispatchEvent(new CustomEvent(OPEN_TABLE_EVENT, { detail: { tableId } }));
 }
 
 export function DataTableWidget({ config, onConfigChange }: DataTableWidgetProps) {
@@ -304,18 +319,6 @@ export function DataTableWidget({ config, onConfigChange }: DataTableWidgetProps
     [table],
   );
 
-  /**
-   * "Abrir completo": deja la tabla apuntada y avisa a la app.
-   *
-   * Escribir la llave en `localStorage` NO alcanza por si solo: `App.tsx` tiene la
-   * vista en estado de React y no se entera de que cambio. Por eso el evento.
-   */
-  const abrirCompleto = () => {
-    if (!table) return;
-    localStorage.setItem(PENDING_TABLE_KEY, table.id);
-    window.dispatchEvent(new CustomEvent(OPEN_TABLE_EVENT, { detail: { tableId: table.id } }));
-  };
-
   /*
    * Tres guardas y no una, porque son tres estados distintos que se ven igual de
    * vacios pero no son lo mismo: todavia no tiene tabla, la esta bajando, o la
@@ -333,18 +336,6 @@ export function DataTableWidget({ config, onConfigChange }: DataTableWidgetProps
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 items-center justify-end pb-1">
-        <button
-          type="button"
-          onClick={abrirCompleto}
-          title="Open in Table View"
-          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-gray-500 transition-colors hover:bg-white/5 hover:text-gray-300"
-        >
-          <FiMaximize2 size={10} />
-          Open
-        </button>
-      </div>
-
       {error && (
         /* Con su boton de cerrar: el mensaje tiene que poder irse solo. */
         <div role="alert" className="flex shrink-0 items-start gap-1 text-[10px] text-danger">

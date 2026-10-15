@@ -37,6 +37,20 @@ export interface CollapsedAction {
   tone?: 'neutral' | 'p2';
 }
 
+/**
+ * Boton de la barra del widget, al lado del de retraer.
+ *
+ * Solo icono: la barra es de 25px y el texto no entra. Va como funcion y no
+ * como config porque la accion necesita hacer algo --y lo unico que tiene el
+ * frame a mano es el `config`, nunca el estado del widget--.
+ */
+export interface HeaderAction {
+  /** Texto del tooltip y del `aria-label`. */
+  label: string;
+  icon: ComponentType<{ size?: number }>;
+  onSelect: () => void;
+}
+
 export interface WidgetDefinition {
   component: WidgetComponentType;
   label: string;
@@ -61,6 +75,13 @@ export interface WidgetDefinition {
    * mismo, y la necesita para que el reloj o la lista sepan a quien obedecer.
    */
   collapsedActions?: (widgetId: string, config: Record<string, unknown>) => CollapsedAction[];
+  /**
+   * Boton propio del widget en la barra de arriba, al lado del de retraer.
+   *
+   * `null` cuando todavia no se puede usar --la tabla que aun no creo su
+   * `tableId`-- y la accion desaparece en vez de fallar.
+   */
+  headerAction?: (widgetId: string, config: Record<string, unknown>) => HeaderAction | null;
   /**
    * El widget publica estado que avanza solo, asi que su readout tiene que
    * seguirlo en vivo en vez de leer el config congelado. Hoy solo el pomodoro.

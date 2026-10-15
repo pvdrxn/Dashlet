@@ -277,6 +277,13 @@ export const WidgetFrame = memo(function WidgetFrame({
   // El colapso lo decide la celda, que es la que mide su alto (ver
   // cellHeight en grid-utils.ts). Aca solo se refleja para pintar el fondo.
   const collapsed = (config.collapsed as boolean) ?? false;
+  /*
+   * Boton propio del widget en la barra. Vive en el frame y no en el cuerpo por
+   * lo mismo que el readout: el cuerpo puede estar DESMONTADO --widget retraido-- y
+   * la accion tiene que seguir a mano. Se arma con el `config` porque es lo unico
+   * que el frame tiene a mano, nunca el estado del cuerpo.
+   */
+  const headerAction = getWidget(type)?.headerAction?.(id, config) ?? null;
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pointerPosRef = useRef({ x: 0, y: 0 });
   const HOLD_THRESHOLD = 450;
@@ -408,6 +415,22 @@ export const WidgetFrame = memo(function WidgetFrame({
             : 'border-gray-600 bg-gray-800/90 shadow-[0_8px_24px_-6px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.08)]'
       }`}
       onWheel={(e) => e.stopPropagation()}
+      /*
+       * Scrollear NO puede terminar siendo un long-press.
+       *
+       * Va en captura y no en `onScroll` porque el scroll no burbujea: asi
+       * `onScrollCapture` ve el de cualquier descendant --la tabla-- y no solo el
+       * del elemento que lleva el handler.
+       *
+       * Hace falta sobre todo para la BARRA de scroll. Al arrastrarla el
+       * navegador se queda con el puntero y no le manda al renderer ningun
+       * `pointermove`: el `pointerdown` si llega y arma el temporizador de 450ms,
+       * pero los `pointermove` que lo cancelan no existen, y el widget se
+       * retraia a mitad del scroll. El scroll si se ve siempre --es lo que
+       * dispara el arrastre--, asi que es la unica senal que no depende de a quien
+       * se le entregue el puntero.
+       */
+      onScrollCapture={clearHoldTimer}
     >
       <div
         /*
@@ -483,6 +506,26 @@ export const WidgetFrame = memo(function WidgetFrame({
           aria-label="Widget title"
         />
         <div className="ml-1 flex shrink-0 items-center divide-x divide-gray-700/60 bg-gray-800/50 ring-1 ring-gray-600/40">
+          {headerAction && (
+            /*
+             * Va PRIMERO, antes del de retraer: es la accion que se usa con el
+             * widget abierto, y retraer es el gesto que ya esta en su sitio.
+             * Icono solo --la barra mide 25px y el texto no entra--, con el texto
+             * en el `title`, que es el tooltip de los otros dos.
+             */
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                headerAction.onSelect();
+              }}
+              className="relative flex h-6 w-6 items-center justify-center text-gray-400 transition-all duration-150 after:pointer-events-auto after:absolute after:-inset-1 after:content-[''] hover:bg-white/5 hover:text-gray-200 active:scale-90"
+              title={headerAction.label}
+              aria-label={headerAction.label}
+            >
+              <headerAction.icon size={15} />
+            </button>
+          )}
           <button
             type="button"
             onClick={(e) => {
