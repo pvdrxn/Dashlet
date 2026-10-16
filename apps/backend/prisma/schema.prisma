@@ -147,8 +147,10 @@ model DataTable {
   userId String
   user   User     @relation(fields: [userId], references: [id])
   name   String
-  /// JSON con `[{ id, name, type, width? }]`, donde `type` es `'text'`,
-  /// `'number'` o `'checkbox'` y `width` es el ancho en px que fijo el usuario.
+  /// JSON con `[{ id, name, type, width?, options?, format?, currency? }]`, donde
+  /// `type` es uno de `COLUMN_TYPES` --`text`, `number`, `checkbox`, `date`,
+  /// `status` o `select`--, `width` es el ancho en px que fijo el usuario, y las
+  /// otras tres son los ajustes de `select` y `number` (ver `normalizeColumns`).
   /// Texto y no `Json` por el mismo criterio que `Widget.config`: el schema no
   /// usa el tipo `Json` en ninguna parte y SQLite lo soporta en cualquier forma
   /// que no sea la que ya se usa aca.

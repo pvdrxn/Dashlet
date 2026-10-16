@@ -9,16 +9,33 @@ import {
   FiType,
   FiHash,
   FiCheckSquare,
+  FiCalendar,
+  FiChevronLeft,
+  FiCircle,
+  FiList,
+  FiTrash2,
 } from 'react-icons/fi';
 import {
   MAX_COLUMN_NAME_LENGTH,
   MAX_COLUMN_WIDTH,
+  MAX_OPTION_LENGTH,
   MIN_COLUMN_WIDTH,
   COLUMN_TYPES,
   COLUMN_TYPE_LABELS,
+  DEFAULT_CURRENCY,
+  NUMBER_FORMATS,
+  STATUS_LABELS,
+  STATUS_VALUES,
+  newColumnOption,
   newTableColumn,
+  isIsoDate,
+  isOptionValue,
+  isStatusValue,
+  normalizeDate,
   type CellValue,
   type ColumnType,
+  type NumberFormat,
+  type StatusValue,
   type TableColumnDto,
   type TableRowDto,
 } from '@widget-master/shared';
@@ -45,6 +62,15 @@ interface Editing {
   draft: string;
   /** Error visible DENTRO de la celda. No impide editar, solo impide guardar. */
   error: string | null;
+  /**
+   * El calendario esta abierto.
+   *
+   * Vive en el editing y no en un estado propio porque hay UNA sola celda
+   * editando a la vez: abrir el calendario es parte de editar esa celda, y si
+   * fuera otro estado tendria que acordarse de cerrarse solo cuando esa celda
+   * deja de editarse.
+   */
+  calendario: boolean;
 }
 
 /**
@@ -157,21 +183,833 @@ const DENSITY = {
  * Vive aca y no en `shared` porque son componentes de React y `shared` lo consume
  * tambien el backend, que no tiene React.
  *
- * Los tres son del set que ya usa la grilla --Feather--, y dos de ellos son los
+ * Los cuatro son del set que ya usa la grilla --Feather--, y dos de ellos son los
  * glifos que dicen el tipo sin palabras: `Type` es el "Aa" y `Hash` el "#",
  * que es literalmente lo que guarda la celda. `CheckSquare` es el mismo icono con
  * el que esta registrado el widget de tareas: una columna de casillas y un widget
  * de casillas se ven iguales por una razon, y no por casualidad.
+ *
+ * `select` va con `FiList`: es el unico tipo cuya celda es una lista de la que se
+ * elige, y el icono lo dice sin palabras. No reusa el `FiCircle` del status porque
+ * las dos celdas se dibujan casi igual y se confunden: la diferencia esta en el
+ * texto, que es donde esta el dato.
  */
 const TYPE_ICON: Record<ColumnType, IconType> = {
   text: FiType,
   number: FiHash,
   checkbox: FiCheckSquare,
+  date: FiCalendar,
+  status: FiCircle,
+  select: FiList,
 };
 
+/**
+ * El color y el peso de cada estado, y nada mas.
+ *
+ * Sin fondo y sin punto: el estado es el COLOR DEL TEXTO de la celda, que es
+ * como se lee todo lo demas en la tabla --el valor en `gray-200`, el nombre en
+ * `gray-400`--. Un bloque de color de fondo por celda llenaba la columna de
+ * manchas y ademas tapaba el hover de la fila, que se perdia justo en la columna
+ * que mas se mira.
+ *
+ * Un acento y un paso hacia abajo, y el gris de los que no crearon nada:
+ *
+ *   not started  gray-400     6.72:1   neutro: la fila esta ahi pero no aporta
+ *   in progress  p2           7.82:1   ambar + el unico peso arriba: esta corriendo
+ *   completed    p2-oscura    5.26:1   el mismo ambar un paso mas abajo: termino
+ *
+ * "Completed" es una escala de `p2` hacia la oscuridad, y lo que hace que funcione
+ * es que al bajar la claridad de un color saturado el CROMA SUBE: este queda en
+ * 73% contra el 67% de `p2`, o sea que es un bronce mas puro y no una mezcla
+ * apagada. Ver la nota del token en `index.css`, que tiene la escala completa.
+ *
+ * Los dos intentos anteriores fallaron por lo mismo y en direcciones opuestas:
+ * bajar el brillo Y el croma a la vez daba barro en 5.07:1 --la banda del
+ * placeholder--, y aclararlo daba un ambar palido sin familia en esta paleta. Lo
+ * que faltaba en los dos era una sola variable.
+ *
+ * Cada par queda separado por dos canales:
+ *
+ *   in progress / completed  claridad (55 contra 42) y peso
+ *   completed / not started  tono y saturacion (73% contra 0%)
+ *
+ * Los tres dan igual o mas de 4.5 en las dos superficies reales (widget #191919,
+ * vista #121212).
+ *
+ * El hover no cambia el color --cambiarlo seria mentir sobre el estado-- y es el
+ * mismo `white/4` que tienen las celdas de texto: el que aclara es el fondo de la
+ * fila y de la celda, no la tinta.
+ */
+const ESTADO_TEXTO: Record<StatusValue, string> = {
+  not_started: 'text-gray-400',
+  in_progress: 'font-medium text-p2',
+  completed: 'text-p2-oscura',
+};
+
+/** El estado de una celda. Lo que nunca se toco es "not started", no un vacio. */
+function estadoDe(value: CellValue): StatusValue {
+  return isStatusValue(value) ? value : 'not_started';
+}
+
+/**
+ * Como se dice lo que se pierde al cambiar a cada tipo, en el cartel de confirmar.
+ *
+ * Vive aca y no en el JSX porque son dos tipos y el texto tiene que encajar con
+ * "N values ... will be cleared": si el nombre del tipo no calza con lo que se
+ * borra, el cartel miente.
+ */
+const PERDIDA: Partial<Record<ColumnType, string>> = {
+  number: 'that are not numbers',
+  date: 'that are not dates',
+  status: 'that are not valid statuses',
+  select: 'that are not one of the options',
+};
+
+/**
+ * Un numero con separador de miles, como maximo dos decimales y sin ceros de
+ * sobra: `$1,234.57`, `$42`, `42%`.
+ *
+ * A mano y no con `toLocaleString` por el mismo motivo que las fechas no usan
+ * `toLocaleDateString`: en un `.exe` empaquetado el separador sale de los datos de
+ * idioma del sistema, y una columna de dinero que cambia de formato segun la
+ * maquina hace imposible comparar dos tablas.
+ *
+ * Los ceros de sobra se van porque el editor de la celda muestra el numero pelado:
+ * ver "$42" en la grilla y "42" al editar tienen que ser la misma cantidad. Con
+ * "$42.00" los dos textos dirian cosas distintas de largo.
+ */
+function miles(n: number): string {
+  const [entero, dec] = Math.abs(n).toFixed(2).split('.');
+  const signo = n < 0 ? '-' : '';
+  const grupos = entero.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const limpio = dec.replace(/0+$/, '');
+  return signo + grupos + (limpio ? `.${limpio}` : '');
+}
+
+/** Un numero como lo ve la columna, segun su `format`. */
+function formatNumberValue(value: CellValue, column: TableColumnDto): string {
+  const n = typeof value === 'number' ? value : Number(String(value).trim());
+  if (!Number.isFinite(n)) return String(value);
+  if (column.format === 'currency') return `${column.currency ?? DEFAULT_CURRENCY}${miles(n)}`;
+  if (column.format === 'percent') return `${miles(n)}%`;
+  return String(value);
+}
+
+/** La etiqueta de la opcion elegida, o `null` si el valor no es ninguna. */
+function opcionDe(column: TableColumnDto, value: CellValue): string | null {
+  if (typeof value !== 'string') return null;
+  return column.options?.find((o) => o.id === value)?.label ?? null;
+}
+
 /** Como se muestra un valor guardado. El vacio es cadena vacia, nunca "null". */
-function display(value: CellValue): string {
-  return value === null || value === undefined ? '' : String(value);
+function display(value: CellValue, column: TableColumnDto): string {
+  if (value === null || value === undefined) return '';
+  if (column.type === 'date') return formatDate(String(value));
+  if (column.type === 'number') return formatNumberValue(value, column);
+  if (column.type === 'select') return opcionDe(column, value) ?? '';
+  /*
+   * Un status sin tocar NO se muestra: la celda dibuja su propio estado por
+   * defecto. Devolver la etiqueta aca haria que `filledRows` --el numero que
+   * dice cuantos valores se pierden al borrar la columna-- contara filas que no
+   * tienen nada escrito.
+   */
+  if (column.type === 'status') return isStatusValue(value) ? STATUS_LABELS[value] : '';
+  return String(value);
+}
+
+/*
+ * ------------------------------------------------------------------ fechas
+ */
+
+/** Como se VE una fecha: `DD/MM/AAAA`. Lo guardado es `AAAA-MM-DD` (ver `shared`). */
+function formatDate(iso: string): string {
+  if (!isIsoDate(iso)) return iso;
+  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+}
+
+/** El dia de hoy en el formato guardado, con el reloj local --no en UTC. */
+function hoyIso(): string {
+  const hoy = new Date();
+  return isoDe(hoy.getFullYear(), hoy.getMonth() + 1, hoy.getDate());
+}
+
+function isoDe(y: number, m: number, d: number): string {
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+/** Cuantos dias tiene el mes, en UTC para no cruzar el dia con la zona. */
+function diasDelMes(y: number, m: number): number {
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+
+/*
+ * ------------------------------------------------------- "last updated"
+ */
+
+/**
+ * Cuando se toco la tabla por ultima vez: "just now", "5 mins ago", "2 hours ago",
+ * "3 days ago", "4 months ago".
+ *
+ * El prefijo "last updated" va ACA y no en el JSX para que el pie del widget y la
+ * fila retraida no puedan mostrar dos frases distintas del mismo dato.
+ *
+ * A mano y no con `Intl.RelativeTimeFormat` por el mismo motivo que no se usan
+ * `toLocaleString` ni `toLocaleDateString`: en un `.exe` empaquetado el texto sale
+ * de los datos de idioma del sistema, y un readout que cambia de idioma entre
+ * maquinas es justo lo que uno no quiere ver en la pantalla de otra persona.
+ *
+ * Sin reloj propio: se recalcula en cada render, asi que envejece con lo que
+ * renderiza alrededor. Un widget retraido no renderiza solo --va al ritmo del
+ * tablero--, y por eso el texto queda en "2 hours ago" hasta que algo lo despierte.
+ */
+export function lastUpdated(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms)) return '';
+  const ago = (n: number, unit: string) => `last updated ${n} ${unit}${n === 1 ? '' : 's'} ago`;
+  const min = Math.floor(ms / 60_000);
+  if (min < 1) return 'last updated just now';
+  if (min < 60) return ago(min, 'min');
+  const hours = Math.floor(min / 60);
+  if (hours < 24) return ago(hours, 'hour');
+  const days = Math.floor(hours / 24);
+  if (days < 30) return ago(days, 'day');
+  /*
+   * El piso de meses es para que una tabla que no se toca hace un ano no diga
+   * "412 days ago": los dias dejan de ser una unidad que alguien lea.
+   */
+  return ago(Math.floor(days / 30), 'month');
+}
+
+/** El mes y el anio de una fecha guardada, o el de hoy si la celda esta vacia. */
+function mesDe(iso: string | null): { y: number; m: number } {
+  const base = iso ?? hoyIso();
+  return { y: Number(base.slice(0, 4)), m: Number(base.slice(5, 7)) };
+}
+
+/**
+ * La fecha del input corrida por las flechas, en el formato que se muestra.
+ *
+ * Un texto que no es fecha arranca en hoy: si el input esta vacio y se aprieta
+ * abajo, tiene que aparecer una fecha, no nada.
+ *
+ * El dia se TOPA al cambiar de mes, no se desborda: del 31 de enero a febrero es
+ * el 28, no el 3 de marzo, que es lo que daria sumar un mes a la fecha.
+ */
+function moverFecha(texto: string, unidad: 'dia' | 'mes', paso: 1 | -1): string {
+  const iso = normalizeDate(texto) ?? hoyIso();
+  const y = Number(iso.slice(0, 4));
+  const m = Number(iso.slice(5, 7));
+  const d = Number(iso.slice(8, 10));
+  if (unidad === 'dia') {
+    const corrido = new Date(Date.UTC(y, m - 1, d + paso));
+    return formatDate(isoDe(corrido.getUTCFullYear(), corrido.getUTCMonth() + 1, corrido.getUTCDate()));
+  }
+  const crudo = m - 1 + paso;
+  const y2 = crudo < 0 ? y - 1 : crudo > 11 ? y + 1 : y;
+  const m2 = ((crudo % 12) + 12) % 12 + 1;
+  return formatDate(isoDe(y2, m2, Math.min(d, diasDelMes(y2, m2))));
+}
+
+/** Encabezados de los dias de la semana, lunes primero. Ver `DatePicker`. */
+const DIAS_SEMANA = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
+const MESES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/*
+ * El selector de fecha: un mes dibujado aca, no el del navegador.
+ *
+ * El del navegador es un widget del sistema: se abre con su calendario claro, su
+ * ancho propio y sus teclas, y no se puede pintar de la paleta de la tabla. Este
+ * se ve igual en todas las plataformas y ademas habla el formato que muestra la
+ * celda.
+ *
+ * Va en un PORTAL con `position: fixed` --como el menu de la columna-- porque la
+ * tabla vive en un `overflow-auto` y todo lo que cuelgue de una celda se recorta
+ * con el.
+ */
+
+/**
+ * Medidas del panel, en px. Fijas para poder decidir arriba o abajo sin medirlo.
+ *
+ * 210 = 7 dias de 28 + 12 de padding + 2 de borde. 234 = 28 de la fila de los
+ * meses + 24 de los dias de la semana + 6 filas de 28 + el resto.
+ */
+const PICKER_W = 210;
+const PICKER_H = 234;
+
+/**
+ * Distancia entre el borde de la celda y el panel que se abre desde ella.
+ *
+ * La comparten el calendario y el menu de status: los dos se anclan a una celda
+ * con la misma logica --abajo si entra, arriba si no-- y con la misma medida.
+ */
+const POPOVER_GAP = 4;
+
+/*
+ * El menu de eleccion: los tres estados del `status` y las opciones de un `select`.
+ *
+ * Mismo esqueleto que `DatePicker`: portal con `position: fixed` --la tabla
+ * scrollea y lo que cuelgue de una celda se recorta--, `mousedown` afuera y
+ * Escape para cerrar, y el `preventDefault` en el panel para que el menu no le
+ * robe el foco a la celda.
+ *
+ * Cada opcion va en GRIS, con el color solo en la grilla: el menu es un control,
+ * no un dato. Los tres estados ya estan escritos en palabras y el elegido lleva
+ * el tilde, igual que en el menu de "Change type". Poner los tres rellenos de
+ * color dentro del panel los haria competir con los de la tabla --el menu es la
+ * unica vez que se ven los tres juntos, y ahi un bloque ambar al lado de otro se
+ * lee como parte de los datos-- y ademas pintaria de color una opcion que
+ * todavia no elegiste.
+ */
+const OPCIONES_MENU_W = 148;
+const OPCIONES_FILA_H = 24;
+/** 8 de padding + 2 de borde. */
+const OPCIONES_MENU_PADDING = 10;
+/** Cuantas opciones entran antes de que el panel empiece a scrollear. */
+const OPCIONES_MAX_FILAS = 8;
+
+interface OptionMenuProps {
+  ancla: React.RefObject<HTMLElement | null>;
+  /** Lo que se ve, en el orden en que se ofrece. */
+  opciones: { id: string; etiqueta: string }[];
+  /** `null` es "vacio", que tambien es un estado y se puede volver a elegir. */
+  valor: string | null;
+  /**
+   * La primera linea, que vacia la celda. `undefined` en el `status`: sus tres
+   * estados ya cubren el vacio --lo que nunca se toco ES "not started"-- y una
+   * cuarta linea diria que hay un estado que no existe.
+   */
+  vacio?: string;
+  titulo: string;
+  onPick: (id: string | null) => void;
+  /**
+   * Crear una categoria nueva escribiendo su nombre. `undefined` en el `status`:
+   * sus tres estados son fijos y no hay nada que crear.
+   */
+  onCreate?: (label: string) => void;
+  /**
+   * Borrar una categoria de la lista, con su papelera a la derecha.
+   *
+   * `undefined` en el `status`: sus tres estados son fijos y no se borran. Las
+   * celdas que usaban la categoria quedan vacias --lo hace el servidor, en la
+   * misma transaccion que escribe el esquema-- y por eso el boton lo dice en el
+   * `title` en vez de unexpectedly vaciar la fila.
+   */
+  onDelete?: (id: string) => void;
+  onClose: () => void;
+}
+
+function OptionMenu({
+  ancla,
+  opciones,
+  valor,
+  vacio,
+  titulo,
+  onPick,
+  onCreate,
+  onDelete,
+  onClose,
+}: OptionMenuProps) {
+  const [caja, setCaja] = useState<{ top: number; left: number } | null>(null);
+  const [nuevo, setNuevo] = useState('');
+  const panelRef = useRef<HTMLDivElement>(null);
+  const alto =
+    Math.min(opciones.length + (vacio ? 1 : 0), OPCIONES_MAX_FILAS) * OPCIONES_FILA_H +
+    // El campo de crear no es un renglon mas: lleva borde, padding y su separador,
+    // y son 34px de alto contra los 24 de una opcion.
+    (onCreate ? 34 : 0) +
+    OPCIONES_MENU_PADDING;
+
+  useLayoutEffect(() => {
+    const el = ancla.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const abajo = r.bottom + POPOVER_GAP + alto < window.innerHeight;
+    setCaja({
+      top: abajo ? r.bottom + POPOVER_GAP : Math.max(8, r.top - POPOVER_GAP - alto),
+      left: Math.max(8, Math.min(r.left, window.innerWidth - OPCIONES_MENU_W - 8)),
+    });
+    // `alto` va en las dependencias porque cambia con la cantidad de opciones, y
+    // con el de que lado abre el panel.
+  }, [ancla, alto]);
+
+  useEffect(() => {
+    const fuera = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (panelRef.current?.contains(t) || ancla.current?.contains(t)) return;
+      onClose();
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('mousedown', fuera);
+    document.addEventListener('keydown', esc);
+    /*
+     * El panel es `fixed` y la celda se va con el scroll: sin esto, despues de
+     * girar la tabla el menu queda flotando sobre otra fila. Se escucha el
+     * `wheel` y no el `scroll` de la grilla a proposito: el `scroll` esta en el
+     * camino caliente de la tabla y meter estado ahi repinta la grilla entera en
+     * cada cuadro.
+     */
+    document.addEventListener('wheel', onClose, { passive: true, once: true });
+    return () => {
+      document.removeEventListener('mousedown', fuera);
+      document.removeEventListener('keydown', esc);
+      document.removeEventListener('wheel', onClose);
+    };
+  }, [ancla, onClose]);
+
+  if (!caja) return null;
+  /*
+   * Con campo para crear, el panel deja de ser un menu: un menu no puede contener
+   * un campo de texto, y por lo que dice el menu del "+" --que ya es un `dialog`
+   * por tener un buscador-- pasa a ser un cuadro con una lista y un input.
+   */
+  const conCreate = onCreate !== undefined;
+  const linea = (id: string | null, etiqueta: string, elegida: boolean) => {
+    const boton = (
+      <button
+        /* La `key` va en el boton tambien: cuando no hay papelera el boton ES el
+         * elemento que se devuelve al `.map`, y sin ella React avisa. En el caso con
+         * papelera la lista usa la del envoltorio y esta no molesta. */
+        key={id ?? ''}
+        type="button"
+        role={conCreate ? 'option' : 'menuitemradio'}
+        aria-selected={conCreate ? elegida : undefined}
+        aria-checked={conCreate ? undefined : elegida}
+        onClick={() => onPick(id)}
+        className={`flex min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 py-1 text-left text-xs transition-colors hover:bg-white/5 ${
+          elegida ? 'text-white' : 'text-gray-300'
+        }`}
+      >
+        {elegida ? <FiCheck size={12} /> : <span className="size-3" />}
+        <span className="truncate">{etiqueta}</span>
+      </button>
+    );
+    /*
+     * La papelera va FUERA del boton de elegir y no dentro: un boton dentro de
+     * otro boton es HTML invalido, y ademas el clic en uno se comeria el del otro.
+     * El envoltorio es `presentation` para no intercalar nada entre la lista y sus
+     * opciones, que es lo que la etiqueta de rol del panel promete.
+     */
+    if (id === null || !onDelete) return boton;
+    return (
+      <div key={id} role="presentation" className="flex w-full items-center gap-0.5">
+        {boton}
+        <button
+          type="button"
+          onClick={() => onDelete(id)}
+          aria-label={`Delete ${etiqueta}`}
+          title="Delete category. The cells that use it become empty."
+          className="shrink-0 rounded p-0.5 text-gray-500 transition-colors hover:bg-danger/15 hover:text-danger"
+        >
+          <FiTrash2 size={11} />
+        </button>
+      </div>
+    );
+  };
+  return createPortal(
+    <div
+      ref={panelRef}
+      role={conCreate ? 'dialog' : 'menu'}
+      aria-label={titulo}
+      onMouseDown={(e) => e.preventDefault()}
+      style={{
+        position: 'fixed',
+        top: caja.top,
+        left: caja.left,
+        width: OPCIONES_MENU_W,
+        maxHeight: alto,
+        zIndex: 'var(--z-menu)',
+      }}
+      className="overflow-y-auto rounded border border-gray-600 bg-gray-800 p-1 shadow-xl"
+    >
+      {/*
+       * El estado vacio va PRIMERO y no al final: es el que mas se usa --volver a
+       * dejar la celda en blanco-- y el que se elige con mas frecuencia cuando la
+       * columna recien nace. En el `status` no existe, y por eso es opcional.
+       */}
+      {vacio !== undefined && linea(null, vacio, valor === null)}
+      {opciones.map((o) => linea(o.id, o.etiqueta, o.id === valor))}
+      {/*
+       * El campo para crear va ABAJO, con las categorias que ya existen arriba:
+       * elegir es lo que se hace casi siempre, y escribir una nueva es el caso que
+       * sigue. Con el menu abierto y sin categorias --una columna recien creada-- es
+       * lo unico que hay, y por eso el placeholder lo dice.
+       *
+       * El `onMouseDown` con `stopPropagation` es lo que lo hace utilizable: el
+       * panel entero lo tiene con `preventDefault` para que el menu no le robe el
+       * foco a la celda, y sin este corte el input nunca receberia el foco del clic.
+       */}
+      {onCreate && (
+        <div className="mt-1 border-t border-gray-700/60 px-1 pt-1">
+          <input
+            value={nuevo}
+            onChange={(e) => setNuevo(e.target.value)}
+            onMouseDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter') return;
+              e.preventDefault();
+              const nombre = nuevo.trim();
+              if (!nombre) return;
+              setNuevo('');
+              onCreate(nombre);
+            }}
+            spellCheck={false}
+            maxLength={MAX_OPTION_LENGTH}
+            placeholder="New category..."
+            aria-label="New category"
+            className="w-full rounded bg-gray-900/60 px-1.5 py-1 text-xs text-white placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500/50"
+          />
+        </div>
+      )}
+    </div>,
+    document.body,
+  );
+}
+
+/** Como se llama cada formato en el menu, en el idioma de la interfaz. */
+const FORMAT_LABELS: Record<NumberFormat, string> = {
+  plain: 'Number',
+  currency: 'Currency',
+  percent: 'Percent',
+};
+
+/**
+ * Los ajustes de una columna: las opciones de una `select` o el formato de una
+ * `number`.
+ *
+ * Viven en el portal del menu de la columna y no en el menu mismo porque los dos
+ * necesitan escribir TEXTO --el nombre de una opcion, el simbolo de la moneda-- y
+ * un menu que se cierra con un clic afuera se come a la mitad de la palabra. Por
+ * eso el panel tiene su propio boton de cerrar y no se cierra solo.
+ *
+ * Cada cambio se guarda al SALIR del campo, no en cada tecla: guardar es un PATCH
+ * del esquema, y ahi el backend reescribe las filas que dejan de tener sentido.
+ *
+ * Lo que el panel NO hace es decidir que pasa con las celdas: renombrar una opcion
+ * no toca ningun valor --el `id` es lo que se guarda--, y borrar una vacia las
+ * celdas que la usaban, en el servidor y en la misma transaccion. Aca solo se
+ * mandan las opciones.
+ */
+interface AjustesPanelProps {
+  column: TableColumnDto;
+  onChange: (ajuste: Partial<TableColumnDto>) => void;
+  onClose: () => void;
+}
+
+function AjustesPanel({ column, onChange, onClose }: AjustesPanelProps) {
+  const opciones = column.options ?? [];
+  return (
+    <div
+      role="dialog"
+      aria-label={`${column.name} settings`}
+      className="mt-0.5 w-64 rounded border border-gray-500/50 bg-gray-800 p-2 shadow-xl"
+    >
+      {column.type === 'select' ? (
+        <>
+          <p className="mb-1 text-[11px] text-gray-400">Options</p>
+          <div className="max-h-48 overflow-y-auto">
+            {opciones.map((o, i) => (
+              <div key={o.id} className="mb-0.5 flex items-center gap-1">
+                <input
+                  /* `defaultValue` y no `value`: el input es uncontrolled a proposito.
+                     Si fuera controlado, cada tecla reborraria el campo mientras se
+                     escribe y el cursor saltaria al final. */
+                  defaultValue={o.label}
+                  maxLength={MAX_OPTION_LENGTH}
+                  /* Al entrar con el Tab o el clic se selecciona todo: lo que se va a
+                     hacer casi siempre es reemplazar el nombre, no agregarle texto. */
+                  onFocus={(e) => e.currentTarget.select()}
+                  onBlur={(e) => {
+                    const label = e.currentTarget.value.trim();
+                    if (!label || label === o.label) return;
+                    onChange({
+                      options: opciones.map((x) => (x.id === o.id ? { ...x, label } : x)),
+                    });
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur();
+                  }}
+                  aria-label={`Option ${i + 1}`}
+                  className="min-w-0 flex-1 rounded border border-gray-600 bg-gray-700 px-1.5 py-0.5 text-xs text-gray-200 outline-none focus:border-gray-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => onChange({ options: opciones.filter((x) => x.id !== o.id) })}
+                  aria-label={`Remove ${o.label}`}
+                  title="Remove option. The cells that use it become empty."
+                  className="shrink-0 rounded p-0.5 text-gray-500 transition-colors hover:bg-danger/15 hover:text-danger"
+                >
+                  <FiTrash2 size={11} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              /*
+               * El nombre generado busca el primer numero libre. Sin esto, borrar
+               * "Option 1" y agregar uno nuevo producia dos "Option 2" en el menu:
+               * el `id` es distinto asi que nada se rompe, pero el usuario ve dos
+               * entradas iguales y no puede decir cual es cual.
+               */
+              const usados = new Set(opciones.map((o) => o.label));
+              let n = opciones.length + 1;
+              while (usados.has(`Option ${n}`)) n += 1;
+              onChange({ options: [...opciones, newColumnOption(`Option ${n}`)] });
+            }}
+            className="mt-1 flex items-center gap-1 rounded px-1 py-0.5 text-xs text-gray-300 transition-colors hover:bg-white/5"
+          >
+            <FiPlus size={11} />
+            Add option
+          </button>
+        </>
+      ) : (
+        <>
+          <p className="mb-1 text-[11px] text-gray-400">Format</p>
+          <div className="flex gap-1">
+            {NUMBER_FORMATS.map((f) => (
+              <button
+                key={f}
+                type="button"
+                role="menuitemradio"
+                aria-checked={(column.format ?? 'plain') === f}
+                onClick={() =>
+                  onChange({
+                    format: f,
+                    // El simbolo se escribe recien al elegir la moneda, y no al
+                    // guardar el formato: asi el input muestra el valor con el que
+                    // se va a ver la columna y no uno vacio.
+                    ...(f === 'currency' && !column.currency ? { currency: DEFAULT_CURRENCY } : {}),
+                  })
+                }
+                className={`flex-1 rounded px-1 py-1 text-xs transition-colors hover:bg-white/5 ${
+                  (column.format ?? 'plain') === f ? 'bg-white/10 text-white' : 'text-gray-300'
+                }`}
+              >
+                {FORMAT_LABELS[f]}
+              </button>
+            ))}
+          </div>
+          {column.format === 'currency' && (
+            <div className="mt-1.5 flex items-center gap-1.5">
+              <span className="text-[11px] text-gray-500">Symbol</span>
+              <input
+                defaultValue={column.currency ?? DEFAULT_CURRENCY}
+                maxLength={MAX_OPTION_LENGTH}
+                onFocus={(e) => e.currentTarget.select()}
+                onBlur={(e) => {
+                  const currency = e.currentTarget.value.trim() || DEFAULT_CURRENCY;
+                  if (currency !== column.currency) onChange({ currency });
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.currentTarget.blur();
+                }}
+                aria-label="Currency symbol"
+                className="w-12 rounded border border-gray-600 bg-gray-700 px-1.5 py-0.5 text-xs text-gray-200 outline-none focus:border-gray-400"
+              />
+            </div>
+          )}
+        </>
+      )}
+      <button
+        type="button"
+        onClick={onClose}
+        className="mt-1.5 w-full rounded bg-white/5 px-1.5 py-1 text-xs text-gray-200 transition-colors hover:bg-white/10"
+      >
+        Done
+      </button>
+    </div>
+  );
+}
+
+interface DatePickerProps {
+  /** La celda que se esta editando: el panel se ancla a su borde. */
+  ancla: React.RefObject<HTMLElement | null>;
+  /** Fecha guardada de la celda, o `null` si esta vacia. */
+  valor: string | null;
+  onPick: (iso: string) => void;
+  onClose: () => void;
+}
+
+function DatePicker({ ancla, valor, onPick, onClose }: DatePickerProps) {
+  /*
+   * El mes que se esta mirando, o el de la celda.
+   *
+   * El estado es solo para cuando se navega: si no se navego, el mes sale de la
+   * fecha --asi las flechas del input mueven el calendario con la fecha--, y si se
+   * navego, se recuerda hasta que el panel se cierre. Por eso no se reinicia en
+   * cada render.
+   */
+  const [navegado, setNavegado] = useState<{ y: number; m: number } | null>(null);
+  const [caja, setCaja] = useState<{ top: number; left: number } | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const { y, m } = navegado ?? mesDe(valor);
+
+  useLayoutEffect(() => {
+    const el = ancla.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    /*
+     * Abajo si entra; arriba si no. El alto esta FIJO a proposito: medir el
+     * panel ya dibujado para decidir donde ponerlo es una pasada de mas y un
+     * parpadeo en el caso comun, que es el de abajo.
+     */
+    const abajo = r.bottom + POPOVER_GAP + PICKER_H < window.innerHeight;
+    setCaja({
+      top: abajo ? r.bottom + POPOVER_GAP : Math.max(8, r.top - POPOVER_GAP - PICKER_H),
+      left: Math.max(8, Math.min(r.left, window.innerWidth - PICKER_W - 8)),
+    });
+  }, [ancla]);
+
+  /* Clic afuera y Escape cierran; un clic en la celda NO, que es el input. */
+  useEffect(() => {
+    const fuera = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (panelRef.current?.contains(t) || ancla.current?.contains(t)) return;
+      onClose();
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('mousedown', fuera);
+    document.addEventListener('keydown', esc);
+    /*
+     * El panel es `fixed` y la celda se va con el scroll: sin esto, despues de
+     * girar la tabla el menu queda flotando sobre otra fila. Se escucha el
+     * `wheel` y no el `scroll` de la grilla a proposito: el `scroll` esta en el
+     * camino caliente de la tabla y meter estado ahi repinta la grilla entera en
+     * cada cuadro.
+     */
+    document.addEventListener('wheel', onClose, { passive: true, once: true });
+    return () => {
+      document.removeEventListener('mousedown', fuera);
+      document.removeEventListener('keydown', esc);
+      document.removeEventListener('wheel', onClose);
+    };
+  }, [ancla, onClose]);
+
+  /*
+   * Los dias del mes, con los huecos del principio.
+   *
+   * Siempre SEIS filas: un mes que necesita cinco y otro que necesita seis no
+   * pueden hacer que el panel cambie de alto al navegar, y el alto es lo que
+   * decidio si el panel va arriba o abajo.
+   */
+  const vacios = (new Date(Date.UTC(y, m - 1, 1)).getUTCDay() + 6) % 7;
+  const celdas: number[] = [
+    ...Array<number>(vacios).fill(0),
+    ...Array.from({ length: diasDelMes(y, m) }, (_, i) => i + 1),
+  ];
+  while (celdas.length < 42) celdas.push(0);
+
+  const hoy = hoyIso();
+  const mes = (delta: 1 | -1) => {
+    const crudo = m - 1 + delta;
+    setNavegado({
+      y: crudo < 0 ? y - 1 : crudo > 11 ? y + 1 : y,
+      m: ((crudo % 12) + 12) % 12 + 1,
+    });
+  };
+
+  if (!caja) return null;
+  return createPortal(
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-label="Choose date"
+      style={{
+        position: 'fixed',
+        top: caja.top,
+        left: caja.left,
+        width: PICKER_W,
+        zIndex: 'var(--z-menu)',
+      }}
+      /*
+       * El `preventDefault` del `mousedown` va en el PANEL entero y no boton por
+       * boton, para que nada de lo que hay adentro le robe el foco al input.
+       *
+       * Eso no es un detalle: si el input pierde el foco se dispara el `blur`,
+       * que GUARDA y cierra la edicion, asi que el panel se desmonta antes de que
+       * llegue el `click` y el click cae en un componente que ya no existe. Con
+       * esto solo en los dias --que es donde estaba-- apretar la flecha del mes
+       * cerraba el selector sin cambiar el mes.
+       *
+       * El input conserva el foco, que es lo que deja seguir escribiendo y
+       * usando las flechas del teclado con el calendario abierto.
+       */
+      onMouseDown={(e) => e.preventDefault()}
+      className="rounded border border-gray-600 bg-gray-800 p-1.5 shadow-xl"
+    >
+      <div className="flex items-center justify-between pb-1">
+        <button
+          type="button"
+          onClick={() => mes(-1)}
+          aria-label="Previous month"
+          className="flex size-6 items-center justify-center rounded text-gray-400 transition-colors hover:bg-white/5 hover:text-gray-200"
+        >
+          <FiChevronLeft size={14} />
+        </button>
+        <span className="text-xs text-gray-300" aria-live="polite">
+          {MESES[m - 1]} {y}
+        </span>
+        <button
+          type="button"
+          onClick={() => mes(1)}
+          aria-label="Next month"
+          className="flex size-6 items-center justify-center rounded text-gray-400 transition-colors hover:bg-white/5 hover:text-gray-200"
+        >
+          <FiChevronRight size={14} />
+        </button>
+      </div>
+      <div className="grid grid-cols-7">
+        {DIAS_SEMANA.map((d, i) => (
+          <span key={i} className="text-center text-[10px] leading-6 text-gray-500">
+            {d}
+          </span>
+        ))}
+      </div>
+      {/*
+       * Los dias son BOTONES y no celdas de un grid porque el boton trae el
+       * click, el foco con el Tab y la tecla Enter sin una linea de codigo. El
+       * estado --elegido, hoy-- va en el nombre del boton: `aria-selected` no es
+       * valido en un boton, y un calendario que el lector de pantalla no puede
+       * distinguir es peor que uno sin roles raros.
+       */}
+      <div className="grid grid-cols-7">
+        {celdas.map((dia, i) =>
+          dia === 0 ? (
+            <span key={`v${i}`} />
+          ) : (
+            <button
+              key={dia}
+              type="button"
+              /* El foco no se roba: lo resuelve el `mousedown` del panel. */
+              onClick={() => onPick(isoDe(y, m, dia))}
+              aria-current={isoDe(y, m, dia) === hoy ? 'date' : undefined}
+              aria-label={`${formatDate(isoDe(y, m, dia))}${isoDe(y, m, dia) === valor ? ', selected' : ''}`}
+              className={`size-7 text-[11px] transition-colors ${
+                isoDe(y, m, dia) === valor
+                  ? 'rounded bg-gray-600 text-white'
+                  : isoDe(y, m, dia) === hoy
+                    ? 'rounded text-gray-100 ring-1 ring-inset ring-gray-500 hover:bg-white/5'
+                    : 'rounded text-gray-400 hover:bg-white/5 hover:text-gray-200'
+              }`}
+            >
+              {dia}
+            </button>
+          ),
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
 }
 
 /**
@@ -191,11 +1029,20 @@ type Parsed = { ok: true; value: CellValue } | { ok: false; error: string };
  * El numerico devuelve `null` para el vacio. Ojo con `Number('')`, que es `0`:
  * un input numerico en blanco se guardaria como un cero falso, que es el peor
  * resultado posible porque no se distingue de un cero escrito a proposito.
+ *
+ * La fecha se convierte con `normalizeDate`, que acepta las dos formas en que se
+ * escribe --`DD/MM/AAAA` como se muestra y `AAAA-MM-DD` como esta guardado-- y
+ * devuelve siempre la segunda. El error sale con el formato a la vista, porque
+ * "Not a date" no le dice a nadie que hay que escribirlo de otra manera.
  */
 function parseDraft(column: TableColumnDto, draft: string): Parsed {
   if (column.type === 'text') return { ok: true, value: draft };
   const trimmed = draft.trim();
   if (!trimmed) return { ok: true, value: null };
+  if (column.type === 'date') {
+    const iso = normalizeDate(trimmed);
+    return iso ? { ok: true, value: iso } : { ok: false, error: 'Use dd/mm/yyyy' };
+  }
   const parsed = Number(trimmed);
   if (!Number.isFinite(parsed)) return { ok: false, error: 'Not a number' };
   return { ok: true, value: parsed };
@@ -215,7 +1062,15 @@ interface TableGridProps {
    * borrar en una sola transaccion las claves de las columnas que desaparecieron
    * en todas las filas, y no necesita que le digamos cual era.
    */
-  onColumnsChange: (columns: TableColumnDto[]) => void;
+  /**
+   * Reemplaza el esquema entero y DEVUELVE la promesa.
+   *
+   * El tipo es `Promise` y no `void` por `createOption`: al crear una categoria hay
+   * que esperar a que el esquema este guardado antes de mandar la celda, o el
+   * servidor rechaza el valor por no estar en la lista. Un padre sincrono
+   * compila igual y rompe eso en silencio, asi que el contrato queda escrito.
+   */
+  onColumnsChange: (columns: TableColumnDto[]) => Promise<void>;
   /**
    * Reordena filas moviendo UNA.
    *
@@ -234,6 +1089,14 @@ interface TableGridProps {
   onColumnWidth?: (columnId: string, width: number) => void;
   /** Filas que quedaron sin cargar por el tope de `MAX_ROWS_PER_TABLE`. */
   hiddenRowCount?: number;
+  /**
+   * Marca ISO de la ultima escritura en la tabla, tal cual la devuelve el backend.
+   *
+   * Opcional y sin valor por defecto a proposito: solo el widget la pasa. La vista
+   * a pantalla completa no la muestra todavia, y sin este parametro el pie queda
+   * igual que estaba.
+   */
+  updatedAt?: string;
 }
 
 export function TableGrid({
@@ -246,6 +1109,7 @@ export function TableGrid({
   onRowReorder,
   onColumnWidth,
   hiddenRowCount = 0,
+  updatedAt,
 }: TableGridProps) {
   const [editing, setEditing] = useState<Editing | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -261,14 +1125,36 @@ export function TableGrid({
    *
    * Es el mismo esqueleto que el de columnas --preview en vivo, transform pintado
    * por variable CSS, un solo PATCH al soltar-- pero aca la geometria es mas
-   * simple: todas las filas miden lo mismo, asi que la posicion natural de la
-   * fila `i` es `i * altoFila` y se CALCULA. Con las columnas habia que medir el
-   * DOM y el problema fue que el `offsetLeft` que se leia era del orden anterior;
-   * aqui no hay nada que medir y ese problema no puede aparecer.
+   * simple: todas las filas miden lo mismo, asi que la ranura de la fila `i` es
+   * `i * altoFila` y se CALCULA, sin medir el DOM. Eso no alcanza para el
+   * desplazamiento, que tiene que saber en que ranura esta la fila DIBUJADA y no
+   * en la que va a estar: el mismo problema de las columnas, resuelto con un
+   * `useLayoutEffect` que recalcula el `--dy` cuando React ya reordeno.
    */
   const [dragRowId, setDragRowId] = useState<string | null>(null);
   /** Orden en vivo de las filas mientras se arrastra. `null` cuando no se arrastra. */
   const [rowPreview, setRowPreview] = useState<TableRowDto[] | null>(null);
+  /**
+   * La celda de status con el menu abierto, o `null`.
+   *
+   * No es un booleano porque el menu se ancla a una celda y hay que saber
+   * cual: con un booleano, abrir el estado de una fila cerraria el de otra que
+   * este abierta al mismo tiempo, y el menu se dibujaria en el lugar que no es.
+   */
+  const [statusAbierto, setStatusAbierto] = useState<{ rowId: string; columnId: string } | null>(
+    null,
+  );
+  /**
+   * Cuanto se corre cada fila para que la arrastrada la EMPUJE, en `Y`.
+   *
+   * Es el mismo mecanismo que `push` en las columnas: la fila que se arrastra se
+   * queda donde esta y las demas se van a su ranura con una transicion. El
+   * corrimiento va en TODAS las celdas de la fila empujada --el asa, los datos y
+   * el relleno--, porque si se mueve sola una parte se ve la fila partida.
+   */
+  const [pushFila, setPushFila] = useState<Record<string, number> | null>(null);
+  /** Donde estaba cada fila antes de que React reordenara. Ver `push`. */
+  const pushFilaAntes = useRef<Record<string, number> | null>(null);
   const rowDragRef = useRef<{
     id: string;
     startY: number;
@@ -277,6 +1163,8 @@ export function TableGrid({
     grid: HTMLElement | null;
     grabOffset: number;
     dy: number;
+    /** Donde quiere el borde superior la fila arrastrada, en px desde la grilla. */
+    objetivo: number;
     /** Alto de UNA fila, medido al empezar. Toda fila mide lo mismo. */
     altoFila: number;
     /**
@@ -693,7 +1581,7 @@ export function TableGrid({
     altoFila: number,
     altoEncabezado: number,
   ) => {
-    rowDragRef.current = { id: rowId, startY: clientY, movido: false, pointerId, grid, grabOffset, dy: 0, altoFila, altoEncabezado };
+    rowDragRef.current = { id: rowId, startY: clientY, movido: false, pointerId, grid, grabOffset, dy: 0, objetivo: 0, altoFila, altoEncabezado };
     dragRef.current = null; // nunca columna y fila a la vez
   };
 
@@ -726,17 +1614,28 @@ export function TableGrid({
     if (from < 0) return;
 
     /*
-     * La fila donde cae el puntero.
+     * Donde cae la fila: cuando uno de sus DOS bordes pasa la mitad de una
+     * vecina. Misma regla que las columnas, con los bordes de arriba y abajo.
      *
-     * Todas las filas miden lo mismo, asi que la ranura es el piso de la division
-     * entre la distancia y el alto -- el punto medio de la fila destino. Se resta
-     * el alto del encabezado porque la grilla tiene esa banda ARRIBA de la
-     * primera fila: sin el descuento, el puntero caia siempre una fila corrida.
+     * Todas las filas miden lo mismo, asi que las ranuras se CALCULAN por indice
+     * y no hay nada que medir. Se descuenta el alto del encabezado porque la
+     * banda va ARRIBA de la primera fila: sin el descuento, el puntero caia
+     * siempre una fila corrida.
+     *
+     * Antes era `floor(distancia / alto)`, o sea "la fila donde esta el
+     * puntero": el cambio disparaba cuando el puntero entraba en la vecina, sin
+     * mirar la fila. Con los bordes dispara cuando la fila se pasa la mitad de
+     * la vecina, que es lo mismo que pasa con las columnas y lo que se ve.
      */
-    const y = clientY - grid.getBoundingClientRect().top - d0.altoEncabezado;
-    let to = Math.floor(y / d0.altoFila);
-    if (to < 0) to = 0;
-    if (to > base.length - 1) to = base.length - 1;
+    d0.objetivo = clientY - d0.grabOffset - grid.getBoundingClientRect().top;
+    const y = d0.objetivo - d0.altoEncabezado;
+    const abajo = y + d0.altoFila;
+    let to = from;
+    for (let i = 0; i < base.length; i++) {
+      const centro = i * d0.altoFila + d0.altoFila / 2;
+      if (i > from && abajo > centro) to = Math.max(to, i);
+      else if (i < from && y < centro) to = Math.min(to, i);
+    }
 
     const next = to === from ? base : (() => {
       const n = [...base];
@@ -745,20 +1644,73 @@ export function TableGrid({
     })();
 
     /*
-     * Natural = indice en el orden QUE SE DIBUJA, por el alto de fila.
+     * El desplazamiento sale de la ranura que esta EN PANTALLA, no de `next`.
      *
-     * Usa el mismo `next` del reordenamiento, asi que cuando la fila salta de
-     * ranura el transform ya viene compensado y no queda ni un cuadro de desfase.
-     * Es la leccion del arrastre de columnas, que midiendo el DOM dejaba 17px de
-     * residuo en cada salto.
+     * `setRowPreview` no reordena el DOM: encola el render. Con el orden nuevo
+     * --que es lo que hacia antes-- el `--dy` era del destino y la fila salia
+     * corrida un alto de fila entero hasta que el commit llegaba.
      */
-    const natural = d0.altoEncabezado + next.findIndex((r) => r.id === d0.id) * d0.altoFila;
-    const objetivo = clientY - d0.grabOffset - grid.getBoundingClientRect().top;
-    d0.dy = objetivo - natural;
+    d0.dy = d0.objetivo - (d0.altoEncabezado + from * d0.altoFila);
 
-    if (to !== from) setRowPreview(next);
+    if (to !== from) {
+      /*
+       * Se mide antes de `setRowPreview`, que es lo unico que todavia no paso:
+       * con el DOM en el orden viejo, el rect da donde esta VISTA la fila, con
+       * el empuje anterior a medio camino si todavia corre.
+       *
+       * Se mide UNA celda por fila --la primera que aparece-- porque todas las
+       * de una fila comparten el mismo `top`: leerlas todas serian N x columnas
+       * rects para el mismo numero.
+       */
+      const antes: Record<string, number> = {};
+      for (const celda of Array.from(
+        grid.querySelectorAll('[data-row-id]'),
+      ) as HTMLElement[]) {
+        const id = celda.dataset.rowId;
+        if (id && antes[id] === undefined) antes[id] = celda.getBoundingClientRect().top;
+      }
+      pushFilaAntes.current = antes;
+      setRowPreview(next);
+    }
     pintarDy(d0.dy);
   };
+
+  /*
+   * El `--dy` y el empuje de las filas se recalculan DESPUES de que React
+   * reordena, igual que en las columnas.
+   *
+   * El `--dy` primero --la fila arrastrada-- y el empuje de las otras despues, en
+   * el mismo cuadro y antes de que se pinte nada.
+   */
+  useLayoutEffect(() => {
+    const d0 = rowDragRef.current;
+    if (!d0?.movido) return;
+    d0.dy = d0.objetivo - (d0.altoEncabezado + (rowPreview ?? rows).findIndex((r) => r.id === d0.id) * d0.altoFila);
+    pintarDy(d0.dy);
+
+    const grid = gridRef.current;
+    const antes = pushFilaAntes.current;
+    pushFilaAntes.current = null;
+    if (!grid || !antes) return;
+    const empuje: Record<string, number> = {};
+    const vistas = new Set<string>();
+    for (const celda of Array.from(grid.querySelectorAll('[data-row-id]')) as HTMLElement[]) {
+      const id = celda.dataset.rowId;
+      if (!id || id === d0.id || vistas.has(id)) continue;
+      // una sola celda por fila: todas las de una fila comparten el `top`
+      vistas.add(id);
+      const corre = antes[id] - celda.getBoundingClientRect().top;
+      if (Math.abs(corre) > 0.5) empuje[id] = corre;
+    }
+    setPushFila(empuje);
+  }, [rowPreview, rows]);
+
+  /* El empuje de las filas se suelta un cuadro despues. Ver el de las columnas. */
+  useLayoutEffect(() => {
+    if (!pushFila) return;
+    const cuadro = requestAnimationFrame(() => setPushFila(null));
+    return () => cancelAnimationFrame(cuadro);
+  }, [pushFila]);
 
   /**
    * La `position` que hay que guardar para que la fila caiga donde quedo.
@@ -972,12 +1924,65 @@ export function TableGrid({
   );
 
   const startEditing = (row: TableRowDto, column: TableColumnDto) => {
+    const guardado = row.values[column.id];
     setEditing({
       rowId: row.id,
       columnId: column.id,
-      draft: display(row.values[column.id]),
+      /*
+       * Un numero se edita PELADO, no como se ve. El input es el unico lugar donde
+       * se escribe el valor, y `parseDraft` lo lee con `Number()`: si arrancara con
+       * "$1,234.57" no se podria guardar ni volver a editar la celda. La fila de
+       * arriba se ocupa de que las dos cosas sean la misma cantidad.
+       */
+      draft: column.type === 'number' && typeof guardado === 'number' ? String(guardado) : display(guardado, column),
       error: null,
+      // El calendario se abre con la celda: en una columna de fechas la mayoria
+      // de las visitas es elegir un dia, no escribirlo, y abrirlo de entrada hace
+      // que las dos cosas esten a la vista sin un boton de mas.
+      calendario: column.type === 'date',
     });
+  };
+
+  /** Cerrar el calendario sin tocar la celda. */
+  const cerrarCalendario = () => {
+    setEditing((e) => (e ? { ...e, calendario: false } : e));
+  };
+
+  /**
+   * Un dia del calendario.
+   *
+   * Escribe el valor YA en el formato guardado y cierra la edicion entera, como
+   * si el usuario hubiera tipeado la fecha y pulsado Enter. No pasa por el draft:
+   * el calendario eligio una fecha, no un texto, y dar vueltas por el texto seria
+   * una conversion que puede fallar.
+   */
+  const elegirFecha = (iso: string) => {
+    if (!editing) return;
+    const rowId = editing.rowId;
+    const columnId = editing.columnId;
+    onCellChange(rowId, columnId, iso);
+    setEditing(null);
+  };
+
+  /*
+   * Un estado del menu de status o una opcion de una `select`.
+   *
+   * Como la casilla: se escribe y se cierra, sin modo edicion de por medio. Una
+   * celda de status no se "edita", se elige entre tres, y el menu es la unica
+   * forma de hacerlo sin que un clic pase por los tres estados en tres PATCH. En
+   * una `select` es lo mismo con la lista de opciones.
+   */
+  const elegirStatus = (row: TableRowDto, column: TableColumnDto, valor: StatusValue) => {
+    setStatusAbierto(null);
+    if (row.values[column.id] === valor) return;
+    onCellChange(row.id, column.id, valor);
+  };
+
+  /** Una opcion de una `select`, o `null` para vaciarla. */
+  const elegirOpcion = (row: TableRowDto, column: TableColumnDto, id: string | null) => {
+    setStatusAbierto(null);
+    if ((row.values[column.id] ?? null) === id) return;
+    onCellChange(row.id, column.id, id);
   };
 
   /**
@@ -1013,7 +2018,7 @@ export function TableGrid({
      * De paso se ahorra un PATCH por cada celda que se mira y se sale.
      */
     const row = rows.find((r) => r.id === editing.rowId);
-    if (!row || display(row.values[editing.columnId]) === editing.draft) {
+    if (!row || display(row.values[editing.columnId], column) === editing.draft) {
       setEditing(null);
       return true;
     }
@@ -1214,7 +2219,58 @@ export function TableGrid({
    * celdas ya limpias.
    */
   const changeColumnType = (columnId: string, type: ColumnType) => {
-    onColumnsChange(columns.map((c) => (c.id === columnId ? { ...c, type } : c)));
+    onColumnsChange(
+      columns.map((c) => (c.id === columnId ? { ...c, type } : c)),
+    );
+  };
+
+  /**
+   * Crea una categoria y devuelve el `id` con el que se puede elegir YA.
+   *
+   * El `await` es lo que la hace funcionar: la celda se guarda con el `id` de la
+   * categoria nueva, y el servidor RECHAZA con un 400 un valor de `select` que no
+   * este en la lista. Sin esperar al PATCH del esquema los dos requests salen
+   * juntos y el de la fila puede llegar primero, y el error que ve el usuario es
+   * "no se pudo guardar la celda" --sin relacion con la categoria que acaba de
+   * escribir--.
+   *
+   * Devuelve `null` si no hay nada que crear: el texto en blanco no crea nada.
+   */
+  const createOption = async (columnId: string, label: string): Promise<string | null> => {
+    const nombre = label.trim().slice(0, MAX_OPTION_LENGTH);
+    const column = columns.find((c) => c.id === columnId);
+    if (!nombre || !column || column.type !== 'select') return null;
+    const opcion = newColumnOption(nombre);
+    await onColumnsChange(
+      columns.map((c) =>
+        c.id === columnId ? { ...c, options: [...(c.options ?? []), opcion] } : c,
+      ),
+    );
+    return opcion.id;
+  };
+
+  /**
+   * Borra una categoria de una `select`.
+   *
+   * No necesita `await` al contrario que `createOption`: no hay ningun valor que
+   * se mande despues. El PATCH del esquema es el unico request, y es el que vacia
+   * las celdas que usaban la categoria.
+   */
+  const deleteOption = (columnId: string, id: string) => {
+    setColumnAjuste(columnId, {
+      options: (columns.find((c) => c.id === columnId)?.options ?? []).filter((o) => o.id !== id),
+    });
+  };
+
+  /**
+   * Las opciones de una columna `select`, o el formato de una `number`.
+   *
+   * Un solo camino para los dos porque los dos son "cambiar un ajuste de la
+   * columna" y ninguno toca los valores: lo que guane o pierda una celda lo
+   * decide el backend en la misma transaccion que escribe el esquema.
+   */
+  const setColumnAjuste = (columnId: string, ajuste: Partial<TableColumnDto>) => {
+    onColumnsChange(columns.map((c) => (c.id === columnId ? { ...c, ...ajuste } : c)));
   };
 
   const deleteColumn = (columnId: string) => {
@@ -1229,6 +2285,34 @@ export function TableGrid({
   const addColumn = (type: ColumnType) => {
     setAddOpen(false);
     onColumnsChange([...columns, newTableColumn(type)]);
+  };
+
+  /**
+   * Cuantos valores de una columna NO se pueden leer como `type`.
+   *
+   * El backend conserva lo numerico aunque venga escrito como texto --"10" pasa
+   * a 10-- y descarta solo lo que de verdad no es numero; para fecha sobrevive
+   * solo lo que ya es `AAAA-MM-DD`, y para `select` solo lo que sea el `id` de una
+   * de sus opciones. Este numero tiene que ser exactamente lo que `coerceValue` va
+   * a limpiar, porque es lo que el cartel de confirmar promete: si contara mas,
+   * estariamos pidiendo permiso para algo que no se pierde.
+   */
+  const perdidosPor = (columnId: string, type: ColumnType): number => {
+    const column = columns.find((c) => c.id === columnId);
+    if (!column) return 0;
+    return rows.reduce((n, r) => {
+      const v = r.values[columnId];
+      if (v === null || v === undefined || v === '') return n;
+      const sePuede =
+        type === 'number'
+          ? Number.isFinite(Number(String(v).trim()))
+          : type === 'date'
+            ? isIsoDate(v)
+            : type === 'select'
+              ? isOptionValue(column.options, v)
+              : false;
+      return sePuede ? n : n + 1;
+    }, 0);
   };
 
   /*
@@ -1329,22 +2413,14 @@ export function TableGrid({
               /* Cuantas filas tienen ALGO en esta columna. Es el numero que hace
                  falta para borrar: "remove la columna" suena a borrar el titulo,
                  y lo que pasa es que las celdas pierden su valor. */
-              filledRows={rows.filter((r) => display(r.values[c.id]) !== '').length}
+              filledRows={rows.filter((r) => display(r.values[c.id], c) !== '').length}
               /*
-               * Cuantos valores se perderian al pasarla a `number`. El backend
-               * conserva lo numerico aunque venga escrito como texto --"10" pasa a
-               * 10-- y descarta solo lo que de verdad no es numero, asi que este
-               * numero es exactamente lo que se limpia.
+               * Cuantos valores se perderian al pasarla a `number` o a `date`,
+               * que es lo que el backend va a descartar. Ver `perdidosPor`.
                */
-              pierdeAlPonerNumero={rows.filter((r) => {
-                const v = r.values[c.id];
-                return (
-                  v !== null &&
-                  v !== undefined &&
-                  v !== '' &&
-                  !Number.isFinite(Number(String(v).trim()))
-                );
-              }).length}
+              pierdeAlPonerNumero={perdidosPor(c.id, 'number')}
+              pierdeAlPonerFecha={perdidosPor(c.id, 'date')}
+              pierdeAlPonerSelect={perdidosPor(c.id, 'select')}
               dragging={dragId === c.id}
               push={push ?? undefined}
               onDragStart={startDrag}
@@ -1352,6 +2428,7 @@ export function TableGrid({
               onResizeNudge={nudgeResize}
               onRename={renameColumn}
               onTypeChange={changeColumnType}
+              onColumnAjuste={setColumnAjuste}
               onDelete={deleteColumn}
             />
           ))}
@@ -1394,8 +2471,32 @@ export function TableGrid({
               onMove={move}
               draggingColId={dragId}
               push={push ?? undefined}
+              pushFila={pushFila ?? undefined}
               /* Esta fila es la que se esta arrastrando de arriba abajo. */
               lifting={dragRowId === row.id}
+              onPickDate={elegirFecha}
+              onCloseCalendar={cerrarCalendario}
+              statusAbierto={statusAbierto}
+              onOpenStatus={(row, column) =>
+                /*
+                 * Un clic en la celda cuyo menu ya esta abierto lo CIERRA.
+                 *
+                 * Sin el toggle, el `mousedown` de afuera no lo cierra --esta
+                 * dentro de la celda-- y el `onClick` volveria a abrir lo mismo:
+                 * dos clics y el menu sigue ahi, y no hay forma de cerrarlo con el
+                 * mouse.
+                 */
+                setStatusAbierto((a) =>
+                  a?.rowId === row.id && a.columnId === column.id
+                    ? null
+                    : { rowId: row.id, columnId: column.id },
+                )
+              }
+              onPickStatus={elegirStatus}
+              onPickOption={elegirOpcion}
+              onCreateOption={createOption}
+              onDeleteOption={deleteOption}
+              onCloseStatus={() => setStatusAbierto(null)}
               onGrabRow={(clientY, pointerId) => {
                 const grid = gridRef.current;
                 if (!grid) return;
@@ -1437,7 +2538,7 @@ export function TableGrid({
        * El pie va FUERA del `overflow-auto` para que "Add row" no se vaya con el
        * scroll y siga siempre al pie de la caja.
        */}
-      <div className="flex shrink-0 items-center justify-between border-t border-gray-700/60 px-1 pt-1.5">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-t border-gray-700/60 px-1 pt-1.5">
         {/*
          * "Add row" se apaga sin columnas. Una fila sin columnas es un objeto
          * que no se puede ver ni editar: se podria crear, pero no tendria nada
@@ -1452,6 +2553,14 @@ export function TableGrid({
           <FiPlus size={12} />
           Add row
         </button>
+        {/*
+         * La ultima edicion, a la derecha y a la altura del boton. `ml-auto` la
+         * manda al extremo derecho y deja al aviso de filas no cargadas en su
+         * lugar de antes -- pegado al borde -- cuando los dos estan.
+         */}
+        {updatedAt && (
+          <span className="ml-auto shrink-0 text-xs text-gray-500">{lastUpdated(updatedAt)}</span>
+        )}
         {hiddenRowCount > 0 && (
           /*
            * `gray-500` y no `gray-600`: este texto dice cuantos datos NO se
@@ -1494,6 +2603,10 @@ interface ColumnHeaderProps {
   filledRows: number;
   /** Valores que se perderian si esta columna pasara a `number`. */
   pierdeAlPonerNumero: number;
+  /** Valores que se perderian si esta columna pasara a `date`. */
+  pierdeAlPonerFecha: number;
+  /** Valores que se perderian si esta columna pasara a `select`. */
+  pierdeAlPonerSelect: number;
   /** Esta columna es la que se esta arrastrando. */
   dragging: boolean;
   /** Corrimiento del empuje, en px, mientras la arrastrada la mueve de lugar. */
@@ -1511,6 +2624,8 @@ interface ColumnHeaderProps {
   onResizeNudge: (columnId: string, delta: number) => void;
   onRename: (columnId: string, name: string) => void;
   onTypeChange: (columnId: string, type: ColumnType) => void;
+  /** Cambia un ajuste de la columna: las opciones de una `select`, el formato de una `number`. */
+  onColumnAjuste: (columnId: string, ajuste: Partial<TableColumnDto>) => void;
   onDelete: (columnId: string) => void;
 }
 
@@ -1525,11 +2640,14 @@ const ColumnHeader = memo(function ColumnHeader({
   onResizeNudge,
   filledRows,
   pierdeAlPonerNumero,
+  pierdeAlPonerFecha,
+  pierdeAlPonerSelect,
   dragging,
   push,
   onDragStart,
   onRename,
   onTypeChange,
+  onColumnAjuste,
   onDelete,
 }: ColumnHeaderProps) {
   const [renaming, setRenaming] = useState(false);
@@ -1555,6 +2673,15 @@ const ColumnHeader = memo(function ColumnHeader({
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [tiposAbiertos, setTiposAbiertos] = useState(false);
   const [tiposFijados, setTiposFijados] = useState(false);
+  /**
+   * El panel de ajustes --opciones de una `select`, formato de una `number`-- esta
+   * abierto.
+   *
+   * Vive en el estado del encabezado y no en el del menu porque es hermano de los
+   * dos carteles de confirmacion: se abre desde el menu, lo cierra el menu, y se
+   * dibuja en el MISMO portal, que sigue vivo porque el ancla no se tira.
+   */
+  const [ajustesAbiertos, setAjustesAbiertos] = useState(false);
   /** Que se va a confirmar: borrar la columna, o pasarla a `number`. */
   const [confirmandoTipo, setConfirmandoTipo] = useState<ColumnType | null>(null);
   /*
@@ -1587,6 +2714,7 @@ const ColumnHeader = memo(function ColumnHeader({
     setMenuAbierto(true);
     setTiposAbiertos(false);
     setTiposFijados(false);
+    setAjustesAbiertos(false);
   };
 
   /*
@@ -1606,6 +2734,7 @@ const ColumnHeader = memo(function ColumnHeader({
 
   const cerrarMenu = () => {
     cerrarSoloMenu();
+    setAjustesAbiertos(false);
     setAncla(null);
   };
 
@@ -1651,14 +2780,23 @@ const ColumnHeader = memo(function ColumnHeader({
   /**
    * Cuantos valores se limpian al pasar a `type`.
    *
-   * A `number` sobrevive lo que ya se puede leer como numero --"10" pasa a 10--,
-   * asi que lo que se cuenta es lo que NO se puede. A `checkbox` no sobrevive
-   * nada que no sea `true`/`false`, asi que se cuenta todo lo que tiene algo
-   * escrito: por eso el `filledRows` y no un filtro mas.
+   * A `number` sobrevive lo que ya se puede leer como numero --"10" pasa a 10--
+   * y a `date` lo que ya es `AAAA-MM-DD`, asi que en los dos lo que se cuenta es
+   * lo que NO se puede. A `checkbox` no sobrevive nada que no sea
+   * `true`/`false`, asi que se cuenta todo lo que tiene algo escrito: por eso el
+   * `filledRows` y no un filtro mas.
+   *
+   * A `select` sobrevive solo lo que sea el `id` de una de sus opciones, asi que
+   * tambien cuenta lo que no se puede. Y como las opciones se siembran al CAMBIAR
+   * el tipo --no antes--, el numero es el de todo lo que tiene escrito: que es lo
+   * que el backend va a descartar de verdad.
    */
   const perdidosAlTipo = (type: ColumnType): number => {
     if (type === 'number') return pierdeAlPonerNumero;
+    if (type === 'date') return pierdeAlPonerFecha;
     if (type === 'checkbox') return filledRows;
+    if (type === 'status') return filledRows;
+    if (type === 'select') return pierdeAlPonerSelect;
     return 0;
   };
 
@@ -1713,10 +2851,22 @@ const ColumnHeader = memo(function ColumnHeader({
      * abre el menu llega con `button: 2`, y el de cerrar tiene que ser el de
      * CUALQUIER boton. Sin esto, hacer clic derecho afuera no cerraba nada y el
      * menu quedaba pegado con el menu nativo del navegador encima.
+     *
+     * Y los DOS listeners entran UN TICK despues, no ya.
+     *
+     * El `contextmenu` que abre el menu no termina cuando React lo atiende:
+     * React escucha en la raiz y el mismo evento sigue subiendo hasta `document`.
+     * Si el listener de "afuera" ya estuviera registrado cuando el evento llega
+     * ahi, veria un clic fuera del panel --el puntero esta en la celda-- y
+     * ejecutaria `cerrarMenu`: el menu se cerraba en el mismo evento que lo abrio
+     * y no se veia nunca.
      */
-    document.addEventListener('mousedown', fuera);
-    document.addEventListener('contextmenu', fuera);
+    const dar = setTimeout(() => {
+      document.addEventListener('mousedown', fuera);
+      document.addEventListener('contextmenu', fuera);
+    }, 0);
     return () => {
+      clearTimeout(dar);
       document.removeEventListener('mousedown', fuera);
       document.removeEventListener('contextmenu', fuera);
     };
@@ -1998,15 +3148,33 @@ const ColumnHeader = memo(function ColumnHeader({
               }}
               aria-label={`Rename column ${column.name}`}
               /*
-               * Ancho FIJO, no el del contenido: si el campo midiese lo que se
-               * escribe, la columna --y con ella todas las de abajo-- daria un
-               * salto en cada tecla.
+               * El input toma lo que queda del encabezado y NADA mas.
                *
-               * `select-text` contra el `select-none` del encabezado: al
-               * renombrar uno quiere poder elegir parte del nombre para
-               * reemplazarlo, no escribir siempre encima.
+               * Antes era `w-32`, un ancho fijo de 128px. Con el icono del tipo y
+               * el hueco hacen 144, y el encabezado de una columna numerica --que es
+               * `justify-end`-- no tiene tanto: el desborde de un `flex` con
+               * `justify-end` se va hacia la IZQUIERDA, o sea que el campo de
+               * renombrar se dibujaba encima de la columna de al lado. Medido con
+               * las columnas de la tabla --117, 141 y 48px-- y el relleno `px-3` de
+               * la vista: 27px de desborde en la de 141 y mas de 100 en la de 48. En
+               * el widget, con `px-2`, son 8px menos: el mismo bug, un poco mas
+               * chico. O sea que pasaba en las dos superficies y en todas las
+               * columnas, y solo se nota en las angostas.
+               *
+               * `flex-1 min-w-0` lo deja pegado al borde derecho sin pasar de alli.
+               *
+               * Y `size={1}` evita que el ancho intrinseco del input --unos 150px
+               * por defecto-- entre en el `max-content` del track: con el ancho
+               * fijo de antes, una columna sin ancho ajustado se ENSANCHABA al
+               * renombrar y volvia a su tamano al salir, que era justo el salto que
+               * este comentario queria evitar.
+               *
+               * `select-text` contra el `select-none` del encabezado: al renombrar
+               * uno quiere poder elegir parte del nombre para reemplazarlo, no
+               * escribir siempre encima.
                */
-              className="w-32 select-text rounded bg-gray-700 px-1 py-0.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-gray-500/50"
+              size={1}
+              className="min-w-0 flex-1 select-text rounded bg-gray-700 px-1 py-0.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-gray-500/50"
             />
           ) : (
             /*
@@ -2222,24 +3390,63 @@ const ColumnHeader = memo(function ColumnHeader({
                           : 'left-full ml-1 before:-left-1'
                       }`}
                     >
-                      {COLUMN_TYPES.map((t) => (
-                        <button
-                          key={t}
-                          type="button"
-                          role="menuitemradio"
-                          aria-checked={column.type === t}
-                          onClick={() => aplicarTipo(t)}
-                          className={`flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-xs transition-colors hover:bg-white/5 ${
-                            column.type === t ? 'text-white' : 'text-gray-300'
-                          }`}
-                        >
-                          {column.type === t && <FiCheck size={11} className="shrink-0" />}
-                          {COLUMN_TYPE_LABELS[t]}
-                        </button>
-                      ))}
+                      {COLUMN_TYPES.map((t) => {
+                        const Icono = TYPE_ICON[t];
+                        return (
+                          <button
+                            key={t}
+                            type="button"
+                            role="menuitemradio"
+                            aria-checked={column.type === t}
+                            onClick={() => aplicarTipo(t)}
+                            className={`group flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-xs transition-colors hover:bg-white/5 ${
+                              column.type === t ? 'text-white' : 'text-gray-300'
+                            }`}
+                          >
+                            {/*
+                             * El tilde y el icono van en huecos FIJOS: con el tilde
+                             * condicional --como estaba-- los nombres de los renglones
+                             * se corrían uno contra otro segun cual estuviera elegido,
+                             * y el icono lo empeoraba. Ademas el icono es lo que dice
+                             * el tipo sin palabras, igual que en el menu del "+", que
+                             * ya lo tenia.
+                             */}
+                            {column.type === t ? (
+                              <FiCheck size={11} className="shrink-0" />
+                            ) : (
+                              <span className="size-3 shrink-0" />
+                            )}
+                            <Icono
+                              size={12}
+                              className="shrink-0 text-gray-500 group-hover:text-gray-300"
+                            />
+                            {COLUMN_TYPE_LABELS[t]}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
+
+                {/*
+                 * "Options..." y "Format...": los dos ajustes que no son un nombre
+                 * ni un tipo. Solo aparecen donde aplican --una `select` no tiene
+                 * formato y una `number` no tiene opciones-- porque un item que no
+                 * hace nada es peor que un item que no existe.
+                 */}
+                {(column.type === 'select' || column.type === 'number') && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setAjustesAbiertos(true);
+                      cerrarSoloMenu();
+                    }}
+                    className="block w-full px-3 py-1.5 text-left text-xs text-gray-300 transition-colors hover:bg-white/5 hover:text-white"
+                  >
+                    {column.type === 'select' ? 'Options...' : 'Format...'}
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -2252,14 +3459,22 @@ const ColumnHeader = memo(function ColumnHeader({
               </div>
             )}
 
+            {ajustesAbiertos && (
+              <AjustesPanel
+                column={column}
+                onChange={(ajuste) => onColumnAjuste(column.id, ajuste)}
+                onClose={() => setAjustesAbiertos(false)}
+              />
+            )}
+
             {/*
              * Confirmar el cambio de tipo, y solo cuando hay algo que perder.
              *
-             * Pasar una columna a numero descarta las celdas que no son numeros,
-             * y pasarla a checkbox descarta todo lo que tenga escrito. El numero
-             * que se muestra es exactamente lo que `coerceValue` va a limpiar en
-             * el servidor, y sin este cartel esos valores desaparecerian sin que
-             * nadie se enterara.
+             * Pasar una columna a numero descarta las celdas que no son numeros, a
+             * fecha las que no son fechas, y a checkbox todo lo que tenga escrito.
+             * El numero que se muestra es exactamente lo que `coerceValue` va a
+             * limpiar en el servidor, y sin este cartel esos valores
+             * desaparecerian sin que nadie se enterara.
              */}
             {confirmandoTipo !== null && (
               <div className="mt-0.5 w-56 rounded border border-gray-500/50 bg-gray-800 p-2 shadow-xl">
@@ -2269,7 +3484,7 @@ const ColumnHeader = memo(function ColumnHeader({
                   <span className="text-white">
                     {perdidosAlConfirmar} {perdidosAlConfirmar === 1 ? 'value' : 'values'}
                   </span>
-                  {confirmandoTipo === 'number' ? ' that are not numbers' : ''} will be cleared.
+                  {PERDIDA[confirmandoTipo] ? ` ${PERDIDA[confirmandoTipo]}` : ''} will be cleared.
                 </p>
                 <div className="mt-1.5 flex items-center gap-1.5">
                   <button
@@ -2604,10 +3819,30 @@ interface RowCellsProps {
   draggingColId: string | null;
   /** Corrimiento del empuje, en px. Ver `push` en `TableGrid`. */
   push?: Record<string, number>;
+  /** Corrimiento del empuje VERTICAL de esta fila, en px. Ver `pushFila`. */
+  pushFila?: Record<string, number>;
   /** Esta fila es la que se esta arrastrando de arriba abajo. */
   lifting: boolean;
   /** Arma el arrastre vertical desde el icono de la columna de acciones. */
   onGrabRow: (clientY: number, pointerId: number) => void;
+  /** Un dia del calendario de la celda: se guarda y se cierra. Ver `DatePicker`. */
+  onPickDate: (iso: string) => void;
+  /** Cerrar el calendario sin cambiar el valor. */
+  onCloseCalendar: () => void;
+  /** La celda con el menu de eleccion abierto: status o select. */
+  statusAbierto: { rowId: string; columnId: string } | null;
+  /** Abre el menu de status o de opciones de esta celda. */
+  onOpenStatus: (row: TableRowDto, column: TableColumnDto) => void;
+  /** Un estado del menu de status: se guarda y se cierra. */
+  onPickStatus: (row: TableRowDto, column: TableColumnDto, valor: StatusValue) => void;
+  /** Una opcion de una `select`, o `null` para vaciarla. */
+  onPickOption: (row: TableRowDto, column: TableColumnDto, id: string | null) => void;
+  /** Crea una categoria de una `select` y devuelve el `id` para elegirla. */
+  onCreateOption: (columnId: string, label: string) => Promise<string | null>;
+  /** Borra una categoria de la lista del menu de la celda. */
+  onDeleteOption: (columnId: string, id: string) => void;
+  /** Cerrar el menu sin cambiar el valor. */
+  onCloseStatus: () => void;
 }
 
 const RowCells = memo(function RowCells({
@@ -2628,9 +3863,28 @@ const RowCells = memo(function RowCells({
   onMove,
   draggingColId,
   push,
+  pushFila,
   lifting,
   onGrabRow,
+  onPickDate,
+  onCloseCalendar,
+  statusAbierto,
+  onOpenStatus,
+  onPickStatus,
+  onPickOption,
+  onCreateOption,
+  onDeleteOption,
+  onCloseStatus,
 }: RowCellsProps) {
+  /**
+   * El ancla del menu de status.
+   *
+   * Un ref propio y no el `inputRef` de la fila, que en una celda de status esta
+   * en null porque no hay input: el menu se ancla al boton que lo abrio. Lo
+   * comparten las dos celdas con menu --`status` y `select`-- porque nunca se
+   * dibujan a la vez: son ramas del mismo ternario.
+   */
+  const statusRef = useRef<HTMLButtonElement>(null);
   /*
    * El transform de la fila levantada, y su sombra.
    *
@@ -2643,9 +3897,18 @@ const RowCells = memo(function RowCells({
    * ellas, que es exactamente lo que se veía. Un fondo uniforme sobre la fila
    * entera lee igual de claro y no deja costuras.
    */
-  const transformFila: React.CSSProperties | undefined = lifting
-    ? { transform: 'translateY(var(--dy, 0px))', transition: 'none' }
-    : undefined;
+  const empujadaFila = pushFila?.[row.id] ?? 0;
+  /*
+   * El empuje entra por la misma puerta y con la misma forma que la fila
+   * levantada: sin el, el asa y el relleno se quedan en su lugar mientras los
+   * datos se van, que es la fila partida de nuevo. La transicion en reposo
+   * tambien hace falta, o el empuje sale de un salto en vez de deslizarse.
+   */
+  const transformFila: React.CSSProperties = empujadaFila
+    ? { transform: `translateY(${empujadaFila}px)`, transition: 'none' }
+    : lifting
+      ? { transform: 'translateY(var(--dy, 0px))', transition: 'none' }
+      : { transition: 'transform 120ms ease-out' };
   const claseAlzada = lifting ? 'relative z-[1] bg-gray-900/80' : '';
   /*
    * El separador de fila, y por que no es el que habia.
@@ -2724,7 +3987,12 @@ const RowCells = memo(function RowCells({
       {columns.map((c) => {
         const isEditing = editing?.columnId === c.id;
         const raw = row.values[c.id];
-        const shown = display(raw);
+        const shown = display(raw, c);
+        /* El estado: lo que nunca se toco se dibuja como "not started". */
+        const estado = estadoDe(raw);
+        /* La opcion elegida, o `null` si la celda esta vacia. */
+        const opcion = opcionDe(c, raw);
+        const menuAbierto = statusAbierto?.rowId === row.id && statusAbierto.columnId === c.id;
         /*
          * Las celdas de la columna arrastrada se mueven con ella. Sin esto el
          * encabezado queda flotando sobre datos que no son suyos, y se ve como
@@ -2754,16 +4022,18 @@ const RowCells = memo(function RowCells({
             key={c.id}
             data-row-id={row.id}
             style={
-              empujada
-                ? { transform: `translateX(${empujada}px)`, transition: 'none' }
-                : filaAlzada
-                  ? {
-                      transform: lifted
-                        ? 'translateX(var(--dx, 0px))'
-                        : 'translateY(var(--dy, 0px))',
-                      transition: 'none',
-                    }
-                  : { transition: 'transform 120ms ease-out' }
+              empujadaFila
+                ? { transform: `translateY(${empujadaFila}px)`, transition: 'none' }
+                : empujada
+                  ? { transform: `translateX(${empujada}px)`, transition: 'none' }
+                  : filaAlzada
+                    ? {
+                        transform: lifted
+                          ? 'translateX(var(--dx, 0px))'
+                          : 'translateY(var(--dy, 0px))',
+                        transition: 'none',
+                      }
+                    : { transition: 'transform 120ms ease-out' }
             }
             className={`${regla} ${divisor} ${pad} ${text} ${
               /*
@@ -2773,8 +4043,14 @@ const RowCells = memo(function RowCells({
                * de 16px dentro de una fila de 36 se notaria flotando. Sin
                * `align-top` la celda se estira a la fila y `items-center` la
                * centra en ella.
+               *
+               * `status` y `select` van con la casilla porque las dos tienen el
+               * boton de 24px de alto en vez de una linea de texto, y alineadas
+               * arriba quedan mas altas que sus vecinas.
                */
-              c.type === 'checkbox' ? 'flex items-center' : 'align-top'
+              c.type === 'checkbox' || c.type === 'status' || c.type === 'select'
+                ? 'flex items-center'
+                : 'align-top'
             } ${
               filaAlzada
                 ? 'relative z-[1] bg-gray-900/80'
@@ -2783,7 +4059,113 @@ const RowCells = memo(function RowCells({
                   : ''
             }`}
           >
-            {c.type === 'checkbox' ? (
+            {c.type === 'status' ? (
+              <>
+                {/*
+                 * La celda ES el control, como la casilla: no hay doble clic ni
+                 * modo edicion, se elige un estado y se guarda.
+                 *
+                 * El color va en el texto y no en un fondo de la celda: con
+                 * relleno la columna era una tira de manchas y el hover de la
+                 * fila --`.row-hover`-- quedaba tapado justo en la columna que
+                 * mas se mira. Ver `ESTADO_TEXTO`.
+                 *
+                 * El `aria-label` lleva el estado aparte porque el boton lo
+                 * anuncia por su texto y el nombre de la celda hace de contexto:
+                 * "Status, row 4, In progress".
+                 */}
+                <button
+                  ref={statusRef}
+                  type="button"
+                  onClick={() => onOpenStatus(row, c)}
+                  aria-haspopup="menu"
+                  aria-expanded={menuAbierto}
+                  aria-label={`${c.name}, row ${rowIndex + 1}, ${STATUS_LABELS[estado]}`}
+                  className={`flex min-h-6 w-full min-w-[3rem] cursor-pointer items-center truncate whitespace-nowrap transition-colors hover:bg-white/[0.04] ${ESTADO_TEXTO[estado]}`}
+                >
+                  {STATUS_LABELS[estado]}
+                </button>
+                {menuAbierto && (
+                  <OptionMenu
+                    ancla={statusRef}
+                    titulo={c.name}
+                    opciones={STATUS_VALUES.map((v) => ({ id: v, etiqueta: STATUS_LABELS[v] }))}
+                    valor={estado}
+                    onPick={(v) => onPickStatus(row, c, v as StatusValue)}
+                    onClose={onCloseStatus}
+                  />
+                )}
+              </>
+            ) : c.type === 'select' ? (
+              <>
+                {/*
+                 * Igual que el status y por la misma razon: la celda ES el control.
+                 * No hay input porque no hay texto libre que escribir --lo que hay es
+                 * una lista-- y un input dejaria abrir un editor que despues tendria
+                 * que rechazar lo que no esta en la lista.
+                 *
+                 * El vacio es un guion y NO la primera opcion: el status dibuja
+                 * "Not started" cuando no se toco, y si aca el vacio fuera la
+                 * primera de la lista se veria igual que haberse elegido esa. El
+                 * guion es ademas lo que ya significa "vacio" en cualquier celda de
+                 * la grilla.
+                 *
+                 * Y el color es el de las celdas de texto --`gray-200`-- y no el
+                 * codigo de color de `ESTADO_TEXTO`: el dato es el que eligio el
+                 * usuario, no un estado del sistema, asi que no se pinta como si lo
+                 * fuera. Con el mismo gris, una columna de estado y una de opciones
+                 * se leen como dos columnas mas de la tabla.
+                 */}
+                <button
+                  ref={statusRef}
+                  type="button"
+                  onClick={() => onOpenStatus(row, c)}
+                  aria-haspopup="menu"
+                  aria-expanded={menuAbierto}
+                  aria-label={
+                    opcion
+                      ? `${c.name}, row ${rowIndex + 1}, ${opcion}`
+                      : `${c.name}, row ${rowIndex + 1}, empty`
+                  }
+                  className={`flex min-h-6 w-full min-w-[3rem] cursor-pointer items-center gap-1.5 truncate whitespace-nowrap transition-colors hover:bg-white/[0.04] ${
+                    opcion ? 'text-gray-200' : 'text-gray-500'
+                  }`}
+                >
+                  {!opcion && <span className="size-3 shrink-0" aria-hidden="true" />}
+                  {opcion ?? '—'}
+                </button>
+                {menuAbierto && (
+                  <OptionMenu
+                    ancla={statusRef}
+                    titulo={c.name}
+                    opciones={(c.options ?? []).map((o) => ({ id: o.id, etiqueta: o.label }))}
+                    valor={typeof raw === 'string' ? raw : null}
+                    vacio="Empty"
+                    onPick={(v) => onPickOption(row, c, v)}
+                    /*
+                     * Crear y dejar elegida: se escribe el nombre porque es lo que
+                     * uno quiere en ESTA celda, no solo una categoria nueva en la
+                     * lista. Por eso el await --ver `createOption`-- y por eso el
+                     * menu se cierra recien cuando la categoria ya esta guardada.
+                     */
+                    onCreate={(label) => {
+                      void onCreateOption(c.id, label).then((id) => {
+                        if (!id) return;
+                        onPickOption(row, c, id);
+                        onCloseStatus();
+                      });
+                    }}
+                    /*
+                     * Borrar una categoria es de la COLUMNA, no de la celda, asi que
+                     * el menu sigue abierto: se puede seguir limpiando la lista sin
+                     * cerrarlo y abrirlo entre categoria y categoria.
+                     */
+                    onDelete={(id) => onDeleteOption(c.id, id)}
+                    onClose={onCloseStatus}
+                  />
+                )}
+              </>
+            ) : c.type === 'checkbox' ? (
               /*
                * La celda ES el control: no hay doble clic ni modo edicion, se
                * marca y se guarda. Una casilla no tiene un texto adentro que
@@ -2815,6 +4197,28 @@ const RowCells = memo(function RowCells({
                   onChange={(e) => onDraft(e.target.value)}
                   onBlur={onBlur}
                   onKeyDown={(e) => {
+                    /*
+                     * Las flechas mueven la FECHA, y solo en columnas de fecha.
+                     *
+                     * Arriba y abajo cambian de dia y PageUp/PageDown de mes,
+                     * que es lo que hacia el input nativo y lo que el calendario
+                     * tambien acepta mentalmente. Se pierde el salto de anio con
+                     * Shift+PageUp, que no hacia falta: para eso estan las flechas
+                     * del calendario.
+                     *
+                     * Se mueve el DRAFT y no el valor guardado: el input sigue
+                     * siendo la fuente de verdad mientras edita, y el guardado
+                     * sigue pasando por `commit` --con su validacion-- al salir.
+                     */
+                    if (c.type === 'date') {
+                      const paso = e.key === 'ArrowUp' || e.key === 'PageUp' ? 1 : e.key === 'ArrowDown' || e.key === 'PageDown' ? -1 : 0;
+                      if (paso) {
+                        e.preventDefault();
+                        const unidad = e.key === 'ArrowUp' || e.key === 'ArrowDown' ? 'dia' : 'mes';
+                        onDraft(moverFecha(editing?.draft ?? '', unidad, paso));
+                        return;
+                      }
+                    }
                     if (e.key === 'Enter') {
                       e.preventDefault();
                       // Abajo, como una hoja de calculo. En la ultima fila no hay
@@ -2830,10 +4234,34 @@ const RowCells = memo(function RowCells({
                       onMove(e.shiftKey ? -1 : 1);
                     }
                   }}
+                  /*
+                   * Texto comun, no `input type="date"`: el calendario es el de
+                   * `DatePicker` y el formato que se ve y se tipea es `DD/MM/AAAA`,
+                   * no el del navegador segun el locale.
+                   *
+                   * `inputMode="numeric"` en las de fecha para que el teclado
+                   * movil ofrezca numeros y no el teclado entero.
+                   *
+                   * `size={1}` es para que el input NO dicte el ancho de la
+                   * columna. Sin esto, un input tiene un ancho propio --por
+                   * defecto `size=20`, unos 150px-- y como el track es
+                   * `max-content`, entrar en edicion ensanchaba la columna y al
+                   * salir volvia a su tamano: la tabla latia cada vez que se
+                   * editaba una celda. Con `size=1` el input aporta casi nada al
+                   * ancho maximo y manda el texto de las otras filas, que es lo
+                   * que tiene que mandar.
+                   *
+                   * No acorta el input de verdad: el ancho lo pone `w-full`, y
+                   * `size` solo alimenta el ancho intrinseco que el navegador usa
+                   * para decidir el track. No limita caracteres --para eso esta
+                   * `maxlength`--.
+                   */
+                  size={1}
                   type="text"
-                  inputMode={c.type === 'number' ? 'decimal' : undefined}
+                  inputMode={c.type === 'number' ? 'decimal' : c.type === 'date' ? 'numeric' : undefined}
+                  placeholder={c.type === 'date' ? 'dd/mm/yyyy' : undefined}
                   aria-label={`${c.name}, row ${rowIndex + 1}`}
-                  className="w-full min-w-[3rem] bg-transparent font-sans text-white focus:outline-none"
+                  className="w-full min-w-[3rem] bg-transparent font-sans text-white placeholder:text-gray-600 focus:outline-none"
                 />
                 {/*
                  * El error crece la celda hacia abajo en vez de flotar encima.
@@ -2842,6 +4270,22 @@ const RowCells = memo(function RowCells({
                  */}
                 {editing?.error && (
                   <p className="mt-0.5 text-[10px] leading-none text-danger">{editing.error}</p>
+                )}
+                {/*
+                 * El calendario va debajo del input y NO dentro de la celda en el
+                 * DOM: se dibuja en un portal --ver `DatePicker`-- porque la tabla
+                 * scrollea y lo cuelgue se recortaria.
+                 */}
+                {editing?.calendario && (
+                  <DatePicker
+                    ancla={inputRef}
+                    /* El calendario mira el DRAFT y no el valor guardado: lo que
+                       esta marcado es lo que dice el input, y al mover la fecha con
+                       las flechas el calendario la sigue. */
+                    valor={normalizeDate(editing?.draft ?? '') ?? null}
+                    onPick={onPickDate}
+                    onClose={onCloseCalendar}
+                  />
                 )}
               </div>
             ) : (

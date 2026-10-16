@@ -269,9 +269,17 @@ const SortableHabit = memo(function SortableHabit({
           &#x2715;
         </button>
       </div>
+      {/*
+       * La tira de dias es flexible y no fija a proposito: con `w-5` la tarjeta no
+       * bajaba de 206px de ancho minimo (7*20 + 6 gaps + pl-6 + el boton), y eso
+       * era lo que dejaba a la grilla en una sola columna hasta las 6 celdas; bajar
+       * el `minmax` de arriba solo no alcanzaba. `flex-1` con `max-w-5` la deja
+       * igual a 20px cuando hay lugar y la encoge a ~13px cuando dos columnas se
+       * reparten 155px; `min-w-0` es lo que le permite bajar del ancho del numero.
+       */}
       <div className="flex items-center gap-1 pl-6 mt-1">
         {DAY_LABELS.map((l) => (
-          <span key={l} className="w-5 text-center text-[9px] text-gray-600">
+          <span key={l} className="flex-1 min-w-0 max-w-5 text-center text-[9px] text-gray-600">
             {l}
           </span>
         ))}
@@ -292,7 +300,7 @@ const SortableHabit = memo(function SortableHabit({
           <div key={rowIndex} className="flex items-center gap-1 pl-6 mt-0.5">
             {row.map((cell) => {
               if (cell.empty) {
-                return <div key={`e${rowIndex}${cell.day}`} className="w-5 h-5" />;
+                return <div key={`e${rowIndex}${cell.day}`} className="h-5 flex-1 min-w-0 max-w-5" />;
               }
               const completed = isDayCompleted(habit, cell.date);
               return (
@@ -308,7 +316,7 @@ const SortableHabit = memo(function SortableHabit({
                       toggleDate(habit.id, cell.date);
                     }
                   }}
-                  className={`flex items-center justify-center w-5 h-5 rounded text-[10px] cursor-pointer select-none ${
+                  className={`flex flex-1 min-w-0 max-w-5 items-center justify-center h-5 rounded text-[10px] cursor-pointer select-none ${
                     cell.date === today ? 'ring-1 ring-p2' : ''
                   } ${
                     completed
@@ -488,7 +496,17 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({
             className="flex-1 content-start items-start gap-x-2 gap-y-0.5 overflow-auto"
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(min(230px, 100%), 1fr))',
+              /*
+               * 150px es lo que hace entrar DOS columnas a 4 celdas. El cuerpo del
+               * widget es `p-3` (24px) mas borde, o sea 318px utiles a 4 celdas
+               * (344px), y dos columnas con `gap-x-2` necesitan 2*150 + 8 = 308. Con
+               * los 230px de antes la segunda columna no aparecia hasta las 6 celdas:
+               * 468px no entran en 5 (406px utiles).
+               *
+               * El `auto-fit` sigue mandando por arriba: a 6 celdas entran 3
+               * (3*150 + 16 = 466 <= 494px) y a 8, cuatro.
+               */
+              gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))',
             }}
           >
             {habits.map((habit) => (

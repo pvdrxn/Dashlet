@@ -28,6 +28,22 @@ export function TableView({ leading }: TableViewProps) {
   const [tables, setTables] = useState<TableSummaryDto[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [table, setTable] = useState<TableDto | null>(null);
+  /*
+   * La tabla del ultimo render, para leerla desde un camino que se completa
+   * DESPUES de un await.
+   *
+   * React no repinta en el microtask que sigue a un `setState` hecho desde una
+   * continuation: el render se agenda para despues. Asi que un callback que se
+   * agarro antes del await sigue teniendo la tabla de ese momento, y como
+   * `changeCell` escribe el objeto entero --`{ ...tabla, rows }`-- termina
+   * revirtiendo lo que otro cambio habia hecho mientras esperaba. Asi se perdia
+   * la categoria recien creada: el PATCH de las columnas llegaba bien, el de la
+   * celda tambien, y el estado local volvia atras.
+   *
+   * Con el ref, el callback lee la tabla de ahora y escribe sobre esa.
+   */
+  const tablaRef = useRef(table);
+  tablaRef.current = table;
   const [pickerOpen, setPickerOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -191,22 +207,44 @@ export function TableView({ leading }: TableViewProps) {
    */
   const changeCell = useCallback(
     (rowId: string, columnId: string, value: CellValue) => {
-      if (!table) return;
-      const previous = table;
-      setError(null);
-      setTable({
-        ...table,
-        rows: table.rows.map((r) =>
-          r.id === rowId ? { ...r, values: { ...r.values, [columnId]: value } } : r,
-        ),
-      });
-      const row = previous.rows.find((r) => r.id === rowId);
+      /* Del ref y no del closure: ver `tablaRef`. */
+      const t = tablaRef.current;
+      if (!t) return;
+      const row = t.rows.find((r) => r.id === rowId);
       if (!row) return;
+      setError(null);
+      /*
+       * La escritura es FUNCIONAL y no `{ ...t, rows }`.
+       *
+       * Esta celda se puede escribir despues de un await --crear una categoria y
+       * elegirla en la celda-- y para entonces React todavia no repinto: `t` es la
+       * tabla de antes de que se agregara la categoria. Escribiendo el objeto
+       * entero se pisaba ese cambio y la categoria nueva desaparecia de la
+       * pantalla hasta recargar, con el PATCH hecho y bien. Con `v =>` React lo
+       * aplica sobre el estado acumulado, que ya la incluye.
+       */
+      setTable((v) =>
+        v
+          ? {
+              ...v,
+              rows: v.rows.map((r) =>
+                r.id === rowId ? { ...r, values: { ...r.values, [columnId]: value } } : r,
+              ),
+            }
+          : v,
+      );
       void tablesApi
-        .updateTableRow(table.id, rowId, { values: { ...row.values, [columnId]: value } })
-        .catch(() => setTable(previous));
+        .updateTableRow(t.id, rowId, { values: { ...row.values, [columnId]: value } })
+        /* El rollback devuelve SOLO la fila que fallo y no la tabla entera: si
+         * mientras tanto se toco el esquema --una categoria nueva, un ancho--,
+         * revertir el objeto entero se llevaria ese cambio tambien. */
+        .catch(() =>
+          setTable((v) =>
+            v ? { ...v, rows: v.rows.map((r) => (r.id === rowId ? row : r)) } : v,
+          ),
+        );
     },
-    [table],
+    [],
   );
 
   /**
@@ -461,7 +499,7 @@ export function TableView({ leading }: TableViewProps) {
             density="full"
             onCellChange={changeCell}
             onRowAdd={() => void addRow()}
-            onColumnsChange={(next) => void changeColumns(next)}
+            onColumnsChange={changeColumns}
             onColumnWidth={setColumnWidth}
             onRowReorder={(next, rowId, position) => void changeRowOrder(next, rowId, position)}
             hiddenRowCount={Math.max(0, table.rowCount - table.rows.length)}

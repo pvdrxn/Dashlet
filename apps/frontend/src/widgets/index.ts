@@ -4,7 +4,8 @@ import { LuListChecks } from 'react-icons/lu';
 import { LuCalculator } from 'react-icons/lu';
 import { LuTable2 } from 'react-icons/lu';
 import { registerWidget } from './registry';
-import { formatNumber, openTableView } from './data-table/DataTableWidget';
+import { openTableView } from './data-table/DataTableWidget';
+import { lastUpdated } from '../views/table/TableGrid';
 import {
   todoListSummary,
   habitSummary,
@@ -82,35 +83,28 @@ registerWidget('data-table', {
   label: 'Table',
   icon: LuTable2,
   /*
-   * `tableId: null` es lo que dispara la creacion perezosa: el widget se hace su
-   * tabla al montarse. `rows`, `sum` y `done` los escribe el widget para que este
-   * readout --que es una funcion PURA sobre el config-- tenga algo que mostrar con
-   * el cuerpo desmontado.
+   * El readout del cuerpo no se monta cuando el widget esta retraido, asi que
+   * esto es una funcion PURA del config. `tableId: null` es lo que dispara la
+   * creacion perezosa: el widget se hace su tabla al montarse. `rows`, `columns` y
+   * `updatedAt` los escribe el widget para que este readout tenga algo que mostrar.
    */
-  defaultConfig: { title: 'Table', tableId: null, rows: 0, sum: null, done: null },
+  defaultConfig: { title: 'Table', tableId: null, rows: 0, columns: 0, updatedAt: null },
   collapsedSummary: (config) => {
     const rows = typeof config.rows === 'number' ? config.rows : 0;
-    const sum = typeof config.sum === 'number' ? config.sum : null;
-    const done = typeof config.done === 'number' ? config.done : null;
+    const columns = typeof config.columns === 'number' ? config.columns : 0;
+    const actualizado = typeof config.updatedAt === 'string' ? config.updatedAt : null;
     /*
-     * Con columna de casillas, el readout habla de LAS CASILLAS y no de las
-     * filas: "3/12" con la barra al lado dice mas --y de un vistazo-- que "12
-     * rows". Es el mismo lenguaje que el de habitos, y el motivo por el que se
-     * escribio `done` en el config en vez de calcularlo en el readout.
+     * La dimension y cuando se toco por ultima vez. Todo lo que muestra el readout
+     * sale del config, asi que sin el "last updated 2 hours ago" los numeros se leen
+     * como una verdad de ahora; con el, se leen como una foto de hace dos horas --
+     * que es lo que son. Y avisa del unico caso que no se ve: editar la tabla desde
+     * la vista completa no le avisa a nadie, asi que el texto puede quedar viejo.
+     *
+     * Se formatea ACA y no al escribirlo en el config porque el texto envejece: si
+     * el widget guardara "2 hours ago", al retraerse volveria a decirlo dentro de
+     * tres horas. Guardando la marca ISO, el texto sale del reloj de cada render.
      */
-    if (done !== null) {
-      return {
-        value: `${done}/${rows}`,
-        bar: { done, total: rows },
-        // El `Σ` solo aparece si hay una columna numerica con algo dentro. Un
-        // `Σ 0` en una tabla de texto seria mentira.
-        detail: sum === null ? undefined : `Σ ${formatNumber(sum)}`,
-      };
-    }
-    return {
-      value: `${rows} ${rows === 1 ? 'row' : 'rows'}`,
-      detail: sum === null ? undefined : `Σ ${formatNumber(sum)}`,
-    };
+    return { value: `${rows} × ${columns}`, detail: lastUpdated(actualizado) || undefined };
   },
   /*
    * "Abrir completo" vive en la barra y no en el cuerpo: el cuerpo del widget es

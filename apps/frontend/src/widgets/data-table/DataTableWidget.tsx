@@ -32,62 +32,17 @@ export const OPEN_TABLE_EVENT = 'dashlet:open-table';
 const PENDING_TABLE_KEY = 'dashlet-pending-table';
 
 /**
- * Separador de miles hecho a mano y no con `toLocaleString`.
+ * El reloj local, para fechar el cambio en el estado antes de que responda el
+ * servidor.
  *
- * Mismo motivo por el que `date-utils.ts` no usa `toLocaleDateString`: en un
- * `.exe` empaquetado el resultado depende de los datos de idioma del sistema, y
- * un readout del widget retraido cambiando de formato entre maquinas no es algo
- * que uno quiere descubrir en la pantalla de otra persona.
+ * `changeCell`, `addRow` y `changeRowOrder` actualizan la tabla en local y
+ * descartan la respuesta --para no perder el foco ni el arrastre--, asi que el
+ * `updatedAt` del servidor llega viejo. Sin este sello, el "last updated 2 hours
+ * ago" del pie se queda congelado despues de editar, que es justo cuando el
+ * usuario lo mira. Lo corrige el proximo guardado que si adopta la respuesta,
+ * que es el de columnas.
  */
-export function formatNumber(n: number): string {
-  if (!Number.isFinite(n)) return '0';
-  const entero = Math.trunc(n);
-  const signo = entero < 0 ? '-' : '';
-  return signo + String(Math.abs(entero)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-}
-
-/**
- * Suma de las columnas numericas de una tabla.
- *
- * Devuelve `null` cuando NO hay ninguna columna numerica con al menos un valor:
- * es distinto de cero, y mostrar un `Σ 0` en una tabla de texto es mentira.
- */
-export function sumNumericColumns(table: TableDto | null): number | null {
-  if (!table) return null;
-  let total = 0;
-  let hay = false;
-  for (const col of table.columns) {
-    if (col.type !== 'number') continue;
-    for (const row of table.rows) {
-      const v = row.values[col.id];
-      if (typeof v === 'number' && Number.isFinite(v)) {
-        total += v;
-        hay = true;
-      }
-    }
-  }
-  return hay ? total : null;
-}
-
-/**
- * Cuantas filas quedan con la PRIMERA columna de casillas marcada.
- *
- * Solo la primera: dos columnas de "hecho" con la misma semantica es un dato
- * raro, y sumarlas daria un numero que no corresponde a nada. `null` cuando la
- * tabla no tiene ninguna: no es lo mismo "0 de 12" que "esta tabla no lleva
- * casillas".
- */
-export function doneCount(table: TableDto | null): number | null {
-  if (!table) return null;
-  const checks = table.columns.filter((c) => c.type === 'checkbox');
-  if (!checks.length) return null;
-  const col = checks[0];
-  let n = 0;
-  for (const row of table.rows) {
-    if (row.values[col.id] === true) n += 1;
-  }
-  return n;
-}
+const ahora = () => new Date().toISOString();
 
 /**
  * "Abrir completo": deja la tabla apuntada y avisa a la app.
@@ -107,6 +62,22 @@ export function openTableView(tableId: string): void {
 export function DataTableWidget({ config, onConfigChange }: DataTableWidgetProps) {
   const tableId = typeof config.tableId === 'string' ? config.tableId : null;
   const [table, setTable] = useState<TableDto | null>(null);
+  /*
+   * La tabla del ultimo render, para leerla desde un camino que se completa
+   * DESPUES de un await.
+   *
+   * React no repinta en el microtask que sigue a un `setState` hecho desde una
+   * continuation: el render se agenda para despues. Asi que un callback que se
+   * agarro antes del await sigue teniendo la tabla de ese momento, y como
+   * `changeCell` escribe el objeto entero --`{ ...tabla, rows }`-- termina
+   * revirtiendo lo que otro cambio habia hecho mientras esperaba. Asi se perdia
+   * la categoria recien creada: el PATCH de las columnas llegaba bien, el de la
+   * celda tambien, y el estado local volvia atras.
+   *
+   * Con el ref, el callback lee la tabla de ahora y escribe sobre esa.
+   */
+  const tablaRef = useRef(table);
+  tablaRef.current = table;
   const [loading, setLoading] = useState(Boolean(tableId));
   const [error, setError] = useState<string | null>(null);
 
@@ -199,6 +170,10 @@ export function DataTableWidget({ config, onConfigChange }: DataTableWidgetProps
    *
    * El resumen va al config porque el readout retraido es una FUNCION PURA sobre
    * el config: con el cuerpo desmontado no hay estado de React al que preguntarle.
+   *
+   * Solo la dimension --filas y columnas--. Antes sumaba las columnas numericas y
+   * contaba las marcadas de la primera de casillas, y las dos cosas quedaron
+   * huerfanas cuando el readout paso a mostrar solo `12 × 3`.
    */
   const parRef = useRef<{ tabla: string; barra: string } | null>(null);
   const resumenRef = useRef('');
@@ -210,8 +185,8 @@ export function DataTableWidget({ config, onConfigChange }: DataTableWidgetProps
 
     const resumen = {
       rows: table.rowCount,
-      sum: sumNumericColumns(table),
-      done: doneCount(table),
+      columns: table.columns.length,
+      updatedAt: table.updatedAt,
     };
     const guardar = (extra: Record<string, unknown>) => {
       const serial = JSON.stringify(resumen);
@@ -259,22 +234,45 @@ export function DataTableWidget({ config, onConfigChange }: DataTableWidgetProps
    */
   const changeCell = useCallback(
     (rowId: string, columnId: string, value: CellValue) => {
-      if (!table) return;
-      const previous = table;
-      setError(null);
-      setTable({
-        ...table,
-        rows: table.rows.map((r) =>
-          r.id === rowId ? { ...r, values: { ...r.values, [columnId]: value } } : r,
-        ),
-      });
-      const row = previous.rows.find((r) => r.id === rowId);
+      /* Del ref y no del closure: ver `tablaRef`. */
+      const t = tablaRef.current;
+      if (!t) return;
+      const row = t.rows.find((r) => r.id === rowId);
       if (!row) return;
+      setError(null);
+      /*
+       * La escritura es FUNCIONAL y no `{ ...t, rows }`.
+       *
+       * Esta celda se puede escribir despues de un await --crear una categoria y
+       * elegirla en la celda-- y para entonces React todavia no repinto: `t` es la
+       * tabla de antes de que se agregara la categoria. Escribiendo el objeto
+       * entero se pisaba ese cambio y la categoria nueva desaparecia de la
+       * pantalla hasta recargar, con el PATCH hecho y bien. Con `v =>` React lo
+       * aplica sobre el estado acumulado, que ya la incluye.
+       */
+      setTable((v) =>
+        v
+          ? {
+              ...v,
+              updatedAt: ahora(),
+              rows: v.rows.map((r) =>
+                r.id === rowId ? { ...r, values: { ...r.values, [columnId]: value } } : r,
+              ),
+            }
+          : v,
+      );
       void tablesApi
-        .updateTableRow(table.id, rowId, { values: { ...row.values, [columnId]: value } })
-        .catch(() => setTable(previous));
+        .updateTableRow(t.id, rowId, { values: { ...row.values, [columnId]: value } })
+        /* El rollback devuelve SOLO la fila que fallo y no la tabla entera: si
+         * mientras tanto se toco el esquema --una categoria nueva, un ancho--,
+         * revertir el objeto entero se llevaria ese cambio tambien. */
+        .catch(() =>
+          setTable((v) =>
+            v ? { ...v, rows: v.rows.map((r) => (r.id === rowId ? row : r)) } : v,
+          ),
+        );
     },
-    [table],
+    [],
   );
 
   const addRow = useCallback(async () => {
@@ -282,7 +280,12 @@ export function DataTableWidget({ config, onConfigChange }: DataTableWidgetProps
     try {
       setError(null);
       const row = await tablesApi.createTableRow(table.id, { values: {} });
-      setTable({ ...table, rows: [...table.rows, row], rowCount: table.rowCount + 1 });
+      setTable({
+        ...table,
+        updatedAt: ahora(),
+        rows: [...table.rows, row],
+        rowCount: table.rowCount + 1,
+      });
     } catch (e) {
       setError(apiErrorMessage(e, 'Could not add the row'));
     }
@@ -306,7 +309,7 @@ export function DataTableWidget({ config, onConfigChange }: DataTableWidgetProps
       if (!table) return;
       const previous = table;
       setError(null);
-      setTable({ ...table, rows: next });
+      setTable({ ...table, updatedAt: ahora(), rows: next });
       try {
         await tablesApi.updateTableRow(table.id, rowId, { position });
       } catch (e) {
@@ -404,10 +407,11 @@ export function DataTableWidget({ config, onConfigChange }: DataTableWidgetProps
           density="compact"
           onCellChange={changeCell}
           onRowAdd={() => void addRow()}
-          onColumnsChange={(next) => void changeColumns(next)}
+          onColumnsChange={changeColumns}
           onColumnWidth={setColumnWidth}
           onRowReorder={(next, rowId, position) => void changeRowOrder(next, rowId, position)}
           hiddenRowCount={Math.max(0, table.rowCount - table.rows.length)}
+          updatedAt={table.updatedAt}
         />
       </div>
     </div>

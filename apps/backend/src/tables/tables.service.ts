@@ -18,6 +18,13 @@ import {
   UpdateTableDto,
   UpdateTableRowDto,
   defaultTableColumns,
+  normalizeDate,
+  isStatusValue,
+  isOptionValue,
+  MAX_OPTION_LENGTH,
+  NUMBER_FORMATS,
+  NumberFormat,
+  STATUS_VALUES,
 } from '@widget-master/shared';
 
 /*
@@ -62,7 +69,7 @@ function normalizeColumns(input: unknown): TableColumnDto[] {
     const c = raw as Partial<TableColumnDto>;
     if (!isColumnType(c.type)) {
       throw new BadRequestException(
-        `Column ${i} has invalid type "${String(c.type)}", expected text, number or checkbox`,
+        `Column ${i} has invalid type "${String(c.type)}", expected ${COLUMN_TYPES.join(', ')}`,
       );
     }
     const name = typeof c.name === 'string' ? c.name.trim() : '';
@@ -93,8 +100,50 @@ function normalizeColumns(input: unknown): TableColumnDto[] {
       typeof c.width === 'number' && Number.isFinite(c.width)
         ? Math.min(Math.max(Math.round(c.width), MIN_COLUMN_WIDTH), MAX_COLUMN_WIDTH)
         : undefined;
-    return { id, name, type: c.type, width };
+    return { id, name, type: c.type, width, ...ajustesDeColumna(c) };
   });
+}
+
+/**
+ * Las opciones de una `select` y el formato de un `number`, ya limpios.
+ *
+ * Se devuelven como un objeto para poder esparcirlo en la columna: asi el
+ * `JSON.stringify` se come lo que no aplica --una `select` sin formato, un `text`
+ * con moneda-- en vez de guardar claves que nadie lee.
+ *
+ * Las opciones se limpian igual que el ancho, y por la misma razon de confianza:
+ * vienen de un editor de texto libre. Se recortan, se les corta el vacio, se
+ * descartan las vacias y se deduplican por `id` --el `id` repetido haria que dos
+ * opciones distintas fueran la misma celda--. El `id` que falta se genera, igual
+ * que el de la columna.
+ */
+function ajustesDeColumna(c: Partial<TableColumnDto>): Partial<TableColumnDto> {
+  if (c.type === 'select') {
+    const vistos = new Set<string>();
+    const opciones = (Array.isArray(c.options) ? c.options : [])
+      .map((o) => ({
+        id: typeof o?.id === 'string' && o.id ? o.id : crypto.randomUUID(),
+        label: typeof o?.label === 'string' ? o.label.trim().slice(0, MAX_OPTION_LENGTH) : '',
+      }))
+      .filter((o) => {
+        if (!o.label || vistos.has(o.id)) return false;
+        vistos.add(o.id);
+        return true;
+      });
+    return { options: opciones };
+  }
+  if (c.type === 'number') {
+    const format =
+      typeof c.format === 'string' && (NUMBER_FORMATS as string[]).includes(c.format)
+        ? (c.format as NumberFormat)
+        : undefined;
+    const currency =
+      typeof c.currency === 'string' && c.currency.trim()
+        ? c.currency.trim().slice(0, MAX_OPTION_LENGTH)
+        : undefined;
+    return { format, currency };
+  }
+  return {};
 }
 
 /**
@@ -122,6 +171,22 @@ function coerceNumber(raw: unknown, columnName: string): number | null {
     return parsed;
   }
   throw new BadRequestException(`Value for "${columnName}" is not a number`);
+}
+
+/**
+ * Una fecha de SOLO dia en el formato guardado, `null` si esta vacia, o falla.
+ *
+ * Misma forma que `coerceNumber`: el vacio es "sin valor" y no un error, porque es
+ * lo que manda el editor de fecha cuando el usuario lo borra. Lo demas tiene que
+ * ser una fecha de verdad --`normalizeDate` acepta el formato en que se muestra y
+ * devuelve el en que se guarda--; guardar "16/10/2026" y que la grilla lo muestre
+ * como texto en una columna de fechas es un valor invalido en el servidor.
+ */
+function coerceDate(raw: unknown, columnName: string): string | null {
+  const iso = normalizeDate(raw);
+  if (iso) return iso;
+  if (typeof raw === 'string' && !raw.trim()) return null;
+  throw new BadRequestException(`Value for "${columnName}" is not a date like 16/10/2026`);
 }
 
 /**
@@ -168,6 +233,45 @@ function normalizeValues(input: unknown, columns: TableColumnDto[]): RowValues {
       out[key] = raw;
       continue;
     }
+    if (column.type === 'date') {
+      out[key] = coerceDate(raw, column.name);
+      continue;
+    }
+    /*
+     * Un status es UNO de los tres estados, y nada mas.
+     *
+     * Igual de estricto que la casilla: guardar un estado que la grilla no sabe
+     * pintar deja la celda en blanco o con un color que no corresponde, y el
+     * usuario no tiene forma de saber que hay algo ahi. Lo que nunca se toco se
+     * guarda como `null` y la grilla lo dibuja como "not started".
+     */
+    if (column.type === 'status') {
+      if (!isStatusValue(raw)) {
+        throw new BadRequestException(
+          `Value for "${column.name}" must be one of ${STATUS_VALUES.join(', ')}`,
+        );
+      }
+      out[key] = raw;
+      continue;
+    }
+    /*
+     * Una `select` guarda el `id` de UNA de sus opciones, y nada mas.
+     *
+     * Es la misma regla que el status y por la misma razon: un valor que la grilla
+     * no sabe dibujar deja la celda en blanco sin que nadie entienda por que. El
+     * `id` y no la `label` es lo que se valida justamente para que renombrar una
+     * opcion no invalide las filas que ya la usan.
+     */
+    if (column.type === 'select') {
+      if (!isOptionValue(column.options, raw)) {
+        const opciones = (column.options ?? []).map((o) => o.label).join(', ');
+        throw new BadRequestException(
+          `Value for "${column.name}" must be one of ${opciones || 'its options (none defined)'}`,
+        );
+      }
+      out[key] = raw;
+      continue;
+    }
     out[key] = column.type === 'number' ? coerceNumber(raw, column.name) : String(raw);
   }
   return out;
@@ -181,24 +285,39 @@ function normalizeValues(input: unknown, columns: TableColumnDto[]): RowValues {
  * ocupando espacio y volviendo si alguien recrea una columna con el mismo id.
  * Se limpia en el servidor y no solo en el cliente, que es donde no se ve.
  *
- * `cambiaTipo` son las columnas cuyo tipo cambio en este PATCH, y es lo unico que
- * toca los valores. Un reorden o un renombrado pasan enteros por aqui y dejan las
- * celdas como estaban.
+ * `cambiaColumna` son las columnas cuyo tipo cambio en este PATCH, y es lo unico
+ * que toca los valores. Un reorden o un renombrado pasan enteros por aqui y dejan
+ * las celdas como estaban.
+ *
+ * `podarOpcion` son las opciones que YA NO EXISTEN en su columna --al borrar una
+ * opcion de una `select`-- con la columna a la que pertenecian. Las celdas que las
+ * usaban se vacian, y no se borra la clave: vacia es "sin valor", que es un
+ * estado que la grilla sabe dibujar, mientras que la clave desaparece seria una
+ * fila a medias sin que nadie lo pidiera.
+ *
+ * Es la unica vez que un cambio de esquema toca celdas sin que cambie el tipo, y
+ * tiene que ser aca y no en el cliente: el `PATCH` de columnas es el unico que
+ * ve TODAS las filas, incluidas las que el cliente tiene paginadas y no conoce.
  */
 function stripOrphanValues(
   row: TableRowDto,
   keep: Set<string>,
-  cambiaTipo: Map<string, ColumnType>,
+  cambiaColumna: Map<string, { antes: TableColumnDto; despues: TableColumnDto }>,
+  podarOpcion: Map<string, Set<string>>,
 ): string {
   const values: RowValues = {};
   for (const [k, v] of Object.entries(row.values)) {
     if (!keep.has(k)) continue;
-    const nuevo = cambiaTipo.get(k);
-    if (nuevo === undefined) {
+    const cambio = cambiaColumna.get(k);
+    if (cambio === undefined) {
+      if (podarOpcion.get(k)?.has(v as string)) {
+        values[k] = null;
+        continue;
+      }
       values[k] = v;
       continue;
     }
-    const convertido = coerceValue(nuevo, v);
+    const convertido = coerceValue(cambio.antes, cambio.despues, v);
     // `undefined` es "este valor no se puede guardar en una columna de este
     // tipo": la clave no se escribe, en vez de quedar con un valor invalido.
     if (convertido !== undefined) values[k] = convertido;
@@ -223,13 +342,31 @@ function stripOrphanValues(
  * `true`/`false`, porque "algo truthy" no es un estado de una casilla. Todo lo
  * demas se descarta, y el cliente lo cuenta antes de aplicar el cambio.
  *
+ * Recibe la columna de ANTES y la de DESPUES porque hay una conversion que
+ * necesita las dos: al pasar de `select` a `text` no se puede guardar el `id` de
+ * la opcion, porque es un identificador de 36 caracteres que no le dice nada a
+ * nadie. Se guarda la etiqueta, que es lo que el usuario estaba viendo.
+ *
  * Devuelve `undefined` para "no hay valor guardable", que es distinto de `null`,
  * que es "vacio a proposito".
  */
-function coerceValue(type: ColumnType, value: CellValue): CellValue | undefined {
+function coerceValue(
+  antes: TableColumnDto | undefined,
+  column: TableColumnDto,
+  value: CellValue,
+): CellValue | undefined {
   if (value === null || value === undefined) return null;
-  if (type === 'text') return typeof value === 'string' ? value : String(value);
+  const { type } = column;
+  if (type === 'text') {
+    if (antes?.type === 'select' && typeof value === 'string') {
+      return antes.options?.find((o) => o.id === value)?.label ?? null;
+    }
+    return typeof value === 'string' ? value : String(value);
+  }
   if (type === 'checkbox') return typeof value === 'boolean' ? value : undefined;
+  if (type === 'date') return normalizeDate(value) ?? undefined;
+  if (type === 'status') return isStatusValue(value) ? value : undefined;
+  if (type === 'select') return isOptionValue(column.options, value) ? value : undefined;
   if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
   const trimmed = String(value).trim();
   if (!trimmed) return null;
@@ -404,10 +541,25 @@ export class TablesService {
        * todas. Reordenar o renombrar tambien pasa por aca, y si normalizara todo
        * cada vez, un simple arrastre de columna reescribiria las 500 filas.
        */
-      const previos = new Map(toColumns(table).map((c) => [c.id, c.type]));
-      const cambiaTipo = new Map(
-        columns.filter((c) => previos.has(c.id) && previos.get(c.id) !== c.type).map((c) => [c.id, c.type]),
+      const previos = new Map(toColumns(table).map((c) => [c.id, c]));
+      const cambiaColumna = new Map(
+        columns
+          .filter((c) => previos.has(c.id) && previos.get(c.id)!.type !== c.type)
+          .map((c) => [c.id, { antes: previos.get(c.id)!, despues: c }]),
       );
+      /*
+       * Las opciones que desaparecieron, por columna. Solo cuenta cuando la
+       * columna YA era `select` y lo sigue siendo: si el tipo acaba de cambiar, lo
+       * que vale es `cambiaColumna`, que ya descarta lo que no es una opcion.
+       */
+      const podarOpcion = new Map<string, Set<string>>();
+      for (const c of columns) {
+        const prev = previos.get(c.id);
+        if (!prev || prev.type !== 'select' || c.type !== 'select') continue;
+        const vivas = new Set((c.options ?? []).map((o) => o.id));
+        const muertas = (prev.options ?? []).filter((o) => !vivas.has(o.id)).map((o) => o.id);
+        if (muertas.length) podarOpcion.set(c.id, new Set(muertas));
+      }
       await this.prisma.$transaction([
         this.prisma.dataTable.update({
           where: { id },
@@ -416,7 +568,7 @@ export class TablesService {
         ...rows.map((row) =>
           this.prisma.dataRow.update({
             where: { id: row.id },
-            data: { values: stripOrphanValues(toRowDto(row), keep, cambiaTipo) },
+            data: { values: stripOrphanValues(toRowDto(row), keep, cambiaColumna, podarOpcion) },
           }),
         ),
       ]);

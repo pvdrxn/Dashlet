@@ -145,6 +145,36 @@
   --color-p3: #e2703f;
 
   /*
+   * p2 OSCURA: el mismo ambar, un paso mas abajo de claridad.
+   *
+   * El tono no se mueve --39 grados, el de `p2`-- y lo que cambia es la
+   * claridad. Lo importante es que al bajar la claridad de un color saturado el
+   * CROMA SUBE, no baja: este queda en 73% contra el 67% de `p2`, o sea que es un
+   * ambar mas puro, un bronce, y no una mezcla apagada.
+   *
+   * Eso es exactamente lo que estaba mal en el intento anterior, que bajo el
+   * brillo a la vez que el croma --#a5854a, S 38%--: un color calido sin
+   * saturacion sobre un fondo gris neutro no se lee como "terminado", se lee como
+   * barro, y ademas su 5.07:1 caia justo por encima de `gray-500`, que aca es el
+   * placeholder, y texto de placeholder es como la gente lee "desactivado".
+   *
+   * Medido contra las dos superficies reales (widget #191919, vista #121212):
+   *
+   *   p2         7.82:1   8.33:1   H 39  S 67%  L 55%
+   *   p2-oscura  5.26:1   5.60:1   H 40  S 73%  L 42%
+   *
+   * 5.26 esta dos puntos por encima de gray-400 y cuatro por encima del
+   * placeholder, asi que sigue siendo texto y no se confunde con un control
+   * apagado; y el salto de claridad contra `p2` --55 contra 42-- es del mismo
+   * orden que el que la tabla ya usa entre sus niveles de texto.
+   *
+   * La escala completa del mismo tono, por si hay que moverla: #c9922f 6.39:1,
+   * #c08a25 5.78:1, este #b7831d 5.26:1, #ad7b18 4.71:1 y #a37212 4.16:1, que ya
+   * queda bajo AA.
+   */
+  --color-p2-oscura: #b7831d;
+
+  /*
    * Destructivo: solo hover de acciones que borran y estados de error.
    * En reposo los botones van en gris, para que p3 sea lo unico que
    * significa urgencia y el rojo no compita con el.

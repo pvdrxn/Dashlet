@@ -299,9 +299,16 @@ export const WIDGET_TYPES: WidgetType[] = [
  * version liviana, sin filas, para el selector de tablas.
  */
 
-export type ColumnType = 'text' | 'number' | 'checkbox';
+export type ColumnType = 'text' | 'number' | 'checkbox' | 'date' | 'status' | 'select';
 
-export const COLUMN_TYPES: ColumnType[] = ['text', 'number', 'checkbox'];
+export const COLUMN_TYPES: ColumnType[] = [
+  'text',
+  'number',
+  'checkbox',
+  'date',
+  'status',
+  'select',
+];
 
 /**
  * Como se llama cada tipo en la interfaz.
@@ -316,10 +323,152 @@ export const COLUMN_TYPE_LABELS: Record<ColumnType, string> = {
   text: 'Text',
   number: 'Number',
   checkbox: 'Checkbox',
+  date: 'Date',
+  status: 'Status',
+  select: 'Select',
 };
+
+/**
+ * Una opcion de una columna `select`.
+ *
+ * El `id` es lo que se guarda en la celda y la `label` es lo que se ve. Es la
+ * misma separacion que hay entre el nombre y el `id` de una columna, y va en el
+ * mismo lugar por el mismo motivo: con la etiqueta sola, renombrar una opcion
+ * dejaria las celdas que la usaban apuntando a un texto que ya no existe, y
+ * borrarla dejaria filas con un valor que no se puede volver a elegir.
+ *
+ * Con el `id` el renombrado no toca NINGUN valor --solo cambia lo que se ve-- y el
+ * borrado es el unico caso que limpia celdas, y lo limpia el servidor en la misma
+ * transaccion que escribe el esquema.
+ */
+export interface ColumnOption {
+  id: string;
+  label: string;
+}
+
+/** Opcion nueva con `id` propio: el que se guarda en las celdas. */
+export function newColumnOption(label: string): ColumnOption {
+  return { id: crypto.randomUUID(), label };
+}
+
+/**
+ * Como se muestra un numero, segun la columna.
+ *
+ * `plain` es lo que se vena haciendo siempre --el numero tal cual-- y sigue siendo
+ * el default: una columna sin `format` no cambia ni un pixel de lo que ya se
+ * veia. Los otros dos son los que se piden al configurar la columna.
+ */
+export type NumberFormat = 'plain' | 'currency' | 'percent';
+
+export const NUMBER_FORMATS: NumberFormat[] = ['plain', 'currency', 'percent'];
+
+/** Simbolo de la moneda cuando no se aclara. */
+export const DEFAULT_CURRENCY = '$';
+
+/**
+ * Los tres estados de una columna `status`.
+ *
+ * El orden NO es el alfabetico sino el del avance: sin empezar, en curso, terminado.
+ * Es el orden en que se arma el menu, para que el ojo baje de lo que hay que
+ * mirar a lo que ya no importa.
+ *
+ * Fijo, no configurable por columna. Un set editable por columna --"en revision",
+ * "bloqueado", "cancelado"-- es otra feature, con su schema y su editor; aca son
+ * tres y son los tres que el color puede distinguir de verdad.
+ */
+export const STATUS_VALUES = ['not_started', 'in_progress', 'completed'] as const;
+
+export type StatusValue = (typeof STATUS_VALUES)[number];
+
+export const STATUS_LABELS: Record<StatusValue, string> = {
+  not_started: 'Not started',
+  in_progress: 'In progress',
+  completed: 'Completed',
+};
+
+/**
+ * Si el valor es uno de los tres estados.
+ *
+ * Vive aca porque lo necesitan los mismos dos lados que los tipos: la grilla lo
+ * usa para no dibujar un estado que no existe y el servidor para rechazar con un
+ * 400 lo que no es un estado. Con dos listas distintas, una fila puede quedar
+ * guardada con un valor que la grilla no sabe pintar.
+ */
+export function isStatusValue(value: unknown): value is StatusValue {
+  return typeof value === 'string' && (STATUS_VALUES as readonly string[]).includes(value);
+}
+
+/**
+ * Si el valor es el `id` de una de las opciones de una columna `select`.
+ *
+ * Mismo criterio que `isStatusValue` y por el mismo motivo: la grilla y el
+ * servidor tienen que aceptar exactamente lo mismo, o el cliente deja pasar un
+ * valor que el servidor tira con un 400.
+ */
+export function isOptionValue(
+  options: readonly ColumnOption[] | undefined,
+  value: unknown,
+): value is string {
+  return typeof value === 'string' && !!options?.some((o) => o.id === value);
+}
+
+/**
+ * Si el valor es una FECHA de solo dia en ISO: `AAAA-MM-DD`.
+ *
+ * Sin hora y sin zona a proposito. `AAAA-MM-DDTHH:mm:ssZ` es otra cosa --un
+ * instante-- y meterlo en una columna de fechas mezcla dos preguntas: que dia es,
+ * y a que hora. Aparte, un instante guardado como texto ordena mal contra otro
+ * con la misma fecha en otra zona, y una fecha de solo dia ordena bien siempre.
+ *
+ * El formato es el que ordena por orden alfabetico, que es como se guarda, y el
+ * que se puede comparar sin interpretarlo. Lo que se MUESTRA es otra cosa --ver
+ * `formatDate` en la tabla--: guardar y mostrar no tienen por que ser lo mismo.
+ *
+ * El round-trip en UTC es lo que descarta las fechas que no existen: el parser de
+ * ISO acepta `2026-02-30` y la convierte en el 2 de marzo, asi que sin comparar
+ * con lo que se volvia a escribir, un 30 de febrero pasaria como fecha.
+ */
+export function isIsoDate(value: unknown): boolean {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const fecha = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(fecha.getTime()) && fecha.toISOString().slice(0, 10) === value;
+}
+
+/**
+ * Lee una fecha este donde venga y la devuelve en el formato guardado, o `null`.
+ *
+ * Acepta las dos formas que se escriben: `AAAA-MM-DD` --como esta guardado-- y
+ * `DD/MM/AAAA`, que es como se muestra y como se tipea. La segunda entra porque
+ * si no, una columna de texto con las fechas escritas como las ve el usuario
+ * perderia todo al pasarla a `date`, y el cartel de confirmar diria la verdad
+ * tecnica --"no son fechas"-- sobre algo que el usuario escribe como fecha todos
+ * los dias.
+ *
+ * Vive en `shared` y no duplicada en cliente y servidor: los dos tienen que
+ * aceptar exactamente lo mismo, o el cliente deja pasar un valor que el servidor
+ * tira con un 400.
+ */
+export function normalizeDate(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const t = value.trim();
+  if (isIsoDate(t)) return t;
+  const m = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/.exec(t);
+  if (!m) return null;
+  const iso = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  return isIsoDate(iso) ? iso : null;
+}
 
 /** Alto maximo del nombre de una columna. */
 export const MAX_COLUMN_NAME_LENGTH = 40;
+
+/**
+ * Alto maximo de la etiqueta de una opcion.
+ *
+ * Va en el mismo lugar y por el mismo motivo que el del nombre: es texto que se
+ * dibuja en un menu angosto, y una etiqueta de 300 caracteres empuja el panel
+ * entero fuera de la pantalla.
+ */
+export const MAX_OPTION_LENGTH = 40;
 
 /**
  * Piso y techo del ancho de una columna, en px.
@@ -367,6 +516,19 @@ export interface TableColumnDto {
    * cambiaria todos los anchos.
    */
   width?: number;
+  /** Las opciones de una columna `select`. Solo tiene sentido en esa. */
+  options?: ColumnOption[];
+  /**
+   * Como se muestran los numeros de una columna `number`.
+   *
+   * Es solo presentacion: el valor guardado es el numero pelado, y el editor de la
+   * celda muestra el numero pelado tambien. Por eso una columna con `currency`
+   * acepta lo que siempre acepto --`Number()`-- y no hay que aprender a escribir
+   * "$1.200,50" para poder editarla.
+   */
+  format?: NumberFormat;
+  /** Simbolo de la moneda, cuando `format` es `currency`. */
+  currency?: string;
 }
 
 export interface TableRowDto {
@@ -456,6 +618,25 @@ export function defaultTableColumns(): TableColumnDto[] {
 
 /** Columna nueva suelta, para el boton "+" de la grilla. */
 export function newTableColumn(type: ColumnType = 'text'): TableColumnDto {
-  const name = type === 'number' ? 'Value' : type === 'checkbox' ? 'Done' : 'Name';
+  const name =
+    type === 'number'
+      ? 'Value'
+      : type === 'checkbox'
+        ? 'Done'
+        : type === 'date'
+          ? 'Date'
+          : type === 'status'
+            ? 'Status'
+            : type === 'select'
+              ? 'Select'
+              : 'Name';
+  /*
+   * Una `select` nace SIN opciones, a diferencia de `Name` y `Value`.
+   *
+   * Sembrar "Option 1" y "Option 2" dejaba la columna con dos categorias que
+   * nadie pidio y que hay que borrar antes de usar; las de verdad se escriben en
+   * el menu de la celda, que es donde uno las necesita. Sin opciones la celda se
+   * ve vacia y el menu ofrece crear una: se puede usar desde el primer segundo.
+   */
   return { id: crypto.randomUUID(), name, type };
 }
