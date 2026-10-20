@@ -28,16 +28,19 @@ import {
   STATUS_VALUES,
   newColumnOption,
   newTableColumn,
+  tagColorHex,
   isIsoDate,
   isOptionValue,
   isStatusValue,
   normalizeDate,
   type CellValue,
+  type ColumnOption,
   type ColumnType,
   type NumberFormat,
   type StatusValue,
   type TableColumnDto,
   type TableRowDto,
+  type TagColorId,
 } from '@widget-master/shared';
 
 /*
@@ -295,10 +298,10 @@ function formatNumberValue(value: CellValue, column: TableColumnDto): string {
   return String(value);
 }
 
-/** La etiqueta de la opcion elegida, o `null` si el valor no es ninguna. */
-function opcionDe(column: TableColumnDto, value: CellValue): string | null {
+/** La opcion elegida -- con su color -- o `null` si el valor no es ninguna. */
+function opcionDe(column: TableColumnDto, value: CellValue): ColumnOption | null {
   if (typeof value !== 'string') return null;
-  return column.options?.find((o) => o.id === value)?.label ?? null;
+  return column.options?.find((o) => o.id === value) ?? null;
 }
 
 /** Como se muestra un valor guardado. El vacio es cadena vacia, nunca "null". */
@@ -306,7 +309,7 @@ function display(value: CellValue, column: TableColumnDto): string {
   if (value === null || value === undefined) return '';
   if (column.type === 'date') return formatDate(String(value));
   if (column.type === 'number') return formatNumberValue(value, column);
-  if (column.type === 'select') return opcionDe(column, value) ?? '';
+  if (column.type === 'select') return opcionDe(column, value)?.label ?? '';
   /*
    * Un status sin tocar NO se muestra: la celda dibuja su propio estado por
    * defecto. Devolver la etiqueta aca haria que `filledRows` --el numero que
@@ -475,7 +478,7 @@ const OPCIONES_MAX_FILAS = 8;
 interface OptionMenuProps {
   ancla: React.RefObject<HTMLElement | null>;
   /** Lo que se ve, en el orden en que se ofrece. */
-  opciones: { id: string; etiqueta: string }[];
+  opciones: { id: string; etiqueta: string; color?: TagColorId | null }[];
   /** `null` es "vacio", que tambien es un estado y se puede volver a elegir. */
   valor: string | null;
   /**
@@ -570,7 +573,12 @@ function OptionMenu({
    * por tener un buscador-- pasa a ser un cuadro con una lista y un input.
    */
   const conCreate = onCreate !== undefined;
-  const linea = (id: string | null, etiqueta: string, elegida: boolean) => {
+  const linea = (
+    id: string | null,
+    etiqueta: string,
+    elegida: boolean,
+    color?: TagColorId | null,
+  ) => {
     const boton = (
       <button
         /* La `key` va en el boton tambien: cuando no hay papelera el boton ES el
@@ -587,7 +595,17 @@ function OptionMenu({
         }`}
       >
         {elegida ? <FiCheck size={12} /> : <span className="size-3" />}
-        <span className="truncate">{etiqueta}</span>
+        {/*
+         * El color va en el TEXTO, igual que en la celda: es lo que hace que la
+         * categoria se reconozca en el menu sin tener que leerla, y no compite con
+         * el tilde ni con la papelera.
+         */}
+        <span
+          className="truncate"
+          style={color ? { color: tagColorHex(color) ?? undefined } : undefined}
+        >
+          {etiqueta}
+        </span>
       </button>
     );
     /*
@@ -634,7 +652,7 @@ function OptionMenu({
        * columna recien nace. En el `status` no existe, y por eso es opcional.
        */}
       {vacio !== undefined && linea(null, vacio, valor === null)}
-      {opciones.map((o) => linea(o.id, o.etiqueta, o.id === valor))}
+      {opciones.map((o) => linea(o.id, o.etiqueta, o.id === valor, o.color))}
       {/*
        * El campo para crear va ABAJO, con las categorias que ya existen arriba:
        * elegir es lo que se hace casi siempre, y escribir una nueva es el caso que
@@ -716,6 +734,19 @@ function AjustesPanel({ column, onChange, onClose }: AjustesPanelProps) {
           <div className="max-h-48 overflow-y-auto">
             {opciones.map((o, i) => (
               <div key={o.id} className="mb-0.5 flex items-center gap-1">
+                {/*
+                 * La muestra del color va aca y no solo en la celda: es el unico
+                 * lugar donde se ven TODAS las categorias de la columna juntas, y
+                 * es donde se nota si dos quedaron iguales. La que no tiene color
+                 * se dibuja hueca y lo dice en el `title`, que es el estado de una
+                 * creada cuando la paleta ya estaba tomada.
+                 */}
+                <span
+                  aria-hidden="true"
+                  title={o.color ? undefined : 'No color left in the palette'}
+                  className={`size-2 shrink-0 rounded-full ${o.color ? '' : 'border border-gray-600'}`}
+                  style={o.color ? { backgroundColor: tagColorHex(o.color) ?? undefined } : undefined}
+                />
                 <input
                   /* `defaultValue` y no `value`: el input es uncontrolled a proposito.
                      Si fuera controlado, cada tecla reborraria el campo mientras se
@@ -728,6 +759,16 @@ function AjustesPanel({ column, onChange, onClose }: AjustesPanelProps) {
                   onBlur={(e) => {
                     const label = e.currentTarget.value.trim();
                     if (!label || label === o.label) return;
+                    // Evitar duplicados: si ya existe otra opcion con ese nombre (case-insensitive),
+                    // no aplicar el cambio y restaurar el original
+                    const duplicada = opciones.some(
+                      (x) => x.id !== o.id && x.label.toLowerCase() === label.toLowerCase()
+                    );
+                    if (duplicada) {
+                      // Forzar re-render con el valor original
+                      e.currentTarget.value = o.label;
+                      return;
+                    }
                     onChange({
                       options: opciones.map((x) => (x.id === o.id ? { ...x, label } : x)),
                     });
@@ -762,7 +803,9 @@ function AjustesPanel({ column, onChange, onClose }: AjustesPanelProps) {
               const usados = new Set(opciones.map((o) => o.label));
               let n = opciones.length + 1;
               while (usados.has(`Option ${n}`)) n += 1;
-              onChange({ options: [...opciones, newColumnOption(`Option ${n}`)] });
+              onChange({
+                options: [...opciones, newColumnOption(`Option ${n}`, opciones)],
+              });
             }}
             className="mt-1 flex items-center gap-1 rounded px-1 py-0.5 text-xs text-gray-300 transition-colors hover:bg-white/5"
           >
@@ -2234,13 +2277,24 @@ export function TableGrid({
    * "no se pudo guardar la celda" --sin relacion con la categoria que acaba de
    * escribir--.
    *
+   * Si ya existe una opcion con ese nombre (case-insensitive), devuelve el `id` de
+   * la existente en vez de crear una duplicada: asi el usuario no puede tener dos
+   * categorias con el mismo nombre.
+   *
    * Devuelve `null` si no hay nada que crear: el texto en blanco no crea nada.
    */
   const createOption = async (columnId: string, label: string): Promise<string | null> => {
     const nombre = label.trim().slice(0, MAX_OPTION_LENGTH);
     const column = columns.find((c) => c.id === columnId);
     if (!nombre || !column || column.type !== 'select') return null;
-    const opcion = newColumnOption(nombre);
+    const existentes = columns.find((c) => c.id === columnId)?.options ?? [];
+    // Buscar si ya existe una opcion con ese nombre (case-insensitive)
+    const existente = existentes.find((o) => o.label.toLowerCase() === nombre.toLowerCase());
+    if (existente) {
+      // Ya existe: devolver su id sin crear nada nuevo
+      return existente.id;
+    }
+    const opcion = newColumnOption(nombre, existentes);
     await onColumnsChange(
       columns.map((c) =>
         c.id === columnId ? { ...c, options: [...(c.options ?? []), opcion] } : c,
@@ -4124,7 +4178,7 @@ const RowCells = memo(function RowCells({
                   aria-expanded={menuAbierto}
                   aria-label={
                     opcion
-                      ? `${c.name}, row ${rowIndex + 1}, ${opcion}`
+                      ? `${c.name}, row ${rowIndex + 1}, ${opcion.label}`
                       : `${c.name}, row ${rowIndex + 1}, empty`
                   }
                   className={`flex min-h-6 w-full min-w-[3rem] cursor-pointer items-center gap-1.5 truncate whitespace-nowrap transition-colors hover:bg-white/[0.04] ${
@@ -4132,13 +4186,34 @@ const RowCells = memo(function RowCells({
                   }`}
                 >
                   {!opcion && <span className="size-3 shrink-0" aria-hidden="true" />}
-                  {opcion ?? '—'}
+                  {/*
+                   * El color va en el TEXTO de la etiqueta y no en el fondo de la
+                   * celda, que es lo que ya hace la columna de `status`: con relleno
+                   * la columna era una tira de manchas y el hover de la fila quedaba
+                   * tapado. Y va en la paleta fria de `TAG_COLORS`, que es la que
+                   * esta reservada para categorias -- el ambar y el naranja ya
+                   * significan estados, y una categoria pintada de ambar mentiria.
+                   */}
+                  {opcion && (
+                    <span
+                      style={
+                        opcion.color ? { color: tagColorHex(opcion.color) ?? undefined } : undefined
+                      }
+                    >
+                      {opcion.label}
+                    </span>
+                  )}
+                  {!opcion && '—'}
                 </button>
                 {menuAbierto && (
                   <OptionMenu
                     ancla={statusRef}
                     titulo={c.name}
-                    opciones={(c.options ?? []).map((o) => ({ id: o.id, etiqueta: o.label }))}
+                    opciones={(c.options ?? []).map((o) => ({
+                      id: o.id,
+                      etiqueta: o.label,
+                      color: o.color ?? null,
+                    }))}
                     valor={typeof raw === 'string' ? raw : null}
                     vacio="Empty"
                     onPick={(v) => onPickOption(row, c, v)}

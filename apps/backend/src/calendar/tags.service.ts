@@ -6,7 +6,7 @@ import {
   TagDto,
   TagColorId,
   isTagColorId,
-  nextTagColorId,
+  nextFreeTagColorId,
   normalizeTagName,
   tagKey,
 } from '@widget-master/shared';
@@ -19,10 +19,14 @@ function toTagDto(tag: Record<string, unknown>, eventCount: number): TagDto {
     id: tag.id as string,
     userId: tag.userId as string,
     name: tag.name as string,
-    // Un color guardado que ya no esta en la paleta cae al primero: la paleta
-    // puede achicarse en una version futura y una etiqueta vieja no puede
-    // quedar sin pintar.
-    color: isTagColorId(color) ? (color as TagColorId) : 'blue',
+    /*
+     * Un color guardado que ya no esta en la paleta cae al primero: la paleta
+     * puede achicarse en una version futura y una etiqueta vieja no puede quedar
+     * sin pintar. En cambio `''` es "sin color" y se manda como `null`: es el
+     * estado legitimo de una etiqueta creada cuando la paleta ya estaba tomada, y
+     * no un dato raro que haya que rescatar.
+     */
+    color: !isTagColorId(color) ? (color === '' ? null : 'blue') : (color as TagColorId),
     eventCount,
     createdAt: new Date(tag.createdAt as string).toISOString(),
     updatedAt: new Date(tag.updatedAt as string).toISOString(),
@@ -86,16 +90,25 @@ export class TagsService {
       return toTagDto(existing, await this.countEvents(userId, existing.id));
     }
 
-    const total = await this.prisma.tag.count({ where: { userId } });
+    /*
+     * Los colores YA USADOS y no el conteo: con el conteo, borrar una etiqueta y
+     * crear otra nueva le daba a la nueva el color de una que ya existia. Asi,
+     * mientras quede uno libre en la paleta, ninguna comparte.
+     */
+    const usados = (
+      await this.prisma.tag.findMany({ where: { userId }, select: { color: true } })
+    )
+      .map((t) => t.color)
+      .filter((c): c is TagColorId => isTagColorId(c));
     /*
      * Un color que viene pero no esta en la paleta es un ERROR, no una razon
      * para asignar otro. Si el usuario eligio un color y le guardamos uno
      * distinto, la etiqueta queda de un color que nunca eligio y no hay forma de
      * saber cual pidio. La paleta solo se aplica sola cuando NO vino ninguno.
      */
-    let color: TagColorId;
+    let color: TagColorId | '' = '';
     if (dto.color === undefined) {
-      color = nextTagColorId(total);
+      color = nextFreeTagColorId(usados);
     } else if (isTagColorId(dto.color)) {
       color = dto.color;
     } else {

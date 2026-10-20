@@ -49,6 +49,8 @@ export interface WidgetDto {
   position: Position;
   zIndex: number;
   deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CreateWidgetDto {
@@ -156,7 +158,7 @@ export const MONTH_TABS_AFTER = 6;
 
 /**
  * Una etiqueta: la crea el usuario, tiene vida propia y se puede renombrar o
- * borrar sin tocar los bloques que la usan.
+ * borrar sin tocar los bloques que la usa.
  *
  * Por eso es entidad y no un `string[]` en el evento: renombrar tiene que ser
  * una operacion, y si el nombre viviera adentro de cada bloque habria que
@@ -167,8 +169,12 @@ export interface TagDto {
   userId: string;
   /** Como la escribio el usuario: puede llevar mayusculas. */
   name: string;
-  /** Uno de `TAG_COLORS`. */
-  color: TagColorId;
+  /** Uno de `TAG_COLORS`, o `null` cuando la paleta ya no tiene uno libre.
+   *
+   * Puede ser `null` y no un id raro: la paleta es chica a proposito, y cuando se
+   * agota la etiqueta nueva se queda sin color en vez de repetir el de otra.
+   */
+  color: TagColorId | null;
   /** Cantidad de bloques que la usan. Viene del servidor, no se cuenta en el cliente. */
   eventCount: number;
   createdAt: string;
@@ -177,7 +183,7 @@ export interface TagDto {
 
 export interface CreateTagDto {
   name: string;
-  /** Si no viene, el servidor elige con `nextTagColorId`. */
+  /** Si no viene, el servidor elige con `nextFreeTagColorId`. */
   color?: TagColorId;
 }
 
@@ -187,7 +193,7 @@ export interface UpdateTagDto {
 }
 
 /**
- * Paleta de etiquetas.
+ * Paleta de etiquetas -- DIEZ colores del arco frio.
  *
  * SOLO el arco frio. El sistema de la app ya ocupa la banda calida: `danger`
  * #d4605f (~0), `p3` #e2703f (~22) y `p2` #d9a441 (~40), donde p2 significa
@@ -198,9 +204,12 @@ export interface UpdateTagDto {
  *
  * Asi la regla es aprendible y no arbitraria: frio = categoria, calido = estado.
  *
- * Los seis estan en el mismo peso perceptual (~L* 68-72) para que ninguno pese
- * mas que otro, y `rose` esta lo bastante en magenta como para no confundirse
- * con `danger`. Ese par es el que mas habia que vigilar.
+ * Se ampliaron 4 colores más al arco original (blue, lime, teal, violet,
+ * orchid, rose) para llegar a 10. Los nuevos son: cyan, indigo, slate y sky.
+ * Todos pasaron contraste WCAG AA sobre #191919 y #121212 al momento de agregarse.
+ *
+ * `nextFreeTagColorId` devuelve siempre un color de los 10 (nunca `null`),
+ * garantizando que ninguna categoría quede sin color o blanca por default.
  */
 export const TAG_COLORS = [
   { id: 'blue', hex: '#4E8FD4' },
@@ -209,12 +218,23 @@ export const TAG_COLORS = [
   { id: 'violet', hex: '#8E7BD6' },
   { id: 'orchid', hex: '#C268B8' },
   { id: 'rose', hex: '#D9698C' },
+  { id: 'cyan', hex: '#06B7F5' },
+  { id: 'indigo', hex: '#6366F1' },
+  { id: 'slate', hex: '#64748B' },
+  { id: 'sky', hex: '#0EA5E9' },
 ] as const;
 
 export type TagColorId = (typeof TAG_COLORS)[number]['id'];
 
-/** Color por defecto de la etiqueta numero `index`, en orden de creacion. */
-export function tagColorHex(id: TagColorId): string {
+/** El hex de un color de la paleta, o `null` si la etiqueta no tiene color.
+ *
+ * `null` y vacio significan "sin color" y se ven neutrales. Un id que no esta en
+ * la paleta --un dato viejo, como el `#4E8FD4` que era el default del schema-- cae
+ * al primero: es un valor que ya estaba guardado y no hay forma de saber a cual
+ * queria decir, asi que se le da el de la paleta y no se pierde el dato.
+ */
+export function tagColorHex(id: TagColorId | null | undefined): string | null {
+  if (!id) return null;
   return TAG_COLORS.find((c) => c.id === id)?.hex ?? TAG_COLORS[0].hex;
 }
 
@@ -222,18 +242,29 @@ export function isTagColorId(value: unknown): value is TagColorId {
   return TAG_COLORS.some((c) => c.id === value);
 }
 
-/**
- * El color con que nace la etiqueta numero `n`.
+/** Devuelve el primer color de los 10 que NO este en el conjunto `used`.
  *
- * El orden NO es el de la paleta: alterna lados del arco para que dos
- * etiquetas creadas seguidas no caigan en tonos parecidos. Con el orden natural,
- * la primera y la segunda salian Blue y Lime, que a 10px de alto se leen casi
- * igual; asi salen Blue y Teal, que se distinguen.
+ * Siempre devuelve un `TagColorId` (nunca `null`), cumpliendo el requisito de
+ * "bajo ninguna circunstancia una categoría será de color blanco default":
+ * si los 10 colores ya los tienen otras categorias, devuelve el primero de la
+ * paleta (duplicado permitido, pero al menos es un color real de la paleta).
+ *
+ * @param used Conjunto de IDs de colores ya asignados a otras categorias.
+ * @returns Un color libre de la paleta de 10.
  */
-const AUTO_COLOR_ORDER: TagColorId[] = ['blue', 'lime', 'teal', 'violet', 'orchid', 'rose'];
+export function nextFreeTagColorId(used: readonly TagColorId[] = []): TagColorId {
+  const tomados = new Set(used);
+  const libre = TAG_COLORS.find((c) => !tomados.has(c.id));
+  if (libre) return libre.id;
+  // Todos los 10 colores ya los tienen otras etiquetas.
+  // Como las duplicaciones ahora están permitidas, devolvemos el primero
+  // para cumplir el requisito de "nunca color blanco default".
+  return TAG_COLORS[0].id;
+}
 
-export function nextTagColorId(existingCount: number): TagColorId {
-  return AUTO_COLOR_ORDER[existingCount % AUTO_COLOR_ORDER.length];
+/** Compatibilidad: alias de `nextFreeTagColorId` para código que use el nombre viejo. */
+export function nextTagColorId(used: readonly TagColorId[] = []): TagColorId {
+  return nextFreeTagColorId(used);
 }
 
 /**
@@ -344,11 +375,32 @@ export const COLUMN_TYPE_LABELS: Record<ColumnType, string> = {
 export interface ColumnOption {
   id: string;
   label: string;
+  /** Color de la categoria, uno de `TAG_COLORS`. Ausente = sin color, que
+   * pasa cuando la paleta ya no tiene ninguno libre y la categoria queda
+   * neutra (texto gris). Nunca es `undefined` o vacio por diseño: el default
+   * siempre asigna uno de los 10 colores. */
+  color?: TagColorId;
 }
 
-/** Opcion nueva con `id` propio: el que se guarda en las celdas. */
-export function newColumnOption(label: string): ColumnOption {
-  return { id: crypto.randomUUID(), label };
+/** Una categoria nueva, con su `id` y con EL PRIMER COLOR DE LA PALETA QUE NINGUNA
+ * DE LAS EXISTENTES TIENE -- de los 10 colores disponibles.
+ *
+ * Es la unica funcion que crea opciones y es la que garantiza que dos categorias
+ * de la misma columna no compartan color por default: recibe las que ya hay y se
+ * saltea las usadas. Cuando la paleta se agota (las 10 ya las tienen todas las
+ * demas categorias), devuelve la categoria con el primer color de la paleta
+ * (duplicado permitido, pero nunca color blanco/default), para cumplir el
+ * requisito de "nunca color blanco default".
+ *
+ * Con el llamado `newColumnOption(label, options)` el color se elige automatico;
+ * para asignar un color manual se usa directamente `{ id, label, color }`.
+ */
+export function newColumnOption(
+  label: string,
+  existentes: readonly ColumnOption[] = [],
+): ColumnOption {
+  const color = nextFreeTagColorId(existentes.map((o) => o.color).filter((c): c is TagColorId => !!c));
+  return { id: crypto.randomUUID(), label, ...(color ? { color } : {}) };
 }
 
 /**

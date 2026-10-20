@@ -119,8 +119,15 @@ model Tag {
   user      User     @relation(fields: [userId], references: [id])
   name      String
   nameLower String
-  /// Hex de `TAG_COLORS` (packages/shared). Texto y no enum porque la paleta
-  /// vive en el frontend y agregar un tono no debe ser una migracion.
+  /// El `id` de `TAG_COLORS` (packages/shared), o `''` cuando la paleta ya no
+  /// tenia uno libre. Texto y no enum porque la paleta vive en el frontend y
+  /// agregar un tono no debe ser una migracion.
+  ///
+  /// `''` y no `null`: la columna es NOT NULL y hacerla nullable pide una
+  /// migracion, y con la base en `db push` una migracion aca significa resetearla.
+  /// `''` se lee como "sin color" en `tagColorHex` y el DTO lo normaliza a `null`,
+  /// asi que ninguna vista tiene que saber del truco. El default queda como estaba
+  /// para no mover el DDL de la tabla.
   color     String   @default("#4E8FD4")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

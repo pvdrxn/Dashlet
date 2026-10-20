@@ -79,7 +79,7 @@ export function TagFilterChips({ tags, activeIds, onToggle, onClear }: TagFilter
             <span
               aria-hidden="true"
               className={`rounded-full ${active ? 'h-1.5 w-1.5' : 'h-2 w-2'}`}
-              style={{ backgroundColor: hex }}
+              style={{ backgroundColor: hex ?? 'var(--color-gray-600)' }}
             />
             {/*
              * PLEGADO: la etiqueta INACTIVA es solo el punto y la ACTIVA trae el
@@ -94,7 +94,7 @@ export function TagFilterChips({ tags, activeIds, onToggle, onClear }: TagFilter
              * cuanto se activa el chip, que es cuando de verdad hace falta
              * saber cual estas mirando.
              */}
-            {active && <span style={{ color: hex }}>{tag.name}</span>}
+            {active && <span style={{ color: hex ?? 'var(--color-gray-300)' }}>{tag.name}</span>}
           </button>
         );
       })}

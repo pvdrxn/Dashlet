@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FiX, FiTag, FiEdit2, FiTrash2 } from 'react-icons/fi';
-import { TAG_COLORS, tagColorHex, tagKey, nextTagColorId, MAX_TAG_NAME_LENGTH } from '@widget-master/shared';
+import { TAG_COLORS, tagColorHex, tagKey, nextFreeTagColorId, MAX_TAG_NAME_LENGTH, type TagColorId } from '@widget-master/shared';
 import type { TagDto, UpdateTagDto } from '@widget-master/shared';
 
 /*
@@ -34,8 +34,8 @@ import type { TagDto, UpdateTagDto } from '@widget-master/shared';
 
 interface PendingTag {
   name: string;
-  /** Color provisional: el mismo que le daria el servidor al crearla. */
-  color: string;
+  /** Color provisional: el mismo que le daria el servidor al crearla, o `null`. */
+  color: string | null;
 }
 
 interface TagPickerProps {
@@ -66,7 +66,12 @@ export function TagPicker({
   /** Id de la etiqueta cuya confirmacion de borrado esta abierta. */
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState('');
-  const [draftColor, setDraftColor] = useState('');
+  /*
+   * `null` es "no se toca el color", que es distinto de elegir uno: el PATCH
+   * solo manda `color` si el usuario eligio otro. Y una etiqueta puede venir ya
+   * sin color, que es el estado legitimo cuando la paleta estaba tomada.
+   */
+  const [draftColor, setDraftColor] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const renameRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -75,12 +80,30 @@ export function TagPicker({
 
   /*
    * El color provisional es el que le daria el servidor al crearla, con el mismo
-   * `nextTagColorId` y el mismo conteo: asi lo que se ve antes de guardar es el
-   * color que queda despues, no un azul fijo que despues cambia solo.
+   * `nextFreeTagColorId` y los mismos colores usados: asi lo que se ve antes de
+   * guardar es el color que queda despues, no uno que despues cambia solo.
+   *
+   * Devuelve siempre un color de la paleta de 10 (nunca `null`): si los 10 ya los
+   * tienen otras etiquetas, el nuevo toma el primero de la paleta (duplicado
+   * permitido, pero nunca color blanco/default).
    */
+  const usados = useMemo(() => tags
+    .filter((t) => t.id !== editingId)
+    .map((t) => t.color)
+    .filter((c): c is TagColorId => !!c), [tags, editingId]);
+  /*
+   * Los colores que ya tiene OTRA etiqueta, para los swatches.
+   *
+   * La etiqueta que se esta editando queda fuera: su color propio tiene que
+   * seguir disponible para poder conservarlo.
+   */
+  const tomadosPorOtros = useMemo(() => {
+    const otros = tags.filter((t) => t.id !== editingId);
+    return new Set(otros.map((t) => t.color).filter((c): c is TagColorId => !!c));
+  }, [tags, editingId]);
   const pending: PendingTag | null = useMemo(
-    () => (pendingName ? { name: pendingName, color: tagColorHex(nextTagColorId(tags.length)) } : null),
-    [pendingName, tags.length],
+    () => (pendingName ? { name: pendingName, color: tagColorHex(nextFreeTagColorId(usados)) } : null),
+    [pendingName, usados],
   );
 
   const shown = current ?? pending;
@@ -162,7 +185,9 @@ export function TagPicker({
     if (!name || !original) return;
     const dto: UpdateTagDto = {};
     if (name !== original.name) dto.name = name;
-    if (draftColor !== original.color) dto.color = draftColor as never;
+    if (draftColor !== original.color && draftColor !== null) {
+      dto.color = draftColor as never;
+    }
     // Sin cambios no se manda nada: un PATCH sin campos solo gasta un viaje.
     if (Object.keys(dto).length) await onRename(id, dto);
     focus();
@@ -246,7 +271,20 @@ export function TagPicker({
           <span
             title={pending ? 'Created when you save' : undefined}
             className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs"
-            style={{ backgroundColor: `${shown.color}26`, color: shown.color }}
+            /*
+             * Sin color no hay tinte: se pinta gris y ya. Un `null` en `color`
+             * es una etiqueta creada cuando la paleta estaba tomada, y tiene que
+             * verse distinta de las que si tienen color para que el usuario note
+             * que a esa le falta.
+             */
+            style={
+              shown.color
+                ? { backgroundColor: `${shown.color}26`, color: shown.color }
+                : {
+                    backgroundColor: 'var(--color-gray-700)',
+                    color: 'var(--color-gray-400)',
+                  }
+            }
           >
             {shown.name}
             <button
@@ -323,9 +361,18 @@ export function TagPicker({
                             type="button"
                             onMouseDown={(e) => e.preventDefault()}
                             onClick={() => setDraftColor(c.id)}
+                            /* Los que ya tiene otra etiqueta no se ofrecen: elegir
+                               uno dejaria dos del mismo color, que es justamente
+                               lo que la asignacion automatica evita sola. Se
+                               apagan y se avisa en el `title`, no en silencio. */
+                            disabled={tomadosPorOtros.has(c.id)}
                             aria-label={`Use color ${c.id}`}
-                            title={c.id}
-                            className={`h-3.5 w-3.5 rounded-full ring-offset-1 ring-offset-gray-900 ${
+                            title={
+                              tomadosPorOtros.has(c.id)
+                                ? `${c.id} - already used by another tag`
+                                : c.id
+                            }
+                            className={`h-3.5 w-3.5 rounded-full ring-offset-1 ring-offset-gray-900 disabled:cursor-not-allowed disabled:opacity-30 ${
                               draftColor === c.id ? 'ring-2 ring-white' : ''
                             }`}
                             style={{ backgroundColor: c.hex }}
@@ -427,7 +474,7 @@ export function TagPicker({
                         <span
                           aria-hidden="true"
                           className="h-2 w-2 shrink-0 rounded-full"
-                          style={{ backgroundColor: tagColorHex(t.color) }}
+                          style={{ backgroundColor: tagColorHex(t.color) ?? 'var(--color-gray-600)' }}
                         />
                         <span className="min-w-0 flex-1 truncate">{t.name}</span>
                         <span className="shrink-0 text-xs tabular-nums text-gray-600">

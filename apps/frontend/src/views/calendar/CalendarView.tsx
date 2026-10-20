@@ -678,7 +678,7 @@ export function CalendarView({ leading }: { leading?: ReactNode }) {
                             className={`h-[5px] w-[5px] rounded-full ${
                               isCurrentMonth ? '' : 'opacity-40'
                             }`}
-                            style={{ backgroundColor: tagColorHex(t.color) }}
+                            style={{ backgroundColor: tagColorHex(t.color) ?? 'var(--color-gray-600)' }}
                           />
                         ))}
                         {/* Sobran y no caben: el "+" lo dice sin inventingar un
@@ -889,7 +889,7 @@ export function CalendarView({ leading }: { leading?: ReactNode }) {
                               {e.tagId &&
                                 chipTag && (
                                   <span className="flex shrink-0 items-center gap-1">
-                                    <span style={{ color: tagColorHex(chipTag.color) }}>
+                                    <span style={{ color: tagColorHex(chipTag.color) ?? 'var(--color-gray-300)' }}>
                                       {chipTag.name}
                                     </span>
                                     <span className="text-gray-500">·</span>

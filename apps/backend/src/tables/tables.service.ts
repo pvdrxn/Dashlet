@@ -21,6 +21,7 @@ import {
   normalizeDate,
   isStatusValue,
   isOptionValue,
+  isTagColorId,
   MAX_OPTION_LENGTH,
   NUMBER_FORMATS,
   NumberFormat,
@@ -116,18 +117,33 @@ function normalizeColumns(input: unknown): TableColumnDto[] {
  * descartan las vacias y se deduplican por `id` --el `id` repetido haria que dos
  * opciones distintas fueran la misma celda--. El `id` que falta se genera, igual
  * que el de la columna.
+ *
+ * Ademas se deduplican por NOMBRE (case-insensitive): dos categorias no pueden
+ * tener el mismo nombre. Se conserva la primera y se descartan las siguientes.
  */
 function ajustesDeColumna(c: Partial<TableColumnDto>): Partial<TableColumnDto> {
   if (c.type === 'select') {
-    const vistos = new Set<string>();
+    const vistosId = new Set<string>();
+    const vistosNombre = new Set<string>();
     const opciones = (Array.isArray(c.options) ? c.options : [])
       .map((o) => ({
         id: typeof o?.id === 'string' && o.id ? o.id : crypto.randomUUID(),
         label: typeof o?.label === 'string' ? o.label.trim().slice(0, MAX_OPTION_LENGTH) : '',
+        /*
+         * El color se conserva si es uno de la paleta y se descarta si no: es
+         * presentacion, y guardar un valor que el frontend no puede pintar deja
+         * la categoria de un color que no existe. Igual que el ancho, se normaliza
+         * en vez de confiar.
+         */
+        ...(isTagColorId(o?.color) ? { color: o.color } : {}),
       }))
       .filter((o) => {
-        if (!o.label || vistos.has(o.id)) return false;
-        vistos.add(o.id);
+        if (!o.label) return false;
+        if (vistosId.has(o.id)) return false;
+        const nombreLower = o.label.toLowerCase();
+        if (vistosNombre.has(nombreLower)) return false;
+        vistosId.add(o.id);
+        vistosNombre.add(nombreLower);
         return true;
       });
     return { options: opciones };
