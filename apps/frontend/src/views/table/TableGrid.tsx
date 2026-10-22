@@ -281,11 +281,12 @@ const PERDIDA: Partial<Record<ColumnType, string>> = {
  * ver "$42" en la grilla y "42" al editar tienen que ser la misma cantidad. Con
  * "$42.00" los dos textos dirian cosas distintas de largo.
  */
-function miles(n: number): string {
-  const [entero, dec] = Math.abs(n).toFixed(2).split('.');
+function miles(n: number, decimals?: number): string {
+  const fixed = decimals !== undefined ? n.toFixed(decimals) : Math.abs(n).toFixed(2);
+  const [entero, dec] = fixed.split('.');
   const signo = n < 0 ? '-' : '';
   const grupos = entero.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  const limpio = dec.replace(/0+$/, '');
+  const limpio = dec?.replace(/0+$/, '');
   return signo + grupos + (limpio ? `.${limpio}` : '');
 }
 
@@ -293,8 +294,9 @@ function miles(n: number): string {
 function formatNumberValue(value: CellValue, column: TableColumnDto): string {
   const n = typeof value === 'number' ? value : Number(String(value).trim());
   if (!Number.isFinite(n)) return String(value);
-  if (column.format === 'currency') return `${column.currency ?? DEFAULT_CURRENCY}${miles(n)}`;
-  if (column.format === 'percent') return `${miles(n)}%`;
+  if (column.format === 'currency') return `${column.currency ?? DEFAULT_CURRENCY}${miles(n, column.decimals)}`;
+  if (column.format === 'percent') return `${miles(n, column.decimals)}%`;
+  if (column.decimals !== undefined) return n.toFixed(column.decimals);
   return String(value);
 }
 
@@ -826,9 +828,6 @@ function AjustesPanel({ column, onChange, onClose }: AjustesPanelProps) {
                 onClick={() =>
                   onChange({
                     format: f,
-                    // El simbolo se escribe recien al elegir la moneda, y no al
-                    // guardar el formato: asi el input muestra el valor con el que
-                    // se va a ver la columna y no uno vacio.
                     ...(f === 'currency' && !column.currency ? { currency: DEFAULT_CURRENCY } : {}),
                   })
                 }
@@ -859,6 +858,26 @@ function AjustesPanel({ column, onChange, onClose }: AjustesPanelProps) {
               />
             </div>
           )}
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <span className="text-[11px] text-gray-500">Decimals</span>
+            <input
+              type="number"
+              min="0"
+              max="10"
+              defaultValue={column.decimals ?? ''}
+              onFocus={(e) => e.currentTarget.select()}
+              onBlur={(e) => {
+                const v = e.currentTarget.value.trim();
+                const decimals = v === '' ? undefined : Number(v);
+                if (decimals !== column.decimals) onChange({ decimals });
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+              }}
+              aria-label="Decimal places"
+              className="w-12 rounded border border-gray-600 bg-gray-700 px-1.5 py-0.5 text-xs text-gray-200 outline-none focus:border-gray-400"
+            />
+          </div>
         </>
       )}
       <button
@@ -1130,6 +1149,26 @@ interface TableGridProps {
    * PATCH, y a 60 cuadros por segundo eso seria 60 escrituras por gesto.
    */
   onColumnWidth?: (columnId: string, width: number) => void;
+  /**
+   * Selecciona/deselecciona una fila (modo borrado).
+   */
+  onRowSelect?: (rowId: string) => void;
+  /**
+   * Si esta en modo borrado: el asa de arrastre selecciona la fila.
+   */
+  isDeleteMode?: boolean;
+  /**
+   * IDs de las filas seleccionadas (para indicacion visual).
+   */
+  selectedRows?: ReadonlySet<string>;
+  /**
+   * Confirma el borrado de las filas seleccionadas.
+   */
+  onRowDelete?: () => void;
+  /**
+   * Alterna el modo borrado (entrar/salir).
+   */
+  onToggleDeleteMode?: () => void;
   /** Filas que quedaron sin cargar por el tope de `MAX_ROWS_PER_TABLE`. */
   hiddenRowCount?: number;
   /**
@@ -1150,6 +1189,11 @@ export function TableGrid({
   onRowAdd,
   onColumnsChange,
   onRowReorder,
+  onRowSelect,
+  isDeleteMode = false,
+  selectedRows = new Set(),
+  onRowDelete,
+  onToggleDeleteMode,
   onColumnWidth,
   hiddenRowCount = 0,
   updatedAt,
@@ -2567,6 +2611,9 @@ export function TableGrid({
                 const rect = (grip ?? grid).getBoundingClientRect();
                 startRowDrag(row.id, clientY, pointerId, grid, clientY - rect.top, altoFila, altoEncabezado);
               }}
+              onRowSelect={onRowSelect}
+              isDeleteMode={isDeleteMode}
+              selectedRows={selectedRows}
             />
           ))}
 
@@ -2606,6 +2653,23 @@ export function TableGrid({
         >
           <FiPlus size={12} />
           Add row
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const fn = isDeleteMode ? (selectedRows.size > 0 ? onRowDelete : onToggleDeleteMode) : onToggleDeleteMode;
+            fn?.();
+          }}
+          className={`flex items-center gap-1 rounded px-1.5 py-1 text-xs font-medium transition-colors ${
+            isDeleteMode
+              ? selectedRows.size > 0
+                ? 'text-danger hover:bg-danger/10'
+                : 'text-gray-500 hover:bg-gray-700 hover:text-white'
+              : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+          }`}
+        >
+          <FiTrash2 size={12} />
+          {isDeleteMode ? selectedRows.size > 0 ? `Delete (${selectedRows.size})` : 'Cancel' : 'Delete'}
         </button>
         {/*
          * La ultima edicion, a la derecha y a la altura del boton. `ml-auto` la
@@ -3897,6 +3961,18 @@ interface RowCellsProps {
   onDeleteOption: (columnId: string, id: string) => void;
   /** Cerrar el menu sin cambiar el valor. */
   onCloseStatus: () => void;
+  /**
+   * Selecciona/deselecciona una fila (modo borrado).
+   */
+  onRowSelect?: (rowId: string) => void;
+  /**
+   * Si esta en modo borrado: el asa de arrastre selecciona la fila.
+   */
+  isDeleteMode?: boolean;
+  /**
+   * IDs de las filas seleccionadas (para indicacion visual).
+   */
+  selectedRows?: ReadonlySet<string>;
 }
 
 const RowCells = memo(function RowCells({
@@ -3929,6 +4005,9 @@ const RowCells = memo(function RowCells({
   onCreateOption,
   onDeleteOption,
   onCloseStatus,
+  onRowSelect,
+  isDeleteMode = false,
+  selectedRows = new Set(),
 }: RowCellsProps) {
   /**
    * El ancla del menu de status.
@@ -3997,7 +4076,7 @@ const RowCells = memo(function RowCells({
        */}
       <div
         data-row-id={row.id}
-        className={`flex items-center justify-center ${regla} ${claseAlzada}`}
+        className={`flex items-center justify-center ${regla} ${claseAlzada} ${isDeleteMode && selectedRows.has(row.id) ? 'bg-danger/20' : ''}`}
         style={transformFila}
       >
         <button
@@ -4005,11 +4084,18 @@ const RowCells = memo(function RowCells({
           data-row-grip={row.id}
           onPointerDown={(e) => {
             if (e.button !== 0) return;
+            if (isDeleteMode) return;
             e.preventDefault();
             onGrabRow(e.clientY, e.pointerId);
           }}
-          aria-label={`Reorder row ${rowIndex + 1}`}
-          title="Drag to reorder"
+          onClick={(e) => {
+            if (isDeleteMode && onRowSelect) {
+              e.stopPropagation();
+              onRowSelect(row.id);
+            }
+          }}
+          aria-label={isDeleteMode ? `Select row ${rowIndex + 1}` : `Reorder row ${rowIndex + 1}`}
+          title={isDeleteMode ? 'Click to select' : 'Drag to reorder'}
           /*
            * 20px de dibujo con 24 de target: el `after:-inset-1` --el mismo truco
            * que usan los botones de la barra del widget-- hace que el area de
@@ -4030,11 +4116,15 @@ const RowCells = memo(function RowCells({
            * El `transition-colors` queda para el unico cambio de color que le
            * queda: el glifo se aclara cuando la fila se levanta.
            */
-          className={`relative flex size-5 shrink-0 cursor-grab touch-none items-center justify-center rounded transition-colors after:pointer-events-auto after:absolute after:-inset-1 after:content-[''] active:cursor-grabbing ${
-            lifting ? 'text-gray-300' : 'text-gray-600'
-          }`}
+          className={`relative flex size-5 shrink-0 touch-none items-center justify-center rounded transition-colors after:pointer-events-auto after:absolute after:-inset-1 after:content-[''] ${
+            isDeleteMode ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'
+          } ${lifting ? 'text-gray-300' : isDeleteMode ? 'text-danger' : 'text-gray-600'}`}
         >
-          <FiMenu size={14} />
+          {isDeleteMode ? (
+            <FiTrash2 size={14} />
+          ) : (
+            <FiMenu size={14} />
+          )}
         </button>
       </div>
 
@@ -4111,7 +4201,7 @@ const RowCells = memo(function RowCells({
                 : isEditing
                   ? 'bg-gray-700/60'
                   : ''
-            }`}
+            } ${isDeleteMode && selectedRows.has(row.id) ? 'bg-danger/20' : ''}`}
           >
             {c.type === 'status' ? (
               <>

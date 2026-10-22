@@ -341,6 +341,48 @@ export function TableView({ leading }: TableViewProps) {
     }
   }, [table]);
 
+  const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
+  const [isDeleteMode, setIsDeleteMode] = useState(false);
+
+  const toggleRowSelection = useCallback((rowId: string) => {
+    if (!isDeleteMode) return;
+    setSelectedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(rowId)) {
+        next.delete(rowId);
+      } else {
+        next.add(rowId);
+      }
+      return next;
+    });
+  }, [isDeleteMode]);
+
+  const toggleDeleteMode = useCallback(() => {
+    setIsDeleteMode((prev) => {
+      const next = !prev;
+      if (!next) {
+        setSelectedRows(new Set());
+      }
+      return next;
+    });
+  }, []);
+
+  const deleteSelectedRows = useCallback(async () => {
+    if (!table || selectedRows.size === 0) return;
+    const ids = Array.from(selectedRows);
+    try {
+      setError(null);
+      await Promise.all(ids.map((id) => tablesApi.deleteTableRow(table.id, id)));
+      setTable((t) =>
+        t ? { ...t, rows: t.rows.filter((r) => !selectedRows.has(r.id)), rowCount: t.rowCount - ids.length } : t,
+      );
+      setSelectedRows(new Set());
+      setIsDeleteMode(false);
+    } catch (e) {
+      setError(apiErrorMessage(e, 'Could not delete rows'));
+    }
+  }, [table, selectedRows]);
+
   /*
    * Borrar fila ya no tiene entrada en la UI: la papelera de la columna de
    * acciones paso a ser el asa de arrastre. El endpoint sigue vivo
@@ -502,6 +544,11 @@ export function TableView({ leading }: TableViewProps) {
             onColumnsChange={changeColumns}
             onColumnWidth={setColumnWidth}
             onRowReorder={(next, rowId, position) => void changeRowOrder(next, rowId, position)}
+            onRowSelect={toggleRowSelection}
+            isDeleteMode={isDeleteMode}
+            selectedRows={selectedRows}
+            onRowDelete={deleteSelectedRows}
+            onToggleDeleteMode={toggleDeleteMode}
             hiddenRowCount={Math.max(0, table.rowCount - table.rows.length)}
           />
         ) : (

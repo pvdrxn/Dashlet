@@ -80,6 +80,47 @@ export function DataTableWidget({ config, onConfigChange }: DataTableWidgetProps
   tablaRef.current = table;
   const [loading, setLoading] = useState(Boolean(tableId));
   const [error, setError] = useState<string | null>(null);
+  const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
+  const [isDeleteMode, setIsDeleteMode] = useState(false);
+
+  const toggleDeleteMode = useCallback(() => {
+    setIsDeleteMode((prev) => {
+      const next = !prev;
+      if (!next) {
+        setSelectedRows(new Set());
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleRowSelection = useCallback((rowId: string) => {
+    if (!isDeleteMode) return;
+    setSelectedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(rowId)) {
+        next.delete(rowId);
+      } else {
+        next.add(rowId);
+      }
+      return next;
+    });
+  }, [isDeleteMode]);
+
+  const deleteSelectedRows = useCallback(async () => {
+    if (!table || selectedRows.size === 0) return;
+    const ids = Array.from(selectedRows);
+    try {
+      setError(null);
+      await Promise.all(ids.map((id) => tablesApi.deleteTableRow(table.id, id)));
+      setTable((t) =>
+        t ? { ...t, rows: t.rows.filter((r) => !selectedRows.has(r.id)), rowCount: t.rowCount - ids.length } : t,
+      );
+      setSelectedRows(new Set());
+      setIsDeleteMode(false);
+    } catch (e) {
+      setError(apiErrorMessage(e, 'Could not delete rows'));
+    }
+  }, [table, selectedRows]);
 
   /*
    * Numero de cambio de columnas en curso.
@@ -410,6 +451,11 @@ export function DataTableWidget({ config, onConfigChange }: DataTableWidgetProps
           onColumnsChange={changeColumns}
           onColumnWidth={setColumnWidth}
           onRowReorder={(next, rowId, position) => void changeRowOrder(next, rowId, position)}
+          onRowSelect={toggleRowSelection}
+          isDeleteMode={isDeleteMode}
+          selectedRows={selectedRows}
+          onRowDelete={deleteSelectedRows}
+          onToggleDeleteMode={toggleDeleteMode}
           hiddenRowCount={Math.max(0, table.rowCount - table.rows.length)}
           updatedAt={table.updatedAt}
         />

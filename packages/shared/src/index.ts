@@ -579,8 +579,15 @@ export interface TableColumnDto {
    * "$1.200,50" para poder editarla.
    */
   format?: NumberFormat;
-  /** Simbolo de la moneda, cuando `format` es `currency`. */
+  /**
+   * Simbolo de la moneda, cuando `format` es `currency`.
+   */
   currency?: string;
+  /**
+   * Numero de decimales a mostrar (solo para columnas `number`).
+   * `undefined` = mostrar todos los decimales necesarios.
+   */
+  decimals?: number;
 }
 
 export interface TableRowDto {
@@ -690,5 +697,6 @@ export function newTableColumn(type: ColumnType = 'text'): TableColumnDto {
    * el menu de la celda, que es donde uno las necesita. Sin opciones la celda se
    * ve vacia y el menu ofrece crear una: se puede usar desde el primer segundo.
    */
-  return { id: crypto.randomUUID(), name, type };
+  const column: TableColumnDto = { id: crypto.randomUUID(), name, type };
+  return column;
 }
