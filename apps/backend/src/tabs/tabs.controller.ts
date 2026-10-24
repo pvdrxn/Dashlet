@@ -1,48 +1,50 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Req, UseGuards } from '@nestjs/common';
 import { TabsService } from './tabs.service';
 import { CreateTabDto, UpdateTabDto } from '@widget-master/shared';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('tabs')
+@UseGuards(JwtAuthGuard)
 export class TabsController {
   constructor(private readonly service: TabsService) {}
 
   @Get()
-  findAll() {
-    return this.service.findAll();
+  findAll(@Req() req: Request & { user: { sub: string } }) {
+    return this.service.findAll(req.user.sub);
   }
 
   @Get('trash')
-  findTrash() {
-    return this.service.findTrash();
+  findTrash(@Req() req: Request & { user: { sub: string } }) {
+    return this.service.findTrash(req.user.sub);
   }
 
   @Post()
-  create(@Body() dto: CreateTabDto) {
-    return this.service.create(dto);
+  create(@Req() req: Request & { user: { sub: string } }, @Body() dto: CreateTabDto) {
+    return this.service.create(req.user.sub, dto);
   }
 
   @Post('reorder')
-  reorder(@Body('ids') ids: string[]) {
-    return this.service.reorder(ids ?? []);
+  reorder(@Req() req: Request & { user: { sub: string } }, @Body('ids') ids: string[]) {
+    return this.service.reorder(req.user.sub, ids ?? []);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateTabDto) {
-    return this.service.update(id, dto);
+  update(@Req() req: Request & { user: { sub: string } }, @Param('id') id: string, @Body() dto: UpdateTabDto) {
+    return this.service.update(req.user.sub, id, dto);
   }
 
   @Post(':id/restore')
-  restore(@Param('id') id: string) {
-    return this.service.restore(id);
+  restore(@Req() req: Request & { user: { sub: string } }, @Param('id') id: string) {
+    return this.service.restore(req.user.sub, id);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.service.remove(id);
+  remove(@Req() req: Request & { user: { sub: string } }, @Param('id') id: string) {
+    return this.service.remove(req.user.sub, id);
   }
 
   @Delete(':id/forever')
-  removeForever(@Param('id') id: string) {
-    return this.service.removeForever(id);
+  removeForever(@Req() req: Request & { user: { sub: string } }, @Param('id') id: string) {
+    return this.service.removeForever(req.user.sub, id);
   }
 }

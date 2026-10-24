@@ -7,7 +7,6 @@ import {
   DEFAULT_DURATION_MIN,
 } from '@widget-master/shared';
 
-const HARDCODED_USER_ID = 'hardcoded-user-id';
 const MAX_DURATION_MIN = 24 * 60;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -93,15 +92,6 @@ export class CalendarService {
     return found?.id ?? null;
   }
 
-  private async ensureUser(userId: string) {
-    const existing = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!existing) {
-      await this.prisma.user.create({
-        data: { id: userId, email: 'dev@widget-master.local', password: 'dev' },
-      });
-    }
-  }
-
   /**
    * Eventos en un rango de dias, INCLUSIVE en los dos extremos.
    *
@@ -109,7 +99,6 @@ export class CalendarService {
    * recibe el mes entero en una query. Por eso el indice es `(userId, date)`.
    */
   async findRange(userId: string, from: string, to: string) {
-    await this.ensureUser(userId);
     assertDate(from);
     assertDate(to);
     if (from > to) {
@@ -130,7 +119,6 @@ export class CalendarService {
   }
 
   async create(userId: string, dto: CreateCalendarEventDto) {
-    await this.ensureUser(userId);
     const title = dto.title?.trim();
     if (!title) {
       throw new BadRequestException('Title is required');

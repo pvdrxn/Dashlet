@@ -1,18 +1,7 @@
 import type { WidgetData, Position } from '../widgets/types';
+import { request } from './request';
 
 const BASE = import.meta.env.PROD ? 'http://localhost:3001/api/v1/widgets' : '/api/v1/widgets';
-
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`API error ${res.status}: ${body}`);
-  }
-  return res.json();
-}
 
 export async function fetchWidgets(tabId?: string): Promise<WidgetData[]> {
   const query = tabId ? `?tabId=${encodeURIComponent(tabId)}` : '';

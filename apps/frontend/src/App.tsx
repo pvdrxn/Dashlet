@@ -1,4 +1,5 @@
 import { useCallback, useState, useRef, useEffect, Suspense } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { WidgetGrid } from './widgets';
 import { OPEN_TABLE_EVENT } from './widgets/data-table/DataTableWidget';
 import { Toolbar } from './components/Toolbar';
@@ -6,11 +7,12 @@ import { TabBar } from './components/TabBar';
 import { TrashWindow } from './components/TrashWindow';
 import { TaskPickerModal } from './components/TaskPickerModal';
 import { ViewSidebar } from './components/ViewSidebar';
-import { CalendarView, TableView, getView, type ViewId } from './views';
+import { CalendarView, TableView, LoginView, RegisterView, SettingsView, getView, type ViewId } from './views';
 import { FiMenu } from 'react-icons/fi';
 import { widgetBus } from './widgets/widget-bus';
 import * as tabsApi from './api/tabs';
 import * as widgetsApi from './api/widgets';
+import { AuthProvider, useAuth } from './hooks/useAuth';
 import type { TabDto } from '@widget-master/shared';
 import type { Position } from './widgets/types';
 import {
@@ -23,40 +25,18 @@ import {
 const ACTIVE_TAB_KEY = 'dashlet-active-tab';
 const ACTIVE_VIEW_KEY = 'dashlet-active-view';
 
-/*
- * Lee la vista guardada. Un id desconocido -- de una version anterior de la app,
- * o escrito a mano en localStorage -- cae en la vista de widgets: es mejor
- * arrancar en el dashboard que dejar la app sin shell.
- */
 function readStoredView(): ViewId {
   const stored = localStorage.getItem(ACTIVE_VIEW_KEY);
   return stored && getView(stored as ViewId) ? (stored as ViewId) : 'widgets';
 }
 
-function App() {
+function Dashboard() {
+  const { user, loading: authLoading } = useAuth();
   const [trashOpen, setTrashOpen] = useState(false);
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
-  /*
-   * Vista de nivel superior: `widgets` (el dashboard de siempre) o `calendar`.
-   * Elige la sidebar y determina que barra de pestañas va arriba. Es un estado
-   * aparte del `activeTabId`: las tabs son internas a la vista de widgets y no
-   * existen en la de calendario, que tiene su propia eje de meses.
-   */
   const [activeView, setActiveView] = useState<ViewId>(readStoredView);
   const [viewSidebarOpen, setViewSidebarOpen] = useState(false);
 
-  /*
-   * El widget de tabla pide abrirse en pantalla completa.
-   *
-   * Es un evento y no solo una llave en `localStorage` porque la vista activa vive
-   * en estado de React: escribir la preference no vuelve a renderizar nada y el
-   * clic no pasaria. El widget deja el `tableId` pendiente en `localStorage` --
-   * eso si lo puede escribir, no tiene paso por el estado de la app-- y dispara
-   * este evento nomas para que la vista cambie.
-   *
-   * Cerrar el sidebar tambien: si "Abrir completo" lo dejaba abierto, el usuario
-   * llegaria a la tabla con un panel encima.
-   */
   useEffect(() => {
     const onOpenTable = () => {
       setViewSidebarOpen(false);
@@ -65,11 +45,7 @@ function App() {
     window.addEventListener(OPEN_TABLE_EVENT, onOpenTable);
     return () => window.removeEventListener(OPEN_TABLE_EVENT, onOpenTable);
   }, []);
-  /*
-   * Que timer pidio el selector. Va en un ref y no en estado porque solo se lee
-   * cuando el modal elige una tarea, y guardarlo en estado provocaria un render
-   * extra de toda la app en cada apertura.
-   */
+
   const taskPickerTargetRef = useRef<string | undefined>(undefined);
   const [tabs, setTabs] = useState<TabDto[]>([]);
   const [tabsLoaded, setTabsLoaded] = useState(false);
@@ -92,11 +68,7 @@ function App() {
   const revealAddRefs = useRef(new Map<string, () => void>());
   const refreshWidgetsRefs = useRef(new Map<string, () => void>());
   const transferWidgetRefs = useRef(new Map<string, (action: TransferAction) => void>());
-  /*
-   * El TabBar va arriba y la barra de acciones abajo. Mide el TabBar para que
-   * el Toolbar se pegue debajo: el mismo mecanismo que antes, con los cables
-   * invertidos.
-   */
+
   const tabBarRef = useRef<HTMLDivElement>(null);
   const [tabBarHeight, setTabBarHeight] = useState(0);
 
@@ -339,15 +311,6 @@ function App() {
       .catch(() => {});
   }, []);
 
-  /*
-   * El esqueleto de carga es SOLO de la vista de widgets.
-   *
-   * Antes cubria la app entera, y con el calendario quedaria mal: el calendario
-   * no depende de las tabs, asi que si la carga de tabs se demora -- o el
-   * backend esta caido y el reintento de 1s sigue -- la vista de calendario
-   * quedaria clavada en un esqueleto que no describe lo que esta pasando. Cada
-   * superficie muestra su propio estado de carga.
-   */
   const widgetsSkeleton = (
     <main className="min-h-screen bg-gray-900">
       <div className="flex flex-col gap-2 px-4 py-3" aria-hidden="true">
@@ -358,13 +321,6 @@ function App() {
     </main>
   );
 
-  /*
-   * Boton que abre la sidebar de vistas. Va como `leading` de la barra de
-   * pestañas en vez de en un contenedor propio: es UN solo elemento y las dos
-   * barras -- la de dashboards y la de meses -- lo reciben por prop. Asi el
-   * shell no tiene que saber de que barra se trata, y el boton queda dentro de
-   * la zona sticky en los dos casos.
-   */
   const viewSwitchButton = (
     <button
       type="button"
@@ -378,6 +334,21 @@ function App() {
       <FiMenu size={15} />
     </button>
   );
+
+  if (authLoading) {
+    return (
+      <main className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="skeleton h-8 w-24 rounded" />
+          <div className="skeleton h-4 w-40 rounded" />
+        </div>
+      </main>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
 
   return (
     <main className="min-h-screen bg-gray-900">
@@ -438,12 +409,6 @@ function App() {
             </div>
           }
         >
-          {/*
-           * Calendario y tabla son la misma forma de render: lienzo completo, su
-           * propia barra y `leading` con el boton de vistas. Lo que cambia es el
-           * componente, asi que se decide con el id en vez de con otro ternario
-           * anidado que cada vista nueva tuviera que venir a agrandar.
-           */}
           {activeView === 'calendar' ? (
             <CalendarView leading={viewSwitchButton} />
           ) : (
@@ -473,6 +438,22 @@ function App() {
         />
       )}
     </main>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<LoginView />} />
+          <Route path="/register" element={<RegisterView />} />
+          <Route path="/settings" element={<SettingsView />} />
+          <Route path="/" element={<Dashboard />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
 

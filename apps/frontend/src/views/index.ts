@@ -29,7 +29,19 @@ const TableView = lazy(() =>
   import('./table/TableView').then((m) => ({ default: m.TableView })),
 );
 
-export { CalendarView, TableView };
+const LoginView = lazy(() =>
+  import('./LoginView').then((m) => ({ default: m.LoginView })),
+);
+
+const RegisterView = lazy(() =>
+  import('./RegisterView').then((m) => ({ default: m.RegisterView })),
+);
+
+const SettingsView = lazy(() =>
+  import('./SettingsView').then((m) => ({ default: m.SettingsView })),
+);
+
+export { CalendarView, TableView, LoginView, RegisterView, SettingsView };
 export type { ViewId, ViewDefinition } from './registry';
 export { getView, getAllViews } from './registry';
 

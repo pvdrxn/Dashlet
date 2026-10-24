@@ -11,8 +11,6 @@ import {
   tagKey,
 } from '@widget-master/shared';
 
-const HARDCODED_USER_ID = 'hardcoded-user-id';
-
 function toTagDto(tag: Record<string, unknown>, eventCount: number): TagDto {
   const color = tag.color;
   return {
@@ -37,15 +35,6 @@ function toTagDto(tag: Record<string, unknown>, eventCount: number): TagDto {
 export class TagsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async ensureUser(userId: string) {
-    const existing = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!existing) {
-      await this.prisma.user.create({
-        data: { id: userId, email: 'dev@widget-master.local', password: 'dev' },
-      });
-    }
-  }
-
   /**
    * Todas las etiquetas con su cuenta de bloques.
    *
@@ -55,7 +44,6 @@ export class TagsService {
    * filtrar desde la vista.
    */
   async findAll(userId: string) {
-    await this.ensureUser(userId);
     const tags = await this.prisma.tag.findMany({
       where: { userId },
       orderBy: { nameLower: 'asc' },
@@ -69,7 +57,6 @@ export class TagsService {
   }
 
   async create(userId: string, dto: CreateTagDto) {
-    await this.ensureUser(userId);
     const name = normalizeTagName(dto.name ?? '');
     if (!name) {
       throw new BadRequestException('Tag name cannot be empty');

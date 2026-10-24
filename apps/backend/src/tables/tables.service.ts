@@ -408,15 +408,6 @@ function toRowDto(raw: Record<string, unknown>): TableRowDto {
 export class TablesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async ensureUser(userId: string) {
-    const existing = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!existing) {
-      await this.prisma.user.create({
-        data: { id: userId, email: 'dev@widget-master.local', password: 'dev' },
-      });
-    }
-  }
-
   /**
    * Una tabla ajena responde 404 y no 403.
    *
@@ -464,7 +455,6 @@ export class TablesService {
    * base entera para pintar un menu.
    */
   async findAll(userId: string): Promise<TableSummaryDto[]> {
-    await this.ensureUser(userId);
     const tables = await this.prisma.dataTable.findMany({
       where: { userId },
       orderBy: { updatedAt: 'desc' },
@@ -509,7 +499,6 @@ export class TablesService {
   }
 
   async create(userId: string, dto: CreateTableDto = {}): Promise<TableDto> {
-    await this.ensureUser(userId);
     const name = dto.name?.trim() || 'Untitled table';
     /*
      * Sin columnas llega el widget creandose su propia tabla. Se le siembra el

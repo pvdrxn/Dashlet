@@ -1,20 +1,9 @@
 import type { CreateTagDto, TagDto, UpdateTagDto } from '@widget-master/shared';
+import { request } from './request';
 
 const BASE = import.meta.env.PROD
   ? 'http://localhost:3001/api/v1/calendar/tags'
   : '/api/v1/calendar/tags';
-
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`API error ${res.status}: ${body}`);
-  }
-  return res.json();
-}
 
 /**
  * Todas las etiquetas con su cuenta de bloques.

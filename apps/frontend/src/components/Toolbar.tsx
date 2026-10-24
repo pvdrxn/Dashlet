@@ -2,8 +2,10 @@ import { useState, useRef, useEffect } from 'react';
 import { getAllWidgets, getWidget, type WidgetDefinition } from '../widgets/registry';
 import { setPendingWidgetType, WIDGET_DRAG_MIME } from '../widgets/drag-session';
 import type { Position } from '../widgets/types';
-import { FiPlus, FiTrash2 } from 'react-icons/fi';
+import { FiPlus, FiTrash2, FiSettings, FiLogOut, FiUser } from 'react-icons/fi';
 import { createRoot, type Root } from 'react-dom/client';
+import { useAuth } from '../hooks/useAuth';
+import { useNavigate } from 'react-router-dom';
 interface ToolbarProps {
   onAddWidget: (type: string) => Promise<Position | null>;
   onAddWidgetDeferred: (type: string) => Promise<Position | null>;
@@ -21,8 +23,11 @@ export function Toolbar({
   onOpenTrash,
   topOffset,
 }: ToolbarProps) {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const availableWidgets = getAllWidgets();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   // Que boton se esta arrastrando. El arrastre es DnD nativo, asi que el
   // navegador deja de avisar por `:active` sobre el boton de origen: sin esto
   // no hay forma de saber en JS que sigue en uso.
@@ -37,6 +42,21 @@ export function Toolbar({
     }
   };
   useEffect(() => destroyGhost, []);
+
+  // Close menus when clicking outside the toolbar
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const toolbar = document.querySelector('[data-toolbar-root]');
+      if (toolbar && !toolbar.contains(target)) {
+        setMenuOpen(false);
+        setUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const renderButtonGhost = (def: WidgetDefinition) => (
     <div className="flex items-center gap-2 rounded border border-gray-700/80 bg-gray-800/90 py-1.5 pl-1.5 pr-3 text-sm shadow-xl">
       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-gray-700/80 text-gray-300">
@@ -97,6 +117,7 @@ export function Toolbar({
       * El + va a la izquierda (inicio) y la papelera a la derecha (fin).
       */
     <div
+      data-toolbar-root
       className="sticky z-[var(--z-sticky)] flex items-center gap-2 bg-gray-900/90 px-4 py-1.5 backdrop-blur-sm"
       style={{ top: topOffset }}
     >
@@ -163,7 +184,7 @@ export function Toolbar({
           ))}
         </div>
       </div>
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-1">
         <button
           type="button"
           onClick={onOpenTrash}
@@ -173,6 +194,62 @@ export function Toolbar({
         >
           <FiTrash2 size={15} />
         </button>
+
+        {/* User Menu */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setUserMenuOpen((o) => !o)}
+            aria-label="User menu"
+            aria-expanded={userMenuOpen}
+            className="flex items-center gap-2 h-7 px-2 pr-3 rounded-lg text-gray-400 transition-all duration-150 hover:bg-white/5 hover:text-gray-200 active:scale-90"
+            title="Account"
+          >
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-900/30 text-blue-400">
+              <FiUser size={14} />
+            </span>
+            <span className="hidden sm:block text-sm font-medium text-white max-w-[120px] truncate">
+              {user?.email}
+            </span>
+          </button>
+
+          {userMenuOpen && (
+            <div
+              className="absolute right-0 top-full z-[var(--z-menu)] mt-1.5 w-48"
+              role="menu"
+            >
+              <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-lg overflow-hidden">
+                <div className="px-3 py-2 border-b border-gray-700">
+                  <p className="text-xs font-medium text-white truncate">{user?.email}</p>
+                  <p className="text-xs text-gray-500 truncate">{user?.id}</p>
+                </div>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    navigate('/settings');
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-300 hover:bg-white/5 hover:text-white transition-colors"
+                >
+                  <FiSettings size={16} className="flex-shrink-0" aria-hidden="true" />
+                  Settings
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={async () => {
+                    setUserMenuOpen(false);
+                    await logout();
+                    navigate('/login');
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-900/20 hover:text-red-300 transition-colors"
+                >
+                  <FiLogOut size={16} className="flex-shrink-0" aria-hidden="true" />
+                  Sign Out
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

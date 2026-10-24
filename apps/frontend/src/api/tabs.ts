@@ -1,20 +1,9 @@
 import type { TabDto } from '@widget-master/shared';
+import { request } from './request';
 
 const BASE = import.meta.env.PROD
   ? 'http://localhost:3001/api/v1/tabs'
   : '/api/v1/tabs';
-
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`API error ${res.status}: ${body}`);
-  }
-  return res.json();
-}
 
 export async function fetchTabs(): Promise<TabDto[]> {
   return request<TabDto[]>(BASE);

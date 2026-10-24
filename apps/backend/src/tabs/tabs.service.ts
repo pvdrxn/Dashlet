@@ -1,8 +1,7 @@
-import { Injectable, NotFoundException, BadRequestException, OnModuleInit } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTabDto, UpdateTabDto, TabDto } from '@widget-master/shared';
 
-const HARDCODED_USER_ID = 'hardcoded-user-id';
 const DEFAULT_TAB_NAME = 'Nuevo entorno';
 
 function toTabDto(tab: Record<string, unknown>, widgetCount?: number): TabDto {
@@ -17,64 +16,35 @@ function toTabDto(tab: Record<string, unknown>, widgetCount?: number): TabDto {
 }
 
 @Injectable()
-export class TabsService implements OnModuleInit {
+export class TabsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async onModuleInit() {
-    await this.ensureUser();
-    await this.ensureDefaultTab();
-  }
-
-  private async ensureUser() {
-    const existing = await this.prisma.user.findUnique({ where: { id: HARDCODED_USER_ID } });
-    if (!existing) {
-      await this.prisma.user.create({
-        data: { id: HARDCODED_USER_ID, email: 'dev@widget-master.local', password: 'dev' },
-      });
-    }
-  }
-
-  private async ensureDefaultTab() {
-    const count = await this.prisma.tab.count({ where: { userId: HARDCODED_USER_ID, deletedAt: null } });
-    if (count > 0) return;
-
-    const tab = await this.prisma.tab.create({
-      data: { userId: HARDCODED_USER_ID, name: DEFAULT_TAB_NAME, order: 0 },
-    });
-
-    await this.prisma.widget.updateMany({
-      where: { userId: HARDCODED_USER_ID, tabId: null },
-      data: { tabId: tab.id },
-    });
-  }
-
-  async findAll() {
+  async findAll(userId: string) {
     const tabs = await this.prisma.tab.findMany({
-      where: { userId: HARDCODED_USER_ID, deletedAt: null },
+      where: { userId, deletedAt: null },
       orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
       include: { _count: { select: { widgets: { where: { deletedAt: null } } } } },
     });
     return tabs.map((t) => toTabDto(t, t._count.widgets));
   }
 
-  async findTrash() {
+  async findTrash(userId: string) {
     const tabs = await this.prisma.tab.findMany({
-      where: { userId: HARDCODED_USER_ID, deletedAt: { not: null } },
+      where: { userId, deletedAt: { not: null } },
       orderBy: { deletedAt: 'desc' },
       include: { _count: { select: { widgets: { where: { deletedAt: null } } } } },
     });
     return tabs.map((t) => toTabDto(t, t._count.widgets));
   }
 
-  async create(dto: CreateTabDto) {
-    await this.ensureUser();
+  async create(userId: string, dto: CreateTabDto) {
     const maxOrder = await this.prisma.tab.aggregate({
-      where: { userId: HARDCODED_USER_ID, deletedAt: null },
+      where: { userId, deletedAt: null },
       _max: { order: true },
     });
     const tab = await this.prisma.tab.create({
       data: {
-        userId: HARDCODED_USER_ID,
+        userId,
         name: dto.name?.trim() || 'Nueva pestaña',
         order: (maxOrder._max.order ?? -1) + 1,
       },
@@ -82,9 +52,9 @@ export class TabsService implements OnModuleInit {
     return toTabDto(tab, 0);
   }
 
-  async update(id: string, dto: UpdateTabDto) {
+  async update(userId: string, id: string, dto: UpdateTabDto) {
     const existing = await this.prisma.tab.findUnique({ where: { id } });
-    if (!existing || existing.userId !== HARDCODED_USER_ID) {
+    if (!existing || existing.userId !== userId) {
       throw new NotFoundException('Tab not found');
     }
     const name = dto.name?.trim();
@@ -101,9 +71,9 @@ export class TabsService implements OnModuleInit {
     return toTabDto(tab);
   }
 
-  async reorder(ids: string[]) {
+  async reorder(userId: string, ids: string[]) {
     const tabs = await this.prisma.tab.findMany({
-      where: { id: { in: ids }, userId: HARDCODED_USER_ID, deletedAt: null },
+      where: { id: { in: ids }, userId, deletedAt: null },
     });
     if (tabs.length !== ids.length) {
       throw new NotFoundException('One or more tabs not found');
@@ -116,13 +86,13 @@ export class TabsService implements OnModuleInit {
     return { ids };
   }
 
-  async remove(id: string) {
+  async remove(userId: string, id: string) {
     const existing = await this.prisma.tab.findUnique({ where: { id } });
-    if (!existing || existing.userId !== HARDCODED_USER_ID) {
+    if (!existing || existing.userId !== userId) {
       throw new NotFoundException('Tab not found');
     }
     const activeCount = await this.prisma.tab.count({
-      where: { userId: HARDCODED_USER_ID, deletedAt: null },
+      where: { userId, deletedAt: null },
     });
     if (activeCount <= 1) {
       throw new BadRequestException('Cannot delete the last tab');
@@ -134,9 +104,9 @@ export class TabsService implements OnModuleInit {
     return toTabDto(tab);
   }
 
-  async restore(id: string) {
+  async restore(userId: string, id: string) {
     const existing = await this.prisma.tab.findUnique({ where: { id } });
-    if (!existing || existing.userId !== HARDCODED_USER_ID) {
+    if (!existing || existing.userId !== userId) {
       throw new NotFoundException('Tab not found');
     }
     const tab = await this.prisma.tab.update({
@@ -146,9 +116,9 @@ export class TabsService implements OnModuleInit {
     return toTabDto(tab);
   }
 
-  async removeForever(id: string) {
+  async removeForever(userId: string, id: string) {
     const existing = await this.prisma.tab.findUnique({ where: { id } });
-    if (!existing || existing.userId !== HARDCODED_USER_ID) {
+    if (!existing || existing.userId !== userId) {
       throw new NotFoundException('Tab not found');
     }
     await this.prisma.widget.deleteMany({ where: { tabId: id } });

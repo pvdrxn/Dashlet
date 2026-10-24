@@ -700,3 +700,48 @@ export function newTableColumn(type: ColumnType = 'text'): TableColumnDto {
   const column: TableColumnDto = { id: crypto.randomUUID(), name, type };
   return column;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Auth                                                                       */
+/* -------------------------------------------------------------------------- */
+
+export interface UserDto {
+  id: string;
+  email: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RegisterDto {
+  email: string;
+  password: string;
+}
+
+export interface LoginDto {
+  email: string;
+  password: string;
+}
+
+export interface AuthResponseDto {
+  user: UserDto;
+  accessToken: string;
+  refreshToken: string;
+}
+
+export interface SessionDto {
+  id: string;
+  userId: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface ChangePasswordDto {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+export interface ChangeEmailDto {
+  currentPassword: string;
+  newEmail: string;
+}

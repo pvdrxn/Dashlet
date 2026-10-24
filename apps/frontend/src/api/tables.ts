@@ -7,20 +7,9 @@ import type {
   UpdateTableDto,
   UpdateTableRowDto,
 } from '@widget-master/shared';
+import { request } from './request';
 
 const BASE = import.meta.env.PROD ? 'http://localhost:3001/api/v1/tables' : '/api/v1/tables';
-
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`API error ${res.status}: ${body}`);
-  }
-  return res.json();
-}
 
 /**
  * Los resumenes de todas las tablas, sin filas.

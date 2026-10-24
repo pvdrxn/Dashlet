@@ -1,8 +1,7 @@
-import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateWidgetDto, UpdateWidgetDto, WidgetDto } from '@widget-master/shared';
 
-const HARDCODED_USER_ID = 'hardcoded-user-id';
 const TRASH_RETENTION_DAYS = 30;
 const TRASH_PURGE_INTERVAL_MS = 60 * 60 * 1000;
 
@@ -24,12 +23,10 @@ function toWidgetDto(widget: Record<string, unknown>): WidgetDto {
 }
 
 @Injectable()
-export class WidgetsService implements OnModuleInit {
+export class WidgetsService {
   private purgeTimer: ReturnType<typeof setInterval> | null = null;
 
-  constructor(private readonly prisma: PrismaService) {}
-
-  onModuleInit() {
+  constructor(private readonly prisma: PrismaService) {
     this.purgeExpired().catch(() => {});
     this.purgeTimer = setInterval(() => {
       this.purgeExpired().catch(() => {});
@@ -38,15 +35,6 @@ export class WidgetsService implements OnModuleInit {
 
   onModuleDestroy() {
     if (this.purgeTimer) clearInterval(this.purgeTimer);
-  }
-
-  private async ensureUser(userId: string) {
-    const existing = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!existing) {
-      await this.prisma.user.create({
-        data: { id: userId, email: 'dev@widget-master.local', password: 'dev' },
-      });
-    }
   }
 
   private async resolveTabId(userId: string, tabId?: string): Promise<string | null> {
@@ -99,7 +87,6 @@ export class WidgetsService implements OnModuleInit {
   }
 
   async create(userId: string, dto: CreateWidgetDto) {
-    await this.ensureUser(userId);
     const tabId = await this.resolveTabId(userId, dto.tabId);
     // Ranura del dashboard. {x,y} son indices de celda, no pixeles: el alto y
     // el ancho los impone la celda (ver grid-utils.ts en el frontend).
@@ -118,7 +105,7 @@ export class WidgetsService implements OnModuleInit {
 
   async update(userId: string, id: string, dto: UpdateWidgetDto) {
     const existing = await this.prisma.widget.findUnique({ where: { id } });
-    if (!existing) throw new NotFoundException('Widget not found');
+    if (!existing || existing.userId !== userId) throw new NotFoundException('Widget not found');
 
     const data: Record<string, unknown> = {};
     if (dto.config !== undefined) data.config = JSON.stringify(dto.config);
@@ -138,9 +125,9 @@ export class WidgetsService implements OnModuleInit {
     return toWidgetDto(widget);
   }
 
-  async remove(id: string) {
+  async remove(userId: string, id: string) {
     const existing = await this.prisma.widget.findUnique({ where: { id } });
-    if (!existing) throw new NotFoundException('Widget not found');
+    if (!existing || existing.userId !== userId) throw new NotFoundException('Widget not found');
 
     const widget = await this.prisma.widget.update({
       where: { id },
@@ -149,9 +136,9 @@ export class WidgetsService implements OnModuleInit {
     return toWidgetDto(widget);
   }
 
-  async restore(id: string) {
+  async restore(userId: string, id: string) {
     const existing = await this.prisma.widget.findUnique({ where: { id } });
-    if (!existing) throw new NotFoundException('Widget not found');
+    if (!existing || existing.userId !== userId) throw new NotFoundException('Widget not found');
 
     const widget = await this.prisma.widget.update({
       where: { id },
@@ -160,9 +147,9 @@ export class WidgetsService implements OnModuleInit {
     return toWidgetDto(widget);
   }
 
-  async removeForever(id: string) {
+  async removeForever(userId: string, id: string) {
     const existing = await this.prisma.widget.findUnique({ where: { id } });
-    if (!existing) throw new NotFoundException('Widget not found');
+    if (!existing || existing.userId !== userId) throw new NotFoundException('Widget not found');
 
     return this.prisma.widget.delete({ where: { id } });
   }

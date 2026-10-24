@@ -8,17 +8,30 @@ datasource db {
 }
 
 model User {
-  id       String   @id @default(uuid())
-  email    String   @unique
-  password String
-  widgets  Widget[]
-  tabs     Tab[]
-  lists    TodoList[]
-  events   CalendarEvent[]
-  tags     Tag[]
-  tables   DataTable[]
+  id        String    @id @default(uuid())
+  email     String    @unique
+  password  String
+  widgets   Widget[]
+  tabs      Tab[]
+  lists     TodoList[]
+  events    CalendarEvent[]
+  tags      Tag[]
+  tables    DataTable[]
+  sessions  Session[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model Tab {
