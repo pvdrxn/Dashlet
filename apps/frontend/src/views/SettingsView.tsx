@@ -127,7 +127,7 @@ export function SettingsView() {
                         <FiUser size={32} className="text-blue-400" aria-hidden="true" />
                       </div>
                       <div>
-                        <h3 className="text-lg font-medium text-white">{user?.email}</h3>
+                        <h3 className="text-lg font-medium text-white">{user?.username ?? user?.email}</h3>
                         <p className="text-sm text-gray-400">
                           Member since {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}
                         </p>

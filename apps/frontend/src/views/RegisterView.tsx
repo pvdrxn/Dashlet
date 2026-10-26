@@ -14,14 +14,25 @@ const PASSWORD_REQUIREMENTS = [
 
 export function RegisterView() {
   const navigate = useNavigate();
-  const { register, loading, error: authError, clearError } = useAuth();
+  const { register, loading } = useAuth();
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [usernameError, setUsernameError] = useState('');
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [confirmError, setConfirmError] = useState('');
   const [formError, setFormError] = useState('');
+
+  const validateUsername = (value: string): string => {
+    const trimmed = value.trim();
+    if (!trimmed) return 'Username is required';
+    if (!/^[a-zA-Z0-9_]{3,20}$/.test(trimmed)) {
+      return 'Use 3-20 letters, numbers, or underscores';
+    }
+    return '';
+  };
 
   const validateEmail = (value: string): string => {
     if (!value) return 'Email is required';
@@ -39,6 +50,12 @@ export function RegisterView() {
     if (!value) return 'Please confirm your password';
     if (value !== password) return 'Passwords do not match';
     return '';
+  };
+
+  const handleUsernameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setUsername(value);
+    setUsernameError(validateUsername(value));
   };
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -62,24 +79,29 @@ export function RegisterView() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    clearError();
     setFormError('');
 
+    const usernameErr = validateUsername(username);
     const emailErr = validateEmail(email);
     const passwordErr = validatePassword(password);
     const confirmErr = validateConfirm(confirmPassword);
 
+    if (usernameErr) setUsernameError(usernameErr);
     if (emailErr) setEmailError(emailErr);
     if (passwordErr) setPasswordError(passwordErr);
     if (confirmErr) setConfirmError(confirmErr);
-    if (emailErr || passwordErr || confirmErr) return;
+    if (usernameErr || emailErr || passwordErr || confirmErr) return;
 
     try {
-      await register({ email, password });
+      await register({ email, username: username.trim(), password });
       navigate('/');
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Registration failed';
-      if (message.includes('already')) {
+      if (message.includes('Username already')) {
+        setUsernameError('This username is already taken');
+      } else if (message.includes('Username must be')) {
+        setUsernameError('Use 3-20 letters, numbers, or underscores');
+      } else if (message.includes('already')) {
         setEmailError('An account with this email already exists');
       } else {
         setFormError(message);
@@ -87,6 +109,7 @@ export function RegisterView() {
     }
   };
 
+  const handleUsernameBlur = () => setUsernameError(validateUsername(username));
   const handleEmailBlur = () => setEmailError(validateEmail(email));
   const handlePasswordBlur = () => setPasswordError(validatePassword(password));
   const handleConfirmBlur = () => setConfirmError(validateConfirm(confirmPassword));
@@ -108,12 +131,19 @@ export function RegisterView() {
               </div>
             )}
 
-            {authError && (
-              <div className="text-sm text-red-400 bg-red-900/30 border border-red-800 rounded-lg p-3 flex items-center gap-2" role="alert">
-                <span className="flex-shrink-0">⚠</span>
-                {authError}
-              </div>
-            )}
+            <InputField
+              id="username"
+              label="Username"
+              value={username}
+              onChange={handleUsernameChange}
+              onBlur={handleUsernameBlur}
+              error={usernameError}
+              placeholder="your_username"
+              required
+              autoComplete="username"
+              autoFocus
+              helperText="3-20 characters. Letters, numbers, and underscores only."
+            />
 
             <InputField
               id="email"
@@ -126,7 +156,6 @@ export function RegisterView() {
               placeholder="you@example.com"
               required
               autoComplete="email"
-              autoFocus
             />
 
             <InputField
@@ -196,7 +225,7 @@ export function RegisterView() {
 
             <button
               type="submit"
-              disabled={loading || !email || !password || !confirmPassword}
+              disabled={loading || !username || !email || !password || !confirmPassword}
               className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900/50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
             >
               {loading ? (

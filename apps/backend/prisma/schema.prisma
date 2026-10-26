@@ -10,6 +10,7 @@ datasource db {
 model User {
   id        String    @id @default(uuid())
   email     String    @unique
+  username  String?   @unique
   password  String
   widgets   Widget[]
   tabs      Tab[]
@@ -37,7 +38,7 @@ model Session {
 model Tab {
   id        String   @id @default(uuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name      String
   order     Int      @default(0)
   widgets   Widget[]
@@ -49,9 +50,9 @@ model Tab {
 model Widget {
   id       String   @id @default(uuid())
   userId   String
-  user     User     @relation(fields: [userId], references: [id])
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   tabId    String?
-  tab      Tab?     @relation(fields: [tabId], references: [id])
+  tab      Tab?     @relation(fields: [tabId], references: [id], onDelete: Cascade)
   type     String
   config   String   @default("{}")
   position String   @default("{\"x\":0,\"y\":0,\"w\":300,\"h\":200}")
@@ -64,7 +65,7 @@ model Widget {
 model TodoList {
   id       String     @id @default(uuid())
   userId   String
-  user     User       @relation(fields: [userId], references: [id])
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   title    String
   items    TodoItem[]
   createdAt DateTime  @default(now())
@@ -74,7 +75,7 @@ model TodoList {
 model TodoItem {
   id        String   @id @default(uuid())
   listId    String
-  list      TodoList @relation(fields: [listId], references: [id])
+  list      TodoList @relation(fields: [listId], references: [id], onDelete: Cascade)
   text      String
   completed Boolean  @default(false)
   order     Int
@@ -95,7 +96,7 @@ model TodoItem {
 model CalendarEvent {
   id          String    @id @default(uuid())
   userId      String
-  user        User      @relation(fields: [userId], references: [id])
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   date        String
   startMin    Int
   durationMin Int       @default(60)
@@ -129,7 +130,7 @@ model CalendarEvent {
 model Tag {
   id        String   @id @default(uuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name      String
   nameLower String
   /// El `id` de `TAG_COLORS` (packages/shared), o `''` cuando la paleta ya no
@@ -165,7 +166,7 @@ model Tag {
 model DataTable {
   id     String   @id @default(uuid())
   userId String
-  user   User     @relation(fields: [userId], references: [id])
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name   String
   /// JSON con `[{ id, name, type, width?, options?, format?, currency? }]`, donde
   /// `type` es uno de `COLUMN_TYPES` --`text`, `number`, `checkbox`, `date`,

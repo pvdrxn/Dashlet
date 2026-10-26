@@ -1065,9 +1065,9 @@ function readCollapsedSize(config: Record<string, unknown>): { w: number; h: num
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
               <FiGrid size={32} className="text-gray-600" />
               <div>
-                <p className="text-sm font-medium text-gray-300">Este dashboard esta vacio</p>
+                <p className="text-sm font-medium text-gray-300">This dashboard is empty</p>
                 <p className="mt-1 text-xs text-gray-400">
-                  Usa el menu de arriba para agregar tu primer widget.
+                  Use the menu above to add your first widget.
                 </p>
               </div>
             </div>

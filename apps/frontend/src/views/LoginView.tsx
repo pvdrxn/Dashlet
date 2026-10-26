@@ -6,7 +6,7 @@ import { InputField } from '../components/InputField';
 
 export function LoginView() {
   const navigate = useNavigate();
-  const { login, loading, error: authError, clearError } = useAuth();
+  const { login, loading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [emailError, setEmailError] = useState('');
@@ -39,7 +39,6 @@ export function LoginView() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    clearError();
     setFormError('');
 
     const emailErr = validateEmail(email);
@@ -79,13 +78,6 @@ export function LoginView() {
               <div className="text-sm text-red-400 bg-red-900/30 border border-red-800 rounded-lg p-3 flex items-center gap-2" role="alert">
                 <span className="flex-shrink-0">⚠</span>
                 {formError}
-              </div>
-            )}
-
-            {authError && (
-              <div className="text-sm text-red-400 bg-red-900/30 border border-red-800 rounded-lg p-3 flex items-center gap-2" role="alert">
-                <span className="flex-shrink-0">⚠</span>
-                {authError}
               </div>
             )}
 

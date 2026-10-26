@@ -209,7 +209,7 @@ export function Toolbar({
               <FiUser size={14} />
             </span>
             <span className="hidden sm:block text-sm font-medium text-white max-w-[120px] truncate">
-              {user?.email}
+              {user?.username ?? user?.email}
             </span>
           </button>
 
@@ -220,8 +220,12 @@ export function Toolbar({
             >
               <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-lg overflow-hidden">
                 <div className="px-3 py-2 border-b border-gray-700">
-                  <p className="text-xs font-medium text-white truncate">{user?.email}</p>
-                  <p className="text-xs text-gray-500 truncate">{user?.id}</p>
+                  <p className="text-xs font-medium text-white truncate">
+                    {user?.username ?? user?.email}
+                  </p>
+                  {user?.username && (
+                    <p className="text-xs text-gray-400 truncate">{user.email}</p>
+                  )}
                 </div>
                 <button
                   role="menuitem"

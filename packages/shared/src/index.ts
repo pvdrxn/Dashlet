@@ -708,12 +708,14 @@ export function newTableColumn(type: ColumnType = 'text'): TableColumnDto {
 export interface UserDto {
   id: string;
   email: string;
+  username: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface RegisterDto {
   email: string;
+  username: string;
   password: string;
 }
 

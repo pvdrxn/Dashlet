@@ -2,10 +2,9 @@ import { Controller, Post, Get, Delete, Patch, Body, Param, Req, HttpCode, HttpS
 import { AuthService } from './auth.service';
 import { RegisterDto, LoginDto, AuthResponseDto, UserDto, SessionDto, ChangePasswordDto, ChangeEmailDto } from '@widget-master/shared';
 import { JwtAuthGuard } from './jwt-auth.guard';
-import { ThrottlerGuard, SkipThrottle } from '@nestjs/throttler';
+import { SkipThrottle } from '@nestjs/throttler';
 
 @Controller('auth')
-@UseGuards(ThrottlerGuard)
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 

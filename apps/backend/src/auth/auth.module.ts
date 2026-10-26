@@ -21,12 +21,16 @@ import { PrismaModule } from '../prisma/prisma.module';
       {
         name: 'default',
         ttl: 60000, // 1 minute
-        limit: 10, // 10 requests per minute
+        // El dashboard dispara varias requests por accion (una por pestaña,
+        // otra al crear y otra al releer). 10/min bloqueaba crear widgets.
+        limit: 300, // 300 requests per minute
       },
       {
         name: 'auth',
         ttl: 60000, // 1 minute
         limit: 5, // 5 requests per minute for auth endpoints
+        // Solo /auth. Aplicado a toda la API dejaba 5 requests/min al resto.
+        skipIf: (ctx) => ctx.getClass().name !== 'AuthController',
       },
     ]),
   ],

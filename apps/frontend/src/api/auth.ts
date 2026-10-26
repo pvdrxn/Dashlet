@@ -1,7 +1,7 @@
 import type { RegisterDto, LoginDto, AuthResponseDto, UserDto, SessionDto, ChangePasswordDto, ChangeEmailDto } from '@widget-master/shared';
 
 const BASE = import.meta.env.PROD
-  ? 'http://localhost:3002/api/v1/auth'
+  ? 'http://localhost:3001/api/v1/auth'
   : '/api/v1/auth';
 
 let accessToken: string | null = null;
@@ -12,10 +12,15 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
-  const res = await fetch(url, {
-    headers,
-    ...options,
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers,
+      ...options,
+    });
+  } catch {
+    throw new Error("Can't reach the server. Check your connection and try again.");
+  }
 
   if (res.status === 401 && refreshToken && !url.includes('/auth/refresh') && !url.includes('/auth/login') && !url.includes('/auth/register')) {
     try {
@@ -25,6 +30,10 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
       clearTokens();
       throw new Error('Session expired');
     }
+  }
+
+  if (res.status === 502 || res.status === 503 || res.status === 504) {
+    throw new Error("Can't reach the server. Make sure the backend is running.");
   }
 
   if (!res.ok) {

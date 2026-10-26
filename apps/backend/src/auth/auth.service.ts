@@ -21,9 +21,26 @@ export class AuthService {
       throw new ConflictException('Email already registered');
     }
 
+    const username = dto.username?.trim();
+    if (!username || !/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
+      throw new BadRequestException(
+        'Username must be 3-20 characters using letters, numbers, or underscores',
+      );
+    }
+    const usernameTaken = await this.prisma.user.findUnique({ where: { username } });
+    if (usernameTaken) {
+      throw new ConflictException('Username already taken');
+    }
+
     const passwordHash = await bcrypt.hash(dto.password, 10);
-    const user = await this.prisma.user.create({
-      data: { email: dto.email, password: passwordHash },
+    const user = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: { email: dto.email, username, password: passwordHash },
+      });
+      await tx.tab.create({
+        data: { userId: created.id, name: 'New tab' },
+      });
+      return created;
     });
 
     return this.generateAuthResponse(user);
@@ -181,6 +198,7 @@ export class AuthService {
     return {
       id: user.id as string,
       email: user.email as string,
+      username: (user.username as string | null) ?? null,
       createdAt: new Date(user.createdAt as string | Date).toISOString(),
       updatedAt: new Date(user.updatedAt as string | Date).toISOString(),
     };

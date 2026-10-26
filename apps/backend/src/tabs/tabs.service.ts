@@ -2,8 +2,6 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTabDto, UpdateTabDto, TabDto } from '@widget-master/shared';
 
-const DEFAULT_TAB_NAME = 'Nuevo entorno';
-
 function toTabDto(tab: Record<string, unknown>, widgetCount?: number): TabDto {
   return {
     id: tab.id as string,
@@ -45,7 +43,7 @@ export class TabsService {
     const tab = await this.prisma.tab.create({
       data: {
         userId,
-        name: dto.name?.trim() || 'Nueva pestaña',
+        name: dto.name?.trim() || 'New tab',
         order: (maxOrder._max.order ?? -1) + 1,
       },
     });
