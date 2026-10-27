@@ -6,6 +6,7 @@ import { FiPlus, FiTrash2, FiSettings, FiLogOut, FiUser } from 'react-icons/fi';
 import { createRoot, type Root } from 'react-dom/client';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 interface ToolbarProps {
   onAddWidget: (type: string) => Promise<Position | null>;
   onAddWidgetDeferred: (type: string) => Promise<Position | null>;
@@ -23,6 +24,7 @@ export function Toolbar({
   onOpenTrash,
   topOffset,
 }: ToolbarProps) {
+  const { t } = useTranslation();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const availableWidgets = getAllWidgets();
@@ -57,12 +59,16 @@ export function Toolbar({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const renderButtonGhost = (def: WidgetDefinition) => (
+  // Por tipo y no por `def.label`: la etiqueta registrada es el respaldo en ingles y
+  // esta lectura sigue al idioma activo cada vez que el menu se redibuja.
+  const widgetLabel = (type: string, def: WidgetDefinition) =>
+    t(`widgets.types.${type}`, def.label);
+  const renderButtonGhost = (label: string, def: WidgetDefinition) => (
     <div className="flex items-center gap-2 rounded border border-gray-700/80 bg-gray-800/90 py-1.5 pl-1.5 pr-3 text-sm shadow-xl">
       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-gray-700/80 text-gray-300">
         <def.icon size={14} />
       </span>
-      <span className="whitespace-nowrap text-gray-300">{def.label}</span>
+      <span className="whitespace-nowrap text-gray-300">{label}</span>
     </div>
   );
   const startGhost = (e: React.DragEvent, type: string) => {
@@ -77,7 +83,7 @@ export function Toolbar({
     el.style.cssText = `position:fixed;left:0;top:0;pointer-events:none;z-index:9999;transform:translate(${e.clientX}px, ${e.clientY}px);`;
     document.body.appendChild(el);
     const root = createRoot(el);
-    root.render(renderButtonGhost(def));
+    root.render(renderButtonGhost(widgetLabel(type, def), def));
     ghostRef.current = { el, root };
   };
   const moveGhost = (clientX: number, clientY: number) => {
@@ -125,7 +131,7 @@ export function Toolbar({
         <button
           type="button"
           onClick={() => setMenuOpen((o) => !o)}
-          aria-label="Add widget"
+          aria-label={t('toolbar.addWidget', 'Add widget')}
           aria-expanded={menuOpen}
           className={`flex items-center justify-center border border-transparent p-1 transition-all duration-300 active:scale-90 ${
             menuOpen || availableWidgets.length === 0
@@ -178,7 +184,7 @@ export function Toolbar({
                 <def.icon size={14} />
               </span>
               <span className="add-widget-item-label text-gray-300 transition-colors">
-                {def.label}
+                {widgetLabel(type, def)}
               </span>
             </button>
           ))}
@@ -189,8 +195,8 @@ export function Toolbar({
           type="button"
           onClick={onOpenTrash}
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-gray-400 transition-all duration-150 hover:bg-white/5 hover:text-gray-200 active:scale-90"
-          title="Open trash"
-          aria-label="Open trash"
+          title={t('toolbar.openTrash', 'Open trash')}
+          aria-label={t('toolbar.openTrash', 'Open trash')}
         >
           <FiTrash2 size={15} />
         </button>
@@ -200,10 +206,10 @@ export function Toolbar({
           <button
             type="button"
             onClick={() => setUserMenuOpen((o) => !o)}
-            aria-label="User menu"
+            aria-label={t('toolbar.userMenu', 'User menu')}
             aria-expanded={userMenuOpen}
             className="flex items-center gap-2 h-7 px-2 pr-3 rounded-lg text-gray-400 transition-all duration-150 hover:bg-white/5 hover:text-gray-200 active:scale-90"
-            title="Account"
+            title={t('toolbar.account', 'Account')}
           >
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-900/30 text-blue-400">
               <FiUser size={14} />
@@ -236,7 +242,7 @@ export function Toolbar({
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-300 hover:bg-white/5 hover:text-white transition-colors"
                 >
                   <FiSettings size={16} className="flex-shrink-0" aria-hidden="true" />
-                  Settings
+                  {t('common.settings', 'Settings')}
                 </button>
                 <button
                   role="menuitem"
@@ -248,7 +254,7 @@ export function Toolbar({
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-900/20 hover:text-red-300 transition-colors"
                 >
                   <FiLogOut size={16} className="flex-shrink-0" aria-hidden="true" />
-                  Sign Out
+                  {t('common.signOut', 'Sign Out')}
                 </button>
               </div>
             </div>

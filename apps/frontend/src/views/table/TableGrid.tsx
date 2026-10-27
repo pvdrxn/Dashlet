@@ -1,3 +1,4 @@
+import i18n from '../../i18n';
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { IconType } from 'react-icons';
@@ -812,7 +813,7 @@ function AjustesPanel({ column, onChange, onClose }: AjustesPanelProps) {
             className="mt-1 flex items-center gap-1 rounded px-1 py-0.5 text-xs text-gray-300 transition-colors hover:bg-white/5"
           >
             <FiPlus size={11} />
-            Add option
+            {i18n.t('table.addOption', 'Add option')}
           </button>
         </>
       ) : (
@@ -2652,7 +2653,7 @@ export function TableGrid({
           className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-gray-400 transition-colors hover:bg-white/5 hover:text-gray-200 disabled:opacity-30"
         >
           <FiPlus size={12} />
-          Add row
+          {i18n.t('table.addRow', 'Add row')}
         </button>
         <button
           type="button"
@@ -2669,7 +2670,7 @@ export function TableGrid({
           }`}
         >
           <FiTrash2 size={12} />
-          {isDeleteMode ? selectedRows.size > 0 ? `Delete (${selectedRows.size})` : 'Cancel' : 'Delete'}
+          {isDeleteMode ? selectedRows.size > 0 ? i18n.t('table.deleteCount', { count: selectedRows.size, defaultValue: `Delete (${selectedRows.size})` }) : i18n.t('table.cancel', 'Cancel') : i18n.t('table.delete', 'Delete')}
         </button>
         {/*
          * La ultima edicion, a la derecha y a la altura del boton. `ml-auto` la
@@ -3572,7 +3573,7 @@ const ColumnHeader = memo(function ColumnHeader({
                   onClick={borrar}
                   className="block w-full px-3 py-1.5 text-left text-xs text-danger transition-colors hover:bg-danger/15"
                 >
-                  Delete column
+                  {i18n.t('table.deleteColumn', 'Delete column')}
                 </button>
               </div>
             )}
@@ -3805,8 +3806,8 @@ function AddColumn({
             ref={botonRef}
             type="button"
             onClick={abrir}
-            aria-label="Add column"
-            title="Add column"
+            aria-label={i18n.t('table.addColumn', 'Add column')}
+            title={i18n.t('table.addColumn', 'Add column')}
             className="flex size-6 items-center justify-center rounded text-gray-500 transition-colors hover:bg-white/5 hover:text-gray-200"
           >
             {/*

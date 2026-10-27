@@ -1,7 +1,9 @@
 import { useCallback, useState, useRef, useEffect, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { WidgetGrid } from './widgets';
 import { OPEN_TABLE_EVENT } from './widgets/data-table/DataTableWidget';
+import { OPEN_CALENDAR_EVENT } from './widgets/calendar/open-calendar';
 import { Toolbar } from './components/Toolbar';
 import { TabBar } from './components/TabBar';
 import { TrashWindow } from './components/TrashWindow';
@@ -31,6 +33,7 @@ function readStoredView(): ViewId {
 }
 
 function Dashboard() {
+  const { t } = useTranslation();
   const { user, loading: authLoading } = useAuth();
   const [trashOpen, setTrashOpen] = useState(false);
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
@@ -42,8 +45,17 @@ function Dashboard() {
       setViewSidebarOpen(false);
       setActiveView('table');
     };
+    // El dia que pidio el widget queda en localStorage y la vista lo lee al montarse.
+    const onOpenCalendar = () => {
+      setViewSidebarOpen(false);
+      setActiveView('calendar');
+    };
     window.addEventListener(OPEN_TABLE_EVENT, onOpenTable);
-    return () => window.removeEventListener(OPEN_TABLE_EVENT, onOpenTable);
+    window.addEventListener(OPEN_CALENDAR_EVENT, onOpenCalendar);
+    return () => {
+      window.removeEventListener(OPEN_TABLE_EVENT, onOpenTable);
+      window.removeEventListener(OPEN_CALENDAR_EVENT, onOpenCalendar);
+    };
   }, []);
 
   const taskPickerTargetRef = useRef<string | undefined>(undefined);
@@ -164,11 +176,12 @@ function Dashboard() {
 
   const handleCreateTab = useCallback(async () => {
     try {
-      const tab = await tabsApi.createTab();
+      const defaultName = t('dashboard.newTab', 'New tab');
+      const tab = await tabsApi.createTab(defaultName);
       setTabs((prev) => [...prev, tab]);
       setActiveTabId(tab.id);
     } catch {}
-  }, []);
+  }, [t]);
 
   const handleRenameTab = useCallback(async (id: string, name: string) => {
     try {

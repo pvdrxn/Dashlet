@@ -1,6 +1,6 @@
 import { Controller, Post, Get, Delete, Patch, Body, Param, Req, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { RegisterDto, LoginDto, AuthResponseDto, UserDto, SessionDto, ChangePasswordDto, ChangeEmailDto } from '@widget-master/shared';
+import { RegisterDto, LoginDto, AuthResponseDto, UserDto, SessionDto, ChangePasswordDto, ChangeEmailDto, ChangeLanguageDto } from '@widget-master/shared';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { SkipThrottle } from '@nestjs/throttler';
 
@@ -66,6 +66,13 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async changeEmail(@Req() req: Request & { user: { sub: string } }, @Body() dto: ChangeEmailDto): Promise<UserDto> {
     return this.authService.changeEmail(req.user.sub, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('language')
+  @HttpCode(HttpStatus.OK)
+  async changeLanguage(@Req() req: Request & { user: { sub: string } }, @Body() dto: ChangeLanguageDto): Promise<UserDto> {
+    return this.authService.changeLanguage(req.user.sub, dto);
   }
 
   @UseGuards(JwtAuthGuard)

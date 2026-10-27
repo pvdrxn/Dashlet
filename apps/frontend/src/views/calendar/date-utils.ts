@@ -1,3 +1,4 @@
+import i18n from '../../i18n';
 /*
  * Aritmetica de fechas del calendario.
  *
@@ -122,20 +123,28 @@ export function monthRange(key: string): { from: string; to: string } {
 export function formatMonthLabel(key: string, short = false): string {
   const [y, m] = key.split('-').map(Number);
   const i = Math.min(11, Math.max(0, m - 1));
-  return short ? `${MONTH_NAMES_SHORT[i]} ${y}` : `${MONTH_NAMES[i]} ${y}`;
+  const rawKey = MONTH_NAMES[i];
+  const rawShort = MONTH_NAMES_SHORT[i];
+  const translated = short
+    ? i18n.t(`calendar.monthsShort.${rawShort}`, { defaultValue: rawShort })
+    : i18n.t(`calendar.months.${rawKey}`, { defaultValue: rawKey });
+  return `${translated} ${y}`;
 }
 
 /** "Mon 12 Oct" para la cabecera del dia. */
 export function formatDayLabel(key: string): string {
   const d = parseDateKey(key);
-  const wd = WEEKDAY_LONG[(d.getDay() + 6) % 7];
-  const month = MONTH_NAMES_SHORT[d.getMonth()];
+  const rawWd = WEEKDAY_LONG[(d.getDay() + 6) % 7];
+  const rawMonth = MONTH_NAMES_SHORT[d.getMonth()];
+  const wd = i18n.t(`calendar.weekdaysLong.${rawWd}`, { defaultValue: rawWd });
+  const month = i18n.t(`calendar.monthsShort.${rawMonth}`, { defaultValue: rawMonth });
   return `${wd} ${d.getDate()} ${month}`;
 }
 
 /** "M T W T F S S", empezando en lunes. */
 export function weekdayInitials(): string[] {
-  return WEEKDAY_INITIALS;
+  const custom = i18n.t('calendar.weekdaysShort', { returnObjects: true, defaultValue: WEEKDAY_INITIALS });
+  return Array.isArray(custom) ? (custom as string[]) : WEEKDAY_INITIALS;
 }
 
 /** `startMin` (0..1439) como "09:30". */

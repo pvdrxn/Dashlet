@@ -14,7 +14,7 @@ export class CalendarController {
   constructor(private readonly service: CalendarService) {}
 
   @Get()
-  findRange(@Req() req: Request & { user: { sub: string } }, @Query('from') from: string, @Query('to') to: string) {
+  findRange(@Req() req: Request & { user: { sub: string } }, @Query('from') from?: string, @Query('to') to?: string) {
     return this.service.findRange(req.user.sub, from, to);
   }
 

@@ -1,48 +1,60 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiArrowRight } from 'react-icons/fi';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../hooks/useAuth';
+import { useTemporaryError } from '../hooks/useTemporaryError';
 import { InputField } from '../components/InputField';
+import { LanguagePickerDropdown } from '../components/LanguagePickerDropdown';
 
 export function LoginView() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { login, loading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [emailError, setEmailError] = useState('');
-  const [passwordError, setPasswordError] = useState('');
+  const [emailErrorKey, setEmailError] = useTemporaryError(4000);
+  const [passwordErrorKey, setPasswordError] = useTemporaryError(4000);
   const [formError, setFormError] = useState('');
 
-  const validateEmail = (value: string): string => {
-    if (!value) return 'Email is required';
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return 'Enter a valid email address';
-    return '';
+  const getEmailError = (value: string): string | null => {
+    if (!value) return 'auth.validation.emailRequired';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return 'auth.validation.emailInvalid';
+    return null;
   };
 
-  const validatePassword = (value: string): string => {
-    if (!value) return 'Password is required';
-    if (value.length < 6) return 'Password must be at least 6 characters';
-    return '';
+  const getPasswordError = (value: string): string | null => {
+    if (!value) return 'auth.validation.passwordRequired';
+    if (value.length < 6) return 'auth.validation.passwordMin6';
+    return null;
   };
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setEmail(value);
-    setEmailError(validateEmail(value));
+    if (!value) {
+      setEmailError(null);
+    } else {
+      setEmailError(getEmailError(value));
+    }
   };
 
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setPassword(value);
-    setPasswordError(validatePassword(value));
+    if (!value) {
+      setPasswordError(null);
+    } else {
+      setPasswordError(getPasswordError(value));
+    }
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setFormError('');
 
-    const emailErr = validateEmail(email);
-    const passwordErr = validatePassword(password);
+    const emailErr = getEmailError(email);
+    const passwordErr = getPasswordError(password);
 
     if (emailErr) setEmailError(emailErr);
     if (passwordErr) setPasswordError(passwordErr);
@@ -61,15 +73,22 @@ export function LoginView() {
     }
   };
 
-  const handleEmailBlur = () => setEmailError(validateEmail(email));
-  const handlePasswordBlur = () => setPasswordError(validatePassword(password));
+  const handleEmailBlur = () => {
+    if (email) setEmailError(getEmailError(email));
+  };
+  const handlePasswordBlur = () => {
+    if (password) setPasswordError(getPasswordError(password));
+  };
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
+    <div className="relative min-h-screen bg-gray-950 flex items-center justify-center p-4">
+      <div className="absolute top-4 right-4">
+        <LanguagePickerDropdown />
+      </div>
       <div className="w-full max-w-md">
         <div className="text-center mb-10">
           <h1 className="text-4xl font-bold text-white tracking-tight">Dashlet</h1>
-          <p className="text-gray-400 mt-2">Welcome back. Sign in to continue.</p>
+          <p className="text-gray-400 mt-2">{t('auth.welcomeBack', 'Welcome back. Sign in to continue.')}</p>
         </div>
 
         <div className="bg-gray-900/80 border border-gray-800 rounded-2xl p-8 shadow-2xl backdrop-blur-sm">
@@ -83,12 +102,12 @@ export function LoginView() {
 
             <InputField
               id="email"
-              label="Email"
+              label={t('auth.emailLabel', 'Email')}
               type="email"
               value={email}
               onChange={handleEmailChange}
               onBlur={handleEmailBlur}
-              error={emailError}
+              error={emailErrorKey ? t(emailErrorKey) : undefined}
               placeholder="you@example.com"
               required
               autoComplete="email"
@@ -97,12 +116,12 @@ export function LoginView() {
 
             <InputField
               id="password"
-              label="Password"
+              label={t('auth.passwordLabel', 'Password')}
               type="password"
               value={password}
               onChange={handlePasswordChange}
               onBlur={handlePasswordBlur}
-              error={passwordError}
+              error={passwordErrorKey ? t(passwordErrorKey) : undefined}
               placeholder="••••••••"
               required
               autoComplete="current-password"
@@ -113,22 +132,22 @@ export function LoginView() {
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  className="w-4 h-4 rounded border-gray-700 bg-gray-800 text-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+                  className="w-4 h-4 rounded border-gray-700 bg-gray-800 text-p2 focus:ring-2 focus:ring-p2 focus:ring-offset-2 focus:ring-offset-gray-900"
                 />
-                <span className="text-sm text-gray-300">Remember me</span>
+                <span className="text-sm text-gray-300">{t('auth.rememberMe', 'Remember me')}</span>
               </label>
               <a
                 href="#"
-                className="text-sm text-blue-400 hover:text-blue-300 underline font-medium"
+                className="text-sm text-p2 hover:text-p2/80 underline font-medium"
               >
-                Forgot password?
+                {t('auth.forgotPassword', 'Forgot password?')}
               </a>
             </div>
 
             <button
               type="submit"
-              disabled={loading || !email || !password}
-              className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900/50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 py-3 bg-p2 hover:bg-p2-oscura disabled:opacity-50 disabled:cursor-not-allowed text-gray-950 font-semibold font-medium rounded-lg transition-colors"
             >
               {loading ? (
                 <>
@@ -136,11 +155,11 @@ export function LoginView() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
-                  Signing in...
+                  {t('auth.signingIn', 'Signing in...')}
                 </>
               ) : (
                 <>
-                  Sign In
+                  {t('auth.signInButton', 'Sign In')}
                   <FiArrowRight size={18} aria-hidden="true" />
                 </>
               )}
@@ -153,7 +172,7 @@ export function LoginView() {
                 <div className="w-full border-t border-gray-800" />
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="px-4 bg-gray-900/80 text-gray-500">Or continue with</span>
+                <span className="px-4 bg-gray-900/80 text-gray-500">{t('auth.orContinueWith', 'Or continue with')}</span>
               </div>
             </div>
 
@@ -186,9 +205,9 @@ export function LoginView() {
         </div>
 
         <p className="text-center text-sm text-gray-500 mt-6">
-          Don&apos;t have an account?{' '}
-          <a href="/register" className="text-blue-400 hover:text-blue-300 font-medium underline">
-            Create one
+          {t('auth.noAccount', "Don't have an account?")}{' '}
+          <a href="/register" className="text-p2 hover:text-p2/80 font-medium underline">
+            {t('auth.createOne', 'Create one')}
           </a>
         </p>
       </div>

@@ -104,7 +104,7 @@ export function ChangeEmailForm() {
       <button
         type="submit"
         disabled={loading || !currentPassword || !newEmail}
-        className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900/50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
+        className="w-full py-2.5 bg-p2 hover:bg-p2-oscura disabled:opacity-50 disabled:cursor-not-allowed text-gray-950 font-semibold rounded-lg transition-colors"
       >
         {loading ? 'Saving...' : 'Change Email'}
       </button>

@@ -92,7 +92,7 @@ export function TaskPickerModal({ targetWidgetId, onClose }: TaskPickerModalProp
               <FiList size={22} className="text-gray-600" />
               <p className="text-sm text-gray-400">No todo lists found.</p>
               <p className="max-w-[22rem] text-xs text-gray-400">
-                Agrega un widget Todo List en tu dashboard y sus tareas apareceran aca.
+                Add a Todo List widget to your dashboard and its tasks will appear here.
               </p>
             </div>
           )}

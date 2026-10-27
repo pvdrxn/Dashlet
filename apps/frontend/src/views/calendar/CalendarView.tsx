@@ -1,15 +1,18 @@
+import { useTranslation } from 'react-i18next';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { FiPlus, FiTrash2, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
+import { FiPlus, FiTrash2, FiChevronLeft, FiChevronRight, FiX, FiCalendar } from 'react-icons/fi';
 import { TabStrip } from '../../components/TabStrip';
 import { TagPicker } from './TagPicker';
 import { TagFilterChips } from './TagFilterChips';
 import * as api from '../../api/calendar';
 import * as tagsApi from '../../api/tags';
+import { PENDING_CALENDAR_DATE_KEY } from '../../widgets/calendar/open-calendar';
 import type { CalendarEventDto, TagDto, UpdateTagDto } from '@widget-master/shared';
 import { DEFAULT_DURATION_MIN, MONTH_TABS_AFTER, MONTH_TABS_BEFORE, tagColorHex } from '@widget-master/shared';
 import {
   addMonths,
   dateKey,
+  DATE_KEY_RE,
   dayNumber,
   formatDayLabel,
   formatHour,
@@ -52,6 +55,22 @@ import {
  */
 const MAX_DAY_TAG_DOTS = 4;
 
+/**
+ * El dia que el widget de calendario pidio abrir, o `null`.
+ *
+ * Un dia fuera de la tira de meses se descarta: no hay pestana que lo muestre y
+ * la vista quedaria en un mes sin seleccion posible. Los meses son `YYYY-MM`, asi
+ * que comparan bien como texto.
+ */
+function readPendingDate(anchorMonth: string): string | null {
+  const stored = localStorage.getItem(PENDING_CALENDAR_DATE_KEY);
+  if (!stored || !DATE_KEY_RE.test(stored)) return null;
+  const month = stored.slice(0, 7);
+  if (month < addMonths(anchorMonth, -MONTH_TABS_BEFORE)) return null;
+  if (month > addMonths(anchorMonth, MONTH_TABS_AFTER)) return null;
+  return stored;
+}
+
 /** Los meses de la tira: una ventana fija alrededor del actual. */
 function buildMonthTabs(anchorMonth: string): string[] {
   const months: string[] = [];
@@ -91,12 +110,22 @@ type Editor =
   | null;
 
 export function CalendarView({ leading }: { leading?: ReactNode }) {
+  const { t } = useTranslation();
   const today = dateKey(new Date());
   const anchorMonth = monthKey(new Date());
 
   const months = useMemo(() => buildMonthTabs(anchorMonth), [anchorMonth]);
-  const [activeMonth, setActiveMonth] = useState(anchorMonth);
-  const [selectedDate, setSelectedDate] = useState(today);
+  /*
+   * Se lee en el inicializador y se borra en un efecto, no en el inicializador:
+   * en desarrollo React lo ejecuta dos veces, y si la primera lo borrara la
+   * segunda ya no encontraria el dia.
+   */
+  const [pendingDate] = useState(() => readPendingDate(anchorMonth));
+  useEffect(() => {
+    localStorage.removeItem(PENDING_CALENDAR_DATE_KEY);
+  }, []);
+  const [activeMonth, setActiveMonth] = useState(pendingDate ? pendingDate.slice(0, 7) : anchorMonth);
+  const [selectedDate, setSelectedDate] = useState(pendingDate ?? today);
   const [events, setEvents] = useState<CalendarEventDto[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [editor, setEditor] = useState<Editor>(null);
@@ -484,7 +513,7 @@ export function CalendarView({ leading }: { leading?: ReactNode }) {
             <button
               type="button"
               onClick={() => setActiveMonth((m) => addMonths(m, -1))}
-              aria-label="Previous month"
+              aria-label={t('calendar.prevMonth', 'Previous month')}
               className="flex h-7 w-7 items-center justify-center rounded text-gray-400 transition-colors hover:bg-white/5 hover:text-gray-200"
             >
               <FiChevronLeft size={15} />
@@ -492,7 +521,7 @@ export function CalendarView({ leading }: { leading?: ReactNode }) {
             <button
               type="button"
               onClick={() => setActiveMonth((m) => addMonths(m, 1))}
-              aria-label="Next month"
+              aria-label={t('calendar.nextMonth', 'Next month')}
               className="flex h-7 w-7 items-center justify-center rounded text-gray-400 transition-colors hover:bg-white/5 hover:text-gray-200"
             >
               <FiChevronRight size={15} />
@@ -505,7 +534,7 @@ export function CalendarView({ leading }: { leading?: ReactNode }) {
               }}
               className="ml-1 rounded px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-white/5 hover:text-gray-200"
             >
-              Today
+              {t('calendar.today', 'Today')}
             </button>
           </div>
         }
@@ -543,11 +572,7 @@ export function CalendarView({ leading }: { leading?: ReactNode }) {
             <div className="flex shrink-0 items-baseline gap-2">
               <h2 className="text-sm font-medium text-white">{formatMonthLabel(activeMonth)}</h2>
               <span className="text-xs text-gray-500">
-                {/*
-                 * Cuenta de los eventos YA FILTRADOS, como los contadores de las
-                 * celdas.
-                 */}
-                {visibleEvents.length} {visibleEvents.length === 1 ? 'event' : 'events'}
+                {visibleEvents.length} {visibleEvents.length === 1 ? t('calendar.event', 'event') : t('calendar.events', 'events')}
               </span>
             </div>
             <TagFilterChips
@@ -617,12 +642,16 @@ export function CalendarView({ leading }: { leading?: ReactNode }) {
                     aria-label={cellTitle}
                     title={cellTitle}
                     aria-current={isToday(cell.key) ? 'date' : undefined}
-                    className={`relative flex flex-col items-center justify-start gap-1 border-r border-b border-gray-700/30 p-1 text-sm transition-colors [&:nth-child(7n)]:border-r-0 [&:nth-child(n+36)]:border-b-0 ${
+                    className={`relative flex flex-col items-center justify-center gap-1 border-r border-b border-gray-700/30 p-1 text-sm transition-colors [&:nth-child(7n)]:border-r-0 [&:nth-child(n+36)]:border-b-0 ${
                       isSelected
-                        ? 'bg-p2/10'
-                        : isCurrentMonth
-                          ? 'text-gray-300 hover:bg-white/[0.04]'
-                          : 'text-gray-600 hover:bg-white/[0.02]'
+                        ? 'bg-p2/25 ring-1 ring-inset ring-p2/50'
+                        : count > 0
+                          ? isCurrentMonth
+                            ? 'bg-p2/15 text-gray-100 hover:bg-p2/25'
+                            : 'bg-p2/10 text-gray-400 hover:bg-p2/20'
+                          : isCurrentMonth
+                            ? 'text-gray-300 hover:bg-white/[0.04]'
+                            : 'text-gray-600 hover:bg-white/[0.02]'
                     }`}
                   >
                     <span
@@ -709,11 +738,23 @@ export function CalendarView({ leading }: { leading?: ReactNode }) {
         {/* Panel del dia: bloques por hora                                  */}
         {/* ---------------------------------------------------------------- */}
         <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-600 bg-gray-800/90">
-          <header className="flex items-baseline justify-between border-b border-gray-700/60 px-4 py-3">
-            <h2 className="text-sm font-medium text-white">{formatDayLabel(selectedDate)}</h2>
-            <span className="text-xs text-gray-500">
-              {dayEvents.length} {dayEvents.length === 1 ? 'block' : 'blocks'}
-            </span>
+          <header className="flex items-center justify-between border-b border-gray-700/60 px-4 py-2.5">
+            <div className="flex items-baseline gap-2">
+              <h2 className="text-sm font-medium text-white">{formatDayLabel(selectedDate)}</h2>
+              <span className="text-xs text-gray-500">
+                {dayEvents.length} {dayEvents.length === 1 ? t('calendar.block', 'block') : t('calendar.blocks', 'blocks')}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => startCreate(selectedDate, 9 * 60)}
+              className="flex items-center gap-1.5 rounded bg-p2/20 px-2.5 py-1 text-xs font-medium text-p2 transition-colors hover:bg-p2/30"
+              title={t('calendar.addEvent', 'Add event')}
+              aria-label={t('calendar.addEvent', 'Add event')}
+            >
+              <FiPlus size={13} />
+              <span>{t('calendar.addEvent', 'Add event')}</span>
+            </button>
           </header>
 
           {/*
@@ -736,7 +777,7 @@ export function CalendarView({ leading }: { leading?: ReactNode }) {
               const addProps = {
                 type: 'button' as const,
                 onClick: () => startCreate(selectedDate, block.startMin),
-                'aria-label': `Add block at ${block.label}`,
+                'aria-label': t('calendar.addBlockAt', { time: block.label, defaultValue: `Add block at ${block.label}` }),
               };
               /*
                * El `+` aparece con el hover de la fila. Es el gesto de la rata:
@@ -934,53 +975,114 @@ export function CalendarView({ leading }: { leading?: ReactNode }) {
             })}
           </div>
 
-          {/*
-           * La barra es la MISMA para crear y para editar, y solo cambian el
-           * boton y el encabezado. Dos barras distintas serian dos lugares donde
-           * escribir el mismo titulo y las mismas etiquetas, y se desincronizan.
-           */}
-          {editor && (
-            <div className="flex flex-wrap items-center gap-2 border-t border-gray-700/60 bg-gray-800 px-4 py-2">
-              <span className="shrink-0 text-xs tabular-nums text-p2">
-                {formatDayLabel(editor.date)} {formatHour(editor.startMin)}
-              </span>
-              <input
-                ref={draftTitleRef}
-                type="text"
-                value={editor.title}
-                onChange={(e) => setEditor({ ...editor, title: e.target.value })}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void commitEditor();
-                  if (e.key === 'Escape') setEditor(null);
+        {/* Modal de creacion / edicion de evento */}
+        {editor && (
+          <div
+            className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/60 p-4"
+            onClick={() => setEditor(null)}
+          >
+            <div
+              className="flex w-full max-w-md flex-col overflow-hidden rounded-lg border border-gray-700 bg-gray-800 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-gray-700 bg-gray-700 px-4 py-2.5 select-none">
+                <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <FiCalendar size={15} className="text-p2" />
+                  <span>
+                    {editor.mode === 'edit'
+                      ? t('calendar.editEventModal', 'Edit event')
+                      : t('calendar.newEventModal', 'New event')}
+                  </span>
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setEditor(null)}
+                  className="rounded p-0.5 text-gray-400 transition-colors hover:bg-danger/10 hover:text-danger leading-none"
+                  title={t('calendar.cancel', 'Cancel')}
+                  aria-label={t('calendar.cancel', 'Cancel')}
+                >
+                  <FiX size={16} />
+                </button>
+              </div>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void commitEditor();
                 }}
-                placeholder="Block title"
-                aria-label="Block title"
-                className="min-w-[8rem] flex-1 rounded bg-gray-700 px-2 py-1 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500/50"
-              />
-              <TagPicker
-                tags={tags}
-                tagId={editor.tagId}
-                pendingName={editor.pendingTagName}
-                onChange={(next) => setEditor({ ...editor, tagId: next.tagId, pendingTagName: next.pendingName })}
-                onRename={handleRenameTag}
-                onDelete={handleDeleteTag}
-              />
-              <button
-                type="button"
-                onClick={() => setEditor(null)}
-                className="shrink-0 rounded px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-white/5 hover:text-gray-200"
+                className="flex flex-col gap-3 p-4"
               >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void commitEditor()}
-                className="shrink-0 rounded bg-p2/20 px-3 py-1 text-xs text-p2 transition-colors hover:bg-p2/30"
-              >
-                {editor.mode === 'edit' ? 'Save' : 'Add'}
-              </button>
+                <div className="flex items-center justify-between rounded bg-gray-900/60 px-3 py-2 text-xs">
+                  <span className="text-gray-400">{formatDayLabel(editor.date)}</span>
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="event-start-min" className="text-gray-400">
+                      {t('calendar.widget.startTime', 'Start time')}
+                    </label>
+                    <select
+                      id="event-start-min"
+                      value={editor.startMin}
+                      onChange={(e) => setEditor({ ...editor, startMin: Number(e.target.value) })}
+                      className="rounded bg-gray-700 px-2 py-0.5 text-xs tabular-nums text-white focus:outline-none focus:ring-1 focus:ring-p2"
+                    >
+                      {hours.map((h) => (
+                        <option key={h.startMin} value={h.startMin}>
+                          {h.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="event-title-input" className="text-xs font-medium text-gray-300">
+                    {t('calendar.blockTitle', 'Block title')}
+                  </label>
+                  <input
+                    id="event-title-input"
+                    ref={draftTitleRef}
+                    type="text"
+                    value={editor.title}
+                    onChange={(e) => setEditor({ ...editor, title: e.target.value })}
+                    placeholder={t('calendar.blockTitle', 'Block title')}
+                    className="w-full rounded bg-gray-700 px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-p2"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-xs font-medium text-gray-300">
+                    {t('calendar.addTag', 'Add a tag')}
+                  </span>
+                  <TagPicker
+                    tags={tags}
+                    tagId={editor.tagId}
+                    pendingName={editor.pendingTagName}
+                    onChange={(next) =>
+                      setEditor({ ...editor, tagId: next.tagId, pendingTagName: next.pendingName })
+                    }
+                    onRename={handleRenameTag}
+                    onDelete={handleDeleteTag}
+                  />
+                </div>
+
+                <div className="mt-2 flex items-center justify-end gap-2 border-t border-gray-700/60 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setEditor(null)}
+                    className="rounded px-3 py-1.5 text-xs text-gray-400 transition-colors hover:bg-white/5 hover:text-gray-200"
+                  >
+                    {t('calendar.cancel', 'Cancel')}
+                  </button>
+                  <button
+                    type="submit"
+                    className="rounded bg-p2 px-4 py-1.5 text-xs font-medium text-gray-900 transition-colors hover:bg-p2/90"
+                  >
+                    {editor.mode === 'edit' ? t('calendar.save', 'Save') : t('calendar.add', 'Add')}
+                  </button>
+                </div>
+              </form>
             </div>
-          )}
+          </div>
+        )}
         </section>
       </div>
     </div>

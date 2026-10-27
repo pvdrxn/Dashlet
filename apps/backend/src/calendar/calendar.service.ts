@@ -32,6 +32,16 @@ function assertDate(value: string): string {
   return value;
 }
 
+/** Primer y ultimo dia (`YYYY-MM-DD`) del mes de `ref`, o del mes corriente si no viene. */
+function monthBounds(ref?: string): [string, string] {
+  const base = ref ? new Date(`${ref}T00:00:00`) : new Date();
+  const y = base.getFullYear();
+  const m = base.getMonth();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const last = new Date(y, m + 1, 0).getDate();
+  return [`${y}-${pad(m + 1)}-01`, `${y}-${pad(m + 1)}-${pad(last)}`];
+}
+
 function assertStartMin(value: number): number {
   if (!Number.isInteger(value) || value < 0 || value > 1439) {
     throw new BadRequestException('startMin must be an integer between 0 and 1439');
@@ -98,9 +108,21 @@ export class CalendarService {
    * Es la unica lectura que hace la vista: la grilla mensual pide `01..31` y
    * recibe el mes entero en una query. Por eso el indice es `(userId, date)`.
    */
-  async findRange(userId: string, from: string, to: string) {
-    assertDate(from);
-    assertDate(to);
+  async findRange(userId: string, fromRaw?: string, toRaw?: string) {
+    /*
+     * `from` y `to` son opcionales. Sin ninguno, el rango es el mes corriente.
+     * Con uno solo, el otro extremo es el borde del mes de ese. Asi el widget
+     * puede pedir un dia (`from=to`) o una semana sin armar el mes entero.
+     */
+    const from = fromRaw ? assertDate(fromRaw) : undefined;
+    const to = toRaw ? assertDate(toRaw) : undefined;
+    const [range0, range1] = monthBounds(from ?? to);
+    const start = from ?? range0;
+    const end = to ?? range1;
+    return this.queryRange(userId, start, end);
+  }
+
+  private async queryRange(userId: string, from: string, to: string) {
     if (from > to) {
       throw new BadRequestException('`from` must be before or equal to `to`');
     }

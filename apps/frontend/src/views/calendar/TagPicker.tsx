@@ -1,3 +1,4 @@
+import i18n from '../../i18n';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FiX, FiTag, FiEdit2, FiTrash2 } from 'react-icons/fi';
 import { TAG_COLORS, tagColorHex, tagKey, nextFreeTagColorId, MAX_TAG_NAME_LENGTH, type TagColorId } from '@widget-master/shared';
@@ -269,7 +270,7 @@ export function TagPicker({
       >
         {shown && (
           <span
-            title={pending ? 'Created when you save' : undefined}
+            title={pending ? i18n.t('calendar.createdWhenSaved', 'Created when you save') : undefined}
             className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs"
             /*
              * Sin color no hay tinte: se pinta gris y ya. Un `null` en `color`
@@ -298,7 +299,7 @@ export function TagPicker({
                 clear();
               }}
               disabled={disabled}
-              aria-label={`Remove tag ${shown.name}`}
+              aria-label={i18n.t('calendar.removeTag', { name: shown.name, defaultValue: `Remove tag ${shown.name}` })}
               className="opacity-60 transition-opacity hover:opacity-100"
             >
               <FiX size={10} />
@@ -324,8 +325,8 @@ export function TagPicker({
           // Confirmar al perder el foco es la mitad del contrato: lo escrito se
           // resuelve al Enter o al clickear en cualquier otro lado.
           onBlur={commitText}
-          placeholder={shown ? '' : 'Add a tag'}
-          aria-label="Add a tag"
+          placeholder={shown ? '' : i18n.t('calendar.addTag', 'Add a tag')}
+          aria-label={i18n.t('calendar.addTag', 'Add a tag')}
           className="min-w-[5rem] flex-1 bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none"
         />
       </div>
@@ -492,7 +493,7 @@ export function TagPicker({
                         onMouseDown={enterManagement(() => startRename(t))}
                         disabled={disabled}
                         aria-label={`Edit tag ${t.name}`}
-                        title="Rename"
+                        title={i18n.t('calendar.renameTag', 'Rename')}
                         className="shrink-0 rounded p-1 text-gray-500 transition-colors hover:bg-white/5 hover:text-gray-200"
                       >
                         <FiEdit2 size={11} />
@@ -502,7 +503,7 @@ export function TagPicker({
                         onMouseDown={enterManagement(() => setDeletingId(t.id))}
                         disabled={disabled}
                         aria-label={`Delete tag ${t.name}`}
-                        title="Delete"
+                        title={i18n.t('calendar.deleteTag', 'Delete')}
                         className="shrink-0 rounded p-1 text-gray-500 transition-colors hover:bg-danger/10 hover:text-danger"
                       >
                         <FiTrash2 size={11} />
@@ -521,10 +522,10 @@ export function TagPicker({
             <p className="px-2 py-1.5 text-xs text-gray-500">
               {willCreate ? (
                 <>
-                  New tag: <span className="text-gray-300">{trimmed}</span>
+                  <>{i18n.t('calendar.newTag', 'New tag')}: <span className="text-gray-300">{trimmed}</span></>
                 </>
               ) : (
-                'No tags yet'
+                i18n.t('calendar.noTags', 'No tags yet')
               )}
             </p>
           )}

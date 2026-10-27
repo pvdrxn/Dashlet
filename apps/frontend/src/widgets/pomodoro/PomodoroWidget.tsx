@@ -471,7 +471,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
       <div className="relative my-2 flex items-center justify-center">
         {isCountup ? (
           <div className="flex h-[140px] w-[140px] flex-col items-center justify-center">
-            <span className="text-xl font-semibold tracking-wide text-gray-100 tabular-nums">
+            <span className="text-xl font-semibold tracking-wide text-white tabular-nums">
               {formatStopwatch(showMs)}
             </span>
             {/*
@@ -491,7 +491,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
                 cy={RING_SIZE / 2}
                 r={RING_RADIUS}
                 fill="none"
-                stroke="rgba(255,255,255,0.06)"
+                stroke="var(--color-gray-700)"
                 strokeWidth="5"
               />
               <circle
@@ -507,7 +507,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
                 className="transition-[stroke-dashoffset] duration-1000 ease-linear"
               />
             </svg>
-            <span className="absolute text-xl font-semibold tracking-wide text-gray-100 tabular-nums">
+            <span className="absolute text-xl font-semibold tracking-wide text-white tabular-nums">
               {formatTimeShort(remainingSeconds)}
             </span>
           </>
@@ -520,7 +520,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
             <span
               key={i}
               className={`h-1.5 w-1.5 rounded-full transition-colors ${
-                filled ? 'bg-p2' : 'bg-white/15'
+                filled ? 'bg-p2' : 'bg-gray-700'
               }`}
             />
           ))}
@@ -534,7 +534,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
           className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
             linkedTaskId
               ? 'bg-p2/15 text-p2 hover:bg-p2/25'
-              : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-gray-200'
+              : 'bg-gray-700/60 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
           }`}
           title={linkedTaskId ? `Unlink: ${linkedTaskName}` : 'Link task'}
         >

@@ -2,7 +2,7 @@ import { Injectable, UnauthorizedException, ConflictException, BadRequestExcepti
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
-import { UserDto, RegisterDto, LoginDto, AuthResponseDto, SessionDto, ChangePasswordDto, ChangeEmailDto } from '@widget-master/shared';
+import { UserDto, RegisterDto, LoginDto, AuthResponseDto, SessionDto, ChangePasswordDto, ChangeEmailDto, ChangeLanguageDto, SUPPORTED_LANGUAGES, SupportedLanguage } from '@widget-master/shared';
 
 @Injectable()
 export class AuthService {
@@ -156,6 +156,24 @@ export class AuthService {
     return this.toUserDto(updated);
   }
 
+  async changeLanguage(userId: string, dto: ChangeLanguageDto): Promise<UserDto> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    if (!SUPPORTED_LANGUAGES.includes(dto.language)) {
+      throw new BadRequestException(`Language must be one of: ${SUPPORTED_LANGUAGES.join(', ')}`);
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: { language: dto.language },
+    });
+
+    return this.toUserDto(updated);
+  }
+
   async deleteAccount(userId: string, password: string): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
@@ -199,6 +217,7 @@ export class AuthService {
       id: user.id as string,
       email: user.email as string,
       username: (user.username as string | null) ?? null,
+      language: ((user.language as string) || 'es') as SupportedLanguage,
       createdAt: new Date(user.createdAt as string | Date).toISOString(),
       updatedAt: new Date(user.updatedAt as string | Date).toISOString(),
     };

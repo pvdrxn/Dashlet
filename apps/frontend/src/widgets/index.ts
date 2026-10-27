@@ -1,10 +1,12 @@
 import { lazy } from 'react';
-import { FiCheckSquare, FiClock, FiEdit3, FiBook, FiMaximize2 } from 'react-icons/fi';
+import { FiCalendar, FiCheckSquare, FiClock, FiEdit3, FiBook, FiMaximize2 } from 'react-icons/fi';
 import { LuListChecks } from 'react-icons/lu';
 import { LuCalculator } from 'react-icons/lu';
 import { LuTable2 } from 'react-icons/lu';
 import { registerWidget } from './registry';
 import { openTableView } from './data-table/DataTableWidget';
+import { openCalendarView } from './calendar/open-calendar';
+import i18n from '../i18n';
 import { lastUpdated } from '../views/table/TableGrid';
 import {
   todoListSummary,
@@ -14,6 +16,7 @@ import {
   calculatorSummary,
   diarySummary,
   notesSummary,
+  calendarSummary,
 } from './collapsed-summaries';
 
 const TodoListWidget = lazy(() => import('./todo-list/TodoListWidget').then(m => ({ default: m.TodoListWidget })));
@@ -23,6 +26,7 @@ const CalculatorWidget = lazy(() => import('./calculator/CalculatorWidget').then
 const HabitTrackerWidget = lazy(() => import('./habit-tracker/HabitTrackerWidget').then(m => ({ default: m.HabitTrackerWidget })));
 const DiaryWidget = lazy(() => import('./diary/DiaryWidget').then(m => ({ default: m.DiaryWidget })));
 const DataTableWidget = lazy(() => import('./data-table/DataTableWidget').then(m => ({ default: m.DataTableWidget })));
+const CalendarWidget = lazy(() => import('./calendar/CalendarWidget').then(m => ({ default: m.CalendarWidget })));
 
 registerWidget('todo-list', {
   component: TodoListWidget,
@@ -123,6 +127,33 @@ registerWidget('data-table', {
       onSelect: () => openTableView(tableId),
     };
   },
+});
+
+registerWidget('calendar', {
+  component: CalendarWidget,
+  /*
+   * `label` y `defaultConfig` son accesores y no valores: se evaluan cuando el
+   * menu o el alta del widget los leen, no cuando se carga este modulo, asi que
+   * siguen al idioma activo en vez de quedar fijos en el de arranque.
+   */
+  get label() {
+    return i18n.t('calendar.widget.title', 'Calendar');
+  },
+  icon: FiCalendar,
+  get defaultConfig() {
+    return { title: i18n.t('calendar.widget.title', 'Calendar'), viewMode: 'month', agenda: null };
+  },
+  collapsedSummary: calendarSummary,
+  /*
+   * El dia sale del config: el widget escribe ahi `selectedDate` cada vez que se
+   * elige uno, y el frame no tiene otra cosa a mano. Sin dia, la vista abre en hoy.
+   */
+  headerAction: (_widgetId, config) => ({
+    label: i18n.t('calendar.widget.openFull', 'Open in Calendar View'),
+    icon: FiMaximize2,
+    onSelect: () =>
+      openCalendarView(typeof config.selectedDate === 'string' ? config.selectedDate : undefined),
+  }),
 });
 
 export { WidgetGrid } from './WidgetGrid';

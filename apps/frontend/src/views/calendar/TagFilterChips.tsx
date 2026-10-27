@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useEffect, useRef } from 'react';
 import { FiX } from 'react-icons/fi';
 import { tagColorHex } from '@widget-master/shared';
@@ -28,6 +29,7 @@ interface TagFilterChipsProps {
 }
 
 export function TagFilterChips({ tags, activeIds, onToggle, onClear }: TagFilterChipsProps) {
+  const { t } = useTranslation();
   const stripRef = useRef<HTMLDivElement>(null);
 
   /*
@@ -106,7 +108,7 @@ export function TagFilterChips({ tags, activeIds, onToggle, onClear }: TagFilter
           className="flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs text-gray-500 transition-colors hover:bg-white/5 hover:text-gray-200"
         >
           <FiX size={9} />
-          Clear
+          {t('calendar.clearFilter', 'Clear')}
         </button>
       )}
     </div>

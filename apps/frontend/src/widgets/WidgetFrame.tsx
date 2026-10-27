@@ -1,5 +1,6 @@
 ﻿import { memo, useState, useCallback, useRef, useEffect, useSyncExternalStore, Suspense } from 'react';
 import { FiChevronUp, FiChevronDown, FiX, FiMoreVertical, FiPlay, FiPause } from 'react-icons/fi';
+import { useTranslation } from 'react-i18next';
 import { widgetBus } from './widget-bus';
 import { getWidget } from './registry';
 import { getLiveConfig, subscribeLiveConfig } from './live-config';
@@ -283,6 +284,9 @@ export const WidgetFrame = memo(function WidgetFrame({
    * la accion tiene que seguir a mano. Se arma con el `config` porque es lo unico
    * que el frame tiene a mano, nunca el estado del cuerpo.
    */
+  // Suscribe el frame al cambio de idioma: la etiqueta de la accion de la barra se
+  // calcula en cada render y sin esto quedaria en el idioma anterior.
+  useTranslation();
   const headerAction = getWidget(type)?.headerAction?.(id, config) ?? null;
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pointerPosRef = useRef({ x: 0, y: 0 });

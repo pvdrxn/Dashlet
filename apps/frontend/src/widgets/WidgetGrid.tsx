@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import {
   DndContext,
   PointerSensor,
@@ -340,6 +341,7 @@ export function WidgetGrid({
   onWidgetTransferred,
   onWidgetSynced,
 }: WidgetGridProps) {
+  const { t } = useTranslation();
   const cacheKey = `dashlet-widgets-${tabId}-v${CACHE_VERSION}`;
   /*
  * El cache se carga sin normalizar: `cols` todavia no se conoce en el primer
@@ -408,6 +410,7 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
   }, []);
   const cols = useMemo(() => colsForWidth(containerWidth), [containerWidth]);
   const rows = useMemo(() => rowCountFor(widgets), [widgets]);
+
   const stopUndoRing = useCallback(() => {
     if (undoRingRafRef.current) {
       cancelAnimationFrame(undoRingRafRef.current);
@@ -1025,13 +1028,15 @@ function readCollapsedSize(config: Record<string, unknown>): { w: number; h: num
             onDragLeave={handleNativeDragLeave}
             onDrop={handleNativeDrop}
           >
-            {/* Punteado de fondo: hace visible la grilla, como en iOS. */}
+            {/* Punteado de fondo: se extiende por todo el dashboard hasta el final de la pantalla */}
+            {/* Punteado de fondo: ocupa exactamente el alto necesario sin forzar scrollbar innecesaria */}
             <div
               className="pointer-events-none absolute inset-0"
               style={{
                 backgroundImage: `
-                radial-gradient(circle at 1px 1px, rgba(255,255,255,0.06) 1px, transparent 0)
+                radial-gradient(circle at 1px 1px, var(--color-gray-500) 1px, transparent 0)
               `,
+                opacity: 0.35,
                 backgroundSize: `${CELL_W + CELL_GAP}px ${CELL_H + CELL_GAP}px`,
                 backgroundPosition: `${CELL_GAP}px ${CELL_GAP}px`,
               }}
@@ -1065,9 +1070,9 @@ function readCollapsedSize(config: Record<string, unknown>): { w: number; h: num
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
               <FiGrid size={32} className="text-gray-600" />
               <div>
-                <p className="text-sm font-medium text-gray-300">This dashboard is empty</p>
+                <p className="text-sm font-medium text-gray-300">{t('dashboard.emptyTitle', 'This dashboard is empty')}</p>
                 <p className="mt-1 text-xs text-gray-400">
-                  Use the menu above to add your first widget.
+                  {t('dashboard.emptyDesc', 'Use the menu above to add your first widget.')}
                 </p>
               </div>
             </div>
@@ -1108,7 +1113,7 @@ function readCollapsedSize(config: Record<string, unknown>): { w: number; h: num
             </svg>
             <FiTrash2 size={14} className="shrink-0 text-gray-500" />
             <span className="whitespace-nowrap text-sm text-gray-300">
-              Deleted{' '}
+              {t('dashboard.deleted', 'Deleted')}{' '}
               {(undoToastWidget.config.title as string) ||
                 getWidget(undoToastWidget.type)?.label ||
                 undoToastWidget.type}
@@ -1119,7 +1124,7 @@ function readCollapsedSize(config: Record<string, unknown>): { w: number; h: num
               className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded border border-p2/60 px-2 py-0.5 text-xs text-p2 transition-colors hover:bg-p2/15 hover:text-p2"
             >
               <FiRotateCcw size={12} />
-              Undo
+              {t('dashboard.undo', 'Undo')}
             </button>
           </div>
         ),

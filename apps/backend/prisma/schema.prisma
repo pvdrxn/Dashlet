@@ -12,6 +12,7 @@ model User {
   email     String    @unique
   username  String?   @unique
   password  String
+  language  String    @default("es")
   widgets   Widget[]
   tabs      Tab[]
   lists     TodoList[]

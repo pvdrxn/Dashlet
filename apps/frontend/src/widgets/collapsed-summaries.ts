@@ -1,6 +1,7 @@
 import type { CollapsedAction, CollapsedSummary } from './registry';
 import { normalizeConfig, formatStopwatch, formatTarget } from './pomodoro/shared';
 import { togglePomodoro } from './pomodoro/timer';
+import i18n from '../i18n';
 
 /*
  * Que muestra cada widget cuando esta retraido.
@@ -50,7 +51,7 @@ export function habitSummary(config: Record<string, unknown>): CollapsedSummary 
     const dates = (h as { completedDates?: unknown }).completedDates;
     return Array.isArray(dates) && dates.includes(day);
   }).length;
-  return { value: `${done}/${total}`, detail: 'hoy', bar: { done, total } };
+  return { value: `${done}/${total}`, detail: 'today', bar: { done, total } };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -155,6 +156,35 @@ export function diarySummary(config: Record<string, unknown>): CollapsedSummary 
   if (lastPage < 0) return null;
   const words = lastText.trim().split(/\s+/).length;
   return { value: `${words} palabras`, detail: `p.${lastPage}` };
+}
+
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Calendario: cuantos bloques de HOY faltan.
+ *
+ * El cuerpo del widget no se monta retraido, asi que no puede pedir nada al
+ * servidor: lee `config.agenda`, que el widget escribe mientras esta abierto. Ahi
+ * van los bloques y no el conteo porque "pendiente" depende de la hora, y un
+ * numero guardado a las 9 seguiria diciendo lo mismo a las 18. Se resuelve aca,
+ * contra el reloj de cada render.
+ *
+ * Si la agenda es de otro dia --se retrajo ayer y no se abrio desde entonces--
+ * no se inventa un numero: va un guion, que dice "sin dato de hoy".
+ */
+export function calendarSummary(config: Record<string, unknown>): CollapsedSummary | null {
+  const agenda = config.agenda as { date?: unknown; blocks?: unknown } | null | undefined;
+  if (!agenda || typeof agenda !== 'object' || !Array.isArray(agenda.blocks)) return null;
+  if (agenda.date !== today()) return { value: '—', detail: i18n.t('calendar.today', 'Today') };
+  const d = new Date();
+  const nowMin = d.getHours() * 60 + d.getMinutes();
+  const pending = (agenda.blocks as unknown[]).filter(
+    (b) => Array.isArray(b) && typeof b[0] === 'number' && typeof b[1] === 'number' && b[0] + b[1] > nowMin,
+  ).length;
+  return {
+    value: String(pending),
+    detail: i18n.t('calendar.widget.pendingToday', { count: pending, defaultValue: 'pending today' }),
+  };
 }
 
 /* -------------------------------------------------------------------------- */

@@ -23,7 +23,6 @@ import type { Position, WidgetData } from './types';
 export const GRID_COLS = 12;
 
 /** Cuantas filas se dibujan de sobra siempre, para tener donde soltar. */
-const EXTRA_ROWS = 2;
 
 /** Tope de vueltas del empuje, para que un caso patologico no cuelgue. */
 const MAX_PUSH_STEPS = 64;
@@ -108,6 +107,13 @@ export const WIDGET_DEFAULT_SIZE: Record<string, { w: number; h: number }> = {
  * pisan.
  */
   'data-table': { w: 5, h: 5 },
+  /*
+   * calendar: mes compacto arriba y lista del dia abajo. La grilla mide 148px
+   * --16 de iniciales y seis filas de 22-- y la barra del widget 24 mas 8 de
+   * separacion, o sea unos 180px fijos. Cuatro celdas (344px) menos los 49 del
+   * frame dejan 295: sobran 115px de lista, un subtitulo y tres bloques.
+   */
+  calendar: { w: 4, h: 4 },
 };
 
 /*
@@ -146,6 +152,13 @@ export const WIDGET_MIN_SIZE: Record<string, { w: number; h: number }> = {
   'habit-tracker': { w: 3, h: 3 },
   diary: { w: 3, h: 3 },
   'data-table': { w: 4, h: 4 },
+  /*
+   * calendar: el minimo lo manda el ALTO. Con 3 celdas (256px, 207 de cuerpo) la
+   * grilla y la barra se comen 180 y la lista queda en 27px: ni un bloque. Con 4
+   * entra una lista de tres. En ancho 3 celdas (232px de cuerpo) alcanzan para
+   * siete columnas de 33px; el modo dia, que no lleva grilla, entra sobrado.
+   */
+  calendar: { w: 3, h: 4 },
 };
 
 /*
@@ -166,6 +179,9 @@ export const WIDGET_MAX_SIZE: Record<string, { w: number; h: number }> = {
   // 12 celdas de ancho: una tabla con muchas columnas scrollea en horizontal, y
   // el tope alto es justamente para que eso sea util en vez de un castigo.
   'data-table': { w: 12, h: 12 },
+  // 8 de ancho ya reparte grilla y lista lado a lado; mas alla las celdas del mes
+  // se estirarian sin ganar nada. 6 de alto da una lista de diez bloques.
+  calendar: { w: 8, h: 6 },
 };
 
 export const FALLBACK_SIZE = { w: 4, h: 3 };
@@ -443,10 +459,10 @@ export function resolveDrop(
   return { moved: { ...moving, position: rect }, shifted: result.shifted };
 }
 
-/** Cuantas filas hay que dibujar para que quepa todo, con un margen. */
+/** Cuantas filas hay que dibujar para que quepa todo, sin desbordar con scrollbar innecesaria. */
 export function rowCountFor(widgets: WidgetData[]): number {
   const last = widgets.reduce((m, w) => Math.max(m, w.position.y + w.position.h), 0);
-  return Math.max(last + EXTRA_ROWS, 3);
+  return last > 0 ? last : 1;
 }
 
 /** Rect en px a partir de su rect en celdas. */

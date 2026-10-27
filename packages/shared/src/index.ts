@@ -309,7 +309,14 @@ export interface TodoItemDto {
 }
 
 export type WidgetType =
-  'todo-list' | 'pomodoro' | 'notes' | 'calculator' | 'habit-tracker' | 'diary' | 'data-table';
+  | 'todo-list'
+  | 'pomodoro'
+  | 'notes'
+  | 'calculator'
+  | 'habit-tracker'
+  | 'diary'
+  | 'data-table'
+  | 'calendar';
 
 export const WIDGET_TYPES: WidgetType[] = [
   'todo-list',
@@ -319,7 +326,17 @@ export const WIDGET_TYPES: WidgetType[] = [
   'habit-tracker',
   'diary',
   'data-table',
+  'calendar',
 ];
+
+/** `config` del widget `calendar`. */
+export interface CalendarWidgetConfig {
+  /** Vista por defecto dentro del widget. */
+  viewMode?: 'day' | 'month';
+  /** `YYYY-MM-DD`. */
+  selectedDate?: string;
+  collapsed?: boolean;
+}
 
 /*
  * Tablas de datos.
@@ -705,10 +722,14 @@ export function newTableColumn(type: ColumnType = 'text'): TableColumnDto {
 /* Auth                                                                       */
 /* -------------------------------------------------------------------------- */
 
+export const SUPPORTED_LANGUAGES = ['es', 'en', 'fr', 'ru', 'it'] as const;
+export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
+
 export interface UserDto {
   id: string;
   email: string;
   username: string | null;
+  language: SupportedLanguage;
   createdAt: string;
   updatedAt: string;
 }
@@ -746,4 +767,8 @@ export interface ChangePasswordDto {
 export interface ChangeEmailDto {
   currentPassword: string;
   newEmail: string;
+}
+
+export interface ChangeLanguageDto {
+  language: SupportedLanguage;
 }

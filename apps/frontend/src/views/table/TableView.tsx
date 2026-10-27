@@ -1,3 +1,4 @@
+import i18n from '../../i18n';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FiPlus, FiChevronDown, FiTrash2, FiX } from 'react-icons/fi';
 import { TableGrid } from './TableGrid';
@@ -140,7 +141,7 @@ export function TableView({ leading }: TableViewProps) {
       setTable(t);
       titleRef.current?.focus();
     } catch (e) {
-      setError(apiErrorMessage(e, 'Could not create the table'));
+      setError(apiErrorMessage(e, i18n.t('table.errors.createTable', 'Could not create the table')));
     }
   }, [loadList]);
 
@@ -161,7 +162,7 @@ export function TableView({ leading }: TableViewProps) {
         await tablesApi.updateTable(table.id, { name: trimmed });
       } catch (e) {
         setTable(table);
-        setError(apiErrorMessage(e, 'Could not rename the table'));
+        setError(apiErrorMessage(e, i18n.t('table.errors.renameTable', 'Could not rename the table')));
       }
     },
     [table],
@@ -188,7 +189,7 @@ export function TableView({ leading }: TableViewProps) {
         );
         setActiveId(id);
         setTable(previous);
-        setError(apiErrorMessage(e, 'Could not delete the table'));
+        setError(apiErrorMessage(e, i18n.t('table.errors.deleteTable', 'Could not delete the table')));
       }
     },
     [table, loadList],
@@ -282,7 +283,7 @@ export function TableView({ leading }: TableViewProps) {
         await tablesApi.updateTableRow(table.id, rowId, { position });
       } catch (e) {
         setTable(previous);
-        setError(apiErrorMessage(e, 'Could not move the row'));
+        setError(apiErrorMessage(e, i18n.t('table.errors.moveRow', 'Could not move the row')));
       }
     },
     [table],
@@ -309,7 +310,7 @@ export function TableView({ leading }: TableViewProps) {
         // esquema que el servidor ya no tiene.
         if (cambioRef.current !== ticket) return;
         setTable(previous);
-        setError(apiErrorMessage(e, 'Could not change the columns'));
+        setError(apiErrorMessage(e, i18n.t('table.errors.changeColumns', 'Could not change the columns')));
       }
     },
     [table],
@@ -337,7 +338,7 @@ export function TableView({ leading }: TableViewProps) {
       const row = await tablesApi.createTableRow(table.id, { values: {} });
       setTable({ ...table, rows: [...table.rows, row], rowCount: table.rowCount + 1 });
     } catch (e) {
-      setError(apiErrorMessage(e, 'Could not add the row'));
+      setError(apiErrorMessage(e, i18n.t('table.errors.addRow', 'Could not add the row')));
     }
   }, [table]);
 
@@ -379,7 +380,7 @@ export function TableView({ leading }: TableViewProps) {
       setSelectedRows(new Set());
       setIsDeleteMode(false);
     } catch (e) {
-      setError(apiErrorMessage(e, 'Could not delete rows'));
+      setError(apiErrorMessage(e, i18n.t('table.errors.deleteRows', 'Could not delete rows')));
     }
   }, [table, selectedRows]);
 
@@ -410,7 +411,7 @@ export function TableView({ leading }: TableViewProps) {
               disabled={!tables.length}
               className="flex max-w-[16rem] items-center gap-1.5 rounded border border-gray-700 px-2 py-1 text-sm text-gray-200 transition-colors hover:border-gray-600 disabled:opacity-40"
             >
-              <span className="truncate">{table?.name ?? 'No tables'}</span>
+              <span className="truncate">{table?.name ?? i18n.t('table.noTablesDropdown', 'No tables')}</span>
               {tables.length > 0 && <FiChevronDown size={13} className="shrink-0 text-gray-500" />}
             </button>
 
@@ -442,8 +443,8 @@ export function TableView({ leading }: TableViewProps) {
                           setPickerOpen(false);
                           void deleteTable(t.id);
                         }}
-                        aria-label={`Delete table ${t.name}`}
-                        title="Delete table"
+                        aria-label={i18n.t('table.deleteTableNamed', { name: t.name, defaultValue: `Delete table ${t.name}` })}
+                        title={i18n.t('table.deleteTable', 'Delete table')}
                         className="shrink-0 rounded p-1 text-gray-600 transition-colors hover:bg-danger/15 hover:text-danger"
                       >
                         <FiTrash2 size={11} />
@@ -461,7 +462,7 @@ export function TableView({ leading }: TableViewProps) {
                   className="flex w-full items-center gap-2 border-t border-gray-700 px-2 py-1.5 text-left text-sm text-gray-300 hover:bg-white/5"
                 >
                   <FiPlus size={12} className="text-gray-500" />
-                  New table
+                  {i18n.t('table.newTable', 'New table')}
                 </button>
               </div>
             )}
@@ -482,11 +483,11 @@ export function TableView({ leading }: TableViewProps) {
                   e.currentTarget.blur();
                 }
               }}
-              aria-label="Table name"
+              aria-label={i18n.t('table.tableName', 'Table name')}
               className="min-w-0 flex-1 rounded bg-transparent px-1.5 py-1 text-sm text-gray-400 transition-colors hover:bg-white/[0.03] focus:bg-gray-800 focus:text-white focus:outline-none"
             />
             <span className="shrink-0 text-xs tabular-nums text-gray-600">
-              {table.rowCount} {table.rowCount === 1 ? 'row' : 'rows'}
+              {table.rowCount} {table.rowCount === 1 ? i18n.t('table.row', 'row') : i18n.t('table.rows', 'rows')}
             </span>
           </>
         )}
@@ -498,7 +499,7 @@ export function TableView({ leading }: TableViewProps) {
             className="ml-auto flex shrink-0 items-center gap-1.5 rounded bg-p2 px-2.5 py-1 text-sm font-medium text-gray-900 transition-colors hover:bg-p2/85"
           >
             <FiPlus size={13} />
-            New table
+            {i18n.t('table.newTable', 'New table')}
           </button>
         )}
       </header>
@@ -553,14 +554,14 @@ export function TableView({ leading }: TableViewProps) {
           />
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-            <p className="text-sm text-gray-500">No tables yet.</p>
+            <p className="text-sm text-gray-500">{i18n.t('table.noTables', 'No tables yet.')}</p>
             <button
               type="button"
               onClick={() => void createTable()}
               className="flex items-center gap-1.5 rounded bg-p2 px-3 py-1.5 text-sm font-medium text-gray-900 transition-colors hover:bg-p2/85"
             >
               <FiPlus size={14} />
-              New table
+              {i18n.t('table.newTable', 'New table')}
             </button>
           </div>
         )}

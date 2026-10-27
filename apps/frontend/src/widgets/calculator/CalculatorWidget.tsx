@@ -140,18 +140,18 @@ export const CalculatorWidget = memo(function CalculatorWidget({ config, onConfi
 
   const toggleHistory = useCallback(() => setShowHistory((s) => !s), []);
 
-  const fnClass = 'bg-[#323232] hover:bg-[#3b3b3b] text-white';
-  const numClass = 'bg-[#3b3b3b] hover:bg-[#454545] text-white';
-  const opClass = 'bg-[#3285c8] hover:bg-[#3a9ae0] text-white';
+  const fnClass = 'bg-gray-700/60 hover:bg-gray-700 text-gray-200 border border-gray-700/40';
+  const numClass = 'bg-gray-800 hover:bg-gray-700/80 text-white border border-gray-700/60';
+  const opClass = 'bg-p2/20 hover:bg-p2/30 text-p2 font-medium border border-p2/40';
 
   return (
-    <div className="flex h-full flex-col bg-[#202020]">
+    <div className="flex h-full flex-col bg-gray-800">
       <div className="flex items-center justify-between px-3 pt-2 pb-1">
-        <span className="text-[10px] text-gray-400">Estándar</span>
+        <span className="text-[10px] text-gray-400">Standard</span>
         <button
           type="button"
           onClick={toggleHistory}
-          className="rounded p-1 text-gray-400 hover:bg-[#3b3b3b] hover:text-gray-200 transition-colors"
+          className="rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-gray-200 transition-colors"
           title="History"
         >
           <LuHistory size={14} />
@@ -202,11 +202,11 @@ export const CalculatorWidget = memo(function CalculatorWidget({ config, onConfi
       {showHistory && history.length > 0 && (
         <div className="absolute top-10 left-1/2 -translate-x-1/2 w-52 bg-gray-700 rounded-lg border border-gray-600 p-2 text-xs text-gray-300 max-h-80 overflow-y-auto z-20 shadow-xl">
           <div className="flex items-center justify-between mb-2 px-1">
-            <span className="text-gray-400">Historial</span>
+            <span className="text-gray-400">History</span>
             <button
               type="button"
               onClick={toggleHistory}
-              className="text-gray-400 hover:text-gray-200 p-0.5 rounded hover:bg-[#3b3b3b]"
+              className="text-gray-400 hover:text-gray-200 p-0.5 rounded hover:bg-gray-600"
             >
               ✕
             </button>

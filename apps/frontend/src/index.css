@@ -141,7 +141,7 @@
    *   p3  naranja  alto / urgente
    */
   --color-p1: #868e9a;
-  --color-p2: #d9a441;
+  --color-p2: var(--dashlet-p2);
   --color-p3: #e2703f;
 
   /*
@@ -172,7 +172,7 @@
    * #c08a25 5.78:1, este #b7831d 5.26:1, #ad7b18 4.71:1 y #a37212 4.16:1, que ya
    * queda bajo AA.
    */
-  --color-p2-oscura: #b7831d;
+  --color-p2-oscura: var(--dashlet-p2-oscura);
 
   /*
    * Destructivo: solo hover de acciones que borran y estados de error.
@@ -221,18 +221,53 @@
    * oscuros y se invierte la elevacion. Por eso el negro mate sube la rampa
    * entera y no solo el canvas.
    */
-  --color-gray-50: #f6f7f8;
-  --color-gray-100: #edeef0;
-  --color-gray-200: #dfe1e4;
-  --color-gray-300: #c6c6c6;
-  --color-gray-400: #a0a0a0;
-  --color-gray-500: #7a7a7a;
-  --color-gray-600: #4f4f4f;
-  --color-gray-700: #383838;
-  --color-gray-800: #191919;
-  --color-gray-900: #121212;
-  --color-gray-950: #121212;
-  --color-white: #e8ecf2;
+  --color-gray-50: var(--dashlet-gray-50);
+  --color-gray-100: var(--dashlet-gray-100);
+  --color-gray-200: var(--dashlet-gray-200);
+  --color-gray-300: var(--dashlet-gray-300);
+  --color-gray-400: var(--dashlet-gray-400);
+  --color-gray-500: var(--dashlet-gray-500);
+  --color-gray-600: var(--dashlet-gray-600);
+  --color-gray-700: var(--dashlet-gray-700);
+  --color-gray-800: var(--dashlet-gray-800);
+  --color-gray-900: var(--dashlet-gray-900);
+  --color-gray-950: var(--dashlet-gray-950);
+  --color-white: var(--dashlet-white);
+}
+
+:root,
+html.dark {
+  --dashlet-p2: #d9a441;
+  --dashlet-p2-oscura: #b7831d;
+  --dashlet-gray-50: #f6f7f8;
+  --dashlet-gray-100: #edeef0;
+  --dashlet-gray-200: #dfe1e4;
+  --dashlet-gray-300: #c6c6c6;
+  --dashlet-gray-400: #a0a0a0;
+  --dashlet-gray-500: #7a7a7a;
+  --dashlet-gray-600: #4f4f4f;
+  --dashlet-gray-700: #383838;
+  --dashlet-gray-800: #191919;
+  --dashlet-gray-900: #121212;
+  --dashlet-gray-950: #121212;
+  --dashlet-white: #e8ecf2;
+}
+
+html.light {
+  --dashlet-p2: #b7831d;
+  --dashlet-p2-oscura: #8f620c;
+  --dashlet-gray-50: #18181b;
+  --dashlet-gray-100: #27272a;
+  --dashlet-gray-200: #3f3f46;
+  --dashlet-gray-300: #52525b;
+  --dashlet-gray-400: #71717a;
+  --dashlet-gray-500: #a1a1aa;
+  --dashlet-gray-600: #d4d4d8;
+  --dashlet-gray-700: #e4e4e7;
+  --dashlet-gray-800: #ffffff;
+  --dashlet-gray-900: #f4f5f7;
+  --dashlet-gray-950: #ebedf0;
+  --dashlet-white: #09090b;
 }
 
 html {
