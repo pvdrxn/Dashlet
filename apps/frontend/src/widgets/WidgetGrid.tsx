@@ -28,6 +28,7 @@ import {
   CELL_W,
   CELL_H,
   colsForWidth,
+  rowsForHeight,
   canvasWidth,
   canvasHeight,
   rectToPixels,
@@ -87,6 +88,7 @@ interface WidgetBoxProps {
   widget: WidgetData;
   box: { left: number; top: number; width: number; height: number };
   cols: number;
+  maxRows: number;
   onDelete: (id: string) => void;
   onConfigChange: (id: string, config: Record<string, unknown>) => void;
   onResize: (id: string, size: { w: number; h: number }) => void;
@@ -97,6 +99,7 @@ function WidgetBox({
   widget,
   box,
   cols,
+  maxRows,
   onDelete,
   onConfigChange,
   onResize,
@@ -170,6 +173,8 @@ function WidgetBox({
           { x: widget.position.x, y: widget.position.y, w, h },
           widget.type,
           cols,
+          undefined,
+          maxRows,
         );
         return { w: rect.w, h: rect.h };
       };
@@ -208,7 +213,7 @@ function WidgetBox({
       document.addEventListener('pointerup', finish);
       window.addEventListener('blur', finish);
     },
-    [widget.id, widget.position.x, widget.position.w, widget.position.h, min.w, min.h, cols, onResize],
+    [widget.id, widget.position.x, widget.position.y, widget.position.w, widget.position.h, min.w, min.h, cols, maxRows, onResize],
   );
   if (!def) return null;
   /*
@@ -384,6 +389,11 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
     [],
   );
   const [containerWidth, setContainerWidth] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(() => {
+    const metrics = window.electronAPI?.getMetricsSync?.();
+    const bottomInset = metrics ? metrics.taskbarHeight + metrics.bottomExtra : 0;
+    return Math.max(200, window.innerHeight - 25 - 16 - 16 - bottomInset);
+  });
   useEffect(() => {
     widgetsRef.current = widgets;
   }, [widgets]);
@@ -396,20 +406,25 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
   );
   /*
    * La celda mide 80px fijo, asi que el resize de la ventana no toca ningun
-   * widget: lo que cambia es cuantas columnas entran. Es lo unico que se
-   * mide del DOM.
+   * widget: lo que cambia es cuantas columnas y filas entran.
    */
   useEffect(() => {
     const el = areaRef.current;
     if (!el) return;
-    const update = () => setContainerWidth(el.clientWidth);
+    const update = () => {
+      setContainerWidth(el.clientWidth);
+      if (el.clientHeight > 0) {
+        setContainerHeight(el.clientHeight);
+      }
+    };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
   const cols = useMemo(() => colsForWidth(containerWidth), [containerWidth]);
-  const rows = useMemo(() => rowCountFor(widgets), [widgets]);
+  const maxRows = useMemo(() => rowsForHeight(containerHeight), [containerHeight]);
+  const rows = useMemo(() => Math.max(rowCountFor(widgets), maxRows), [widgets, maxRows]);
 
   const stopUndoRing = useCallback(() => {
     if (undoRingRafRef.current) {
@@ -452,10 +467,10 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
   const computeNewPosition = useCallback(
     (type: string): Position => {
       const size = minSize(type);
-      const slot = findFirstSlot(widgetsRef.current, type, cols, size);
-      return clampRect({ ...slot, ...size }, type, cols);
+      const slot = findFirstSlot(widgetsRef.current, type, cols, size, maxRows);
+      return clampRect({ ...slot, ...size }, type, cols, undefined, maxRows);
     },
-    [cols],
+    [cols, maxRows],
   );
   const handleAddWidget = useCallback(
     async (
@@ -465,11 +480,11 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
       const def = getWidget(type);
       if (!def) return null;
       const size = minSize(type);
-      const slot = findFirstSlot(widgetsRef.current, type, cols, size);
-      const position = clampRect({ ...slot, ...size }, type, cols);
+      const slot = findFirstSlot(widgetsRef.current, type, cols, size, maxRows);
+      const position = clampRect({ ...slot, ...size }, type, cols, undefined, maxRows);
       await api.createWidget(type, def.defaultConfig, position, tabId);
       const data = await api.fetchWidgets(tabId);
-      const normalized = normalizeLayout(data, cols);
+      const normalized = normalizeLayout(data, cols, maxRows);
       if (opts?.deferCommit) {
         deferredCommitRef.current = normalized;
         return position;
@@ -478,7 +493,7 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
       saveCache(cacheKey, normalized);
       return position;
     },
-    [tabId, cacheKey, cols],
+    [tabId, cacheKey, cols, maxRows],
   );
   useEffect(() => {
     onAddWidgetRef(tabId, handleAddWidget);
@@ -501,7 +516,7 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
     async (type: string, cell: { x: number; y: number }) => {
       const def = getWidget(type);
       if (!def) return;
-      const target = clampRect({ ...cell, ...minSize(type) }, type, cols);
+      const target = clampRect({ ...cell, ...minSize(type) }, type, cols, undefined, maxRows);
       const probe: WidgetData = {
         id: NEW_WIDGET_PROBE,
         userId: '',
@@ -516,17 +531,19 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
         NEW_WIDGET_PROBE,
         target,
         cols,
+        'down',
+        maxRows,
       );
       if (!resolved) return;
       await api.createWidget(type, def.defaultConfig, resolved.moved.position, tabId);
       await Promise.all(resolved.shifted.map((s) => api.updateWidget(s.id, { position: s.position })));
       const data = await api.fetchWidgets(tabId);
-      const normalized = normalizeLayout(data, cols);
+      const normalized = normalizeLayout(data, cols, maxRows);
       if (resolved.shifted.length) beginPush();
       setWidgets(normalized);
       saveCache(cacheKey, normalized);
     },
-    [tabId, cacheKey, cols, beginPush],
+    [tabId, cacheKey, cols, maxRows, beginPush],
   );
 
   /*
@@ -622,8 +639,10 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
       if (!p || !area) return;
       pendingDragRef.current = null;
       const rect = area.getBoundingClientRect();
-      const cell = pointToCell(p.x, p.y, rect, cols);
-      placePreview(rectToPixels(clampRect({ ...cell, ...minSize(p.type) }, p.type, cols)));
+      const cell = pointToCell(p.x, p.y, rect, cols, maxRows);
+      placePreview(
+        rectToPixels(clampRect({ ...cell, ...minSize(p.type) }, p.type, cols, undefined, maxRows)),
+      );
     });
   };
 
@@ -641,7 +660,7 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
     const type = e.dataTransfer.getData(WIDGET_DRAG_MIME);
     if (!type) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    await addWidgetAt(type, pointToCell(e.clientX, e.clientY, rect, cols));
+    await addWidgetAt(type, pointToCell(e.clientX, e.clientY, rect, cols, maxRows));
   };
 
   /*
@@ -680,13 +699,13 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
     api
       .fetchWidgets(tabId)
       .then((data) => {
-        const normalized = normalizeLayout(data, cols);
+        const normalized = normalizeLayout(data, cols, maxRows);
         setWidgets(normalized);
         saveCache(cacheKey, normalized);
         setLoaded(true);
       })
       .catch(() => {});
-  }, [tabId, cacheKey, cols]);
+  }, [tabId, cacheKey, cols, maxRows]);
   useEffect(() => {
     if (onRefreshRef) onRefreshRef(tabId, refresh);
   }, [refresh, onRefreshRef, tabId]);
@@ -695,10 +714,10 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
       setWidgets((prev) => {
         if (action.type === 'remove') return prev.filter((w) => w.id !== action.widgetId);
         if (prev.some((w) => w.id === action.widget.id)) return prev;
-        return normalizeLayout([...prev, action.widget], cols);
+        return normalizeLayout([...prev, action.widget], cols, maxRows);
       });
     },
-    [cols],
+    [cols, maxRows],
   );
   useEffect(() => {
     if (onTransferRef) onTransferRef(tabId, handleTransfer);
@@ -710,7 +729,7 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
         .fetchWidgets(tabId)
         .then((data) => {
           if (cancelled) return;
-          const normalized = normalizeLayout(data, cols);
+          const normalized = normalizeLayout(data, cols, maxRows);
           setWidgets(normalized);
           saveCache(cacheKey, normalized);
           setLoaded(true);
@@ -723,7 +742,7 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
     return () => {
       cancelled = true;
     };
-  }, [tabId, cacheKey, cols]);
+  }, [tabId, cacheKey, cols, maxRows]);
   useEffect(() => {
     saveCache(cacheKey, widgets);
   }, [widgets, cacheKey]);
@@ -742,13 +761,13 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
        */
       disposePomodoroTimer(id);
       api.deleteWidget(id);
-      setWidgets((prev) => normalizeLayout(prev.filter((w) => w.id !== id), cols));
+      setWidgets((prev) => normalizeLayout(prev.filter((w) => w.id !== id), cols, maxRows));
       if (!widget) return;
       if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
       setUndoToastWidget(widget);
       startUndoTimer();
     },
-    [startUndoTimer, cols],
+    [startUndoTimer, cols, maxRows],
   );
   const handleUndoDelete = useCallback(() => {
     if (!undoToastWidget) return;
@@ -757,11 +776,13 @@ const [widgets, setWidgets] = useState<WidgetData[]>(() => loadCache(cacheKey));
     api.restoreWidget(widget.id).then(
       () =>
         setWidgets((prev) =>
-          prev.some((w) => w.id === widget.id) ? prev : normalizeLayout([...prev, widget], cols),
+          prev.some((w) => w.id === widget.id)
+            ? prev
+            : normalizeLayout([...prev, widget], cols, maxRows),
         ),
       () => {},
     );
-  }, [undoToastWidget, dismissUndoToast, cols]);
+  }, [undoToastWidget, dismissUndoToast, cols, maxRows]);
   /** Lee el tamano guardado al retraer, si hay uno usable. */
 function readCollapsedSize(config: Record<string, unknown>): { w: number; h: number } | null {
     const raw = config.collapsedSize;
@@ -815,6 +836,7 @@ function readCollapsedSize(config: Record<string, unknown>): { w: number; h: num
         widget.type,
         cols,
         COLLAPSED_CELLS_H,
+        maxRows,
       );
       setWidgets(current.map((w) => (w.id === id ? { ...w, config: nextConfig, position } : w)));
       api.updateWidget(id, { config: nextConfig, position });
@@ -831,9 +853,9 @@ function readCollapsedSize(config: Record<string, unknown>): { w: number; h: num
      * widget en su estado final y no le exija el piso de 1 celda.
      */
     const size = saved ?? minSize(widget.type);
-    const target = clampRect({ ...widget.position, ...size }, widget.type, cols, size.h);
+    const target = clampRect({ ...widget.position, ...size }, widget.type, cols, size.h, maxRows);
     const withNewConfig = current.map((w) => (w.id === id ? { ...w, config: nextConfig } : w));
-    const resolved = resolveDrop(withNewConfig, id, target, cols);
+    const resolved = resolveDrop(withNewConfig, id, target, cols, 'down', maxRows);
     if (!resolved) {
       setWidgets(current.map((w) => (w.id === id ? { ...w, config: nextConfig } : w)));
       api.updateWidget(id, { config: nextConfig });
@@ -848,11 +870,12 @@ function readCollapsedSize(config: Record<string, unknown>): { w: number; h: num
           return patch ? { ...w, position: patch.position } : w;
         }),
         cols,
+        maxRows,
       ),
     );
     api.updateWidget(id, { config: nextConfig, position: resolved.moved.position });
     for (const u of resolved.shifted) void api.updateWidget(u.id, { position: u.position });
-  }, [cols, beginPush]);
+  }, [cols, maxRows, beginPush]);
   const commitPositions = useCallback(
     (updates: { id: string; position: Position }[]) => {
       if (!updates.length) return;
@@ -867,6 +890,7 @@ function readCollapsedSize(config: Record<string, unknown>): { w: number; h: num
             return patch ? { ...w, position: patch.position } : w;
           }),
           cols,
+          maxRows,
         );
         for (const u of updates) {
           const found = next.find((w) => w.id === u.id);
@@ -875,7 +899,7 @@ function readCollapsedSize(config: Record<string, unknown>): { w: number; h: num
         return next;
       });
     },
-    [cols, beginPush],
+    [cols, maxRows, beginPush],
   );
   const handleResize = useCallback(
     (id: string, size: { w: number; h: number }) => {
@@ -886,13 +910,13 @@ function readCollapsedSize(config: Record<string, unknown>): { w: number; h: num
       const current = widgetsRef.current;
       const widget = current.find((w) => w.id === id);
       if (!widget) return;
-      const safe = clampRect({ ...widget.position, ...size }, widget.type, cols);
+      const safe = clampRect({ ...widget.position, ...size }, widget.type, cols, undefined, maxRows);
       const candidate = current.map((w) =>
         w.id === id ? { ...w, position: safe } : w,
       );
       // Al agrandar, los vecinos que quedan tapados se corren de lado, igual que
       // en un drop. Sin gesto del cual sacar la direccion, se va hacia abajo.
-      const resolved = resolveDrop(current, id, safe, cols);
+      const resolved = resolveDrop(current, id, safe, cols, 'down', maxRows);
       const finalWidget = resolved?.moved ?? { ...widget, position: safe };
       const updates = [
         { id, position: finalWidget.position },
@@ -914,11 +938,12 @@ function readCollapsedSize(config: Record<string, unknown>): { w: number; h: num
             return u ? { ...w, position: u.position } : w;
           }),
           cols,
+          maxRows,
         ),
       );
       for (const u of updates) void api.updateWidget(u.id, { position: u.position });
     },
-    [cols, beginPush],
+    [cols, maxRows, beginPush],
   );
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const handleDragStart = useCallback(
@@ -942,12 +967,12 @@ function readCollapsedSize(config: Record<string, unknown>): { w: number; h: num
         if (targetArea && targetTabId && targetTabId !== tabId) {
           const rect = targetArea.getBoundingClientRect();
           const targetCols = colsForWidth(rect.width);
-          const cell = pointToCell(session.pointerX, session.pointerY, rect, targetCols);
+          const cell = pointToCell(session.pointerX, session.pointerY, rect, targetCols, maxRows);
           const size = { w: widget.position.w, h: widget.position.h };
           const moved: WidgetData = {
             ...widget,
             tabId: targetTabId,
-            position: clampRect({ ...size, x: cell.x, y: cell.y }, widget.type, targetCols),
+            position: clampRect({ ...size, x: cell.x, y: cell.y }, widget.type, targetCols, undefined, maxRows),
           };
           onWidgetTransferred(targetTabId, { type: 'insert', widget: moved });
           setWidgets((prev) => prev.filter((w) => w.id !== widgetId));
@@ -980,7 +1005,7 @@ function readCollapsedSize(config: Record<string, unknown>): { w: number; h: num
        * indistinguible de uno recto.
        */
       const gesture = pushDirectionFor(shift.dx, shift.dy);
-      const resolved = resolveDrop(widgets, widgetId, target, cols, gesture);
+      const resolved = resolveDrop(widgets, widgetId, target, cols, gesture, maxRows);
       if (!resolved) return;
       // El que se movio mas los que el empuje corrio de lado.
       commitPositions([
@@ -988,7 +1013,7 @@ function readCollapsedSize(config: Record<string, unknown>): { w: number; h: num
         ...resolved.shifted,
       ]);
     },
-    [tabId, widgets, cols, onWidgetDragEnd, onWidgetTransferred, onWidgetSynced, commitPositions],
+    [tabId, widgets, cols, maxRows, onWidgetDragEnd, onWidgetTransferred, onWidgetSynced, commitPositions],
   );
   const handleDragCancel = useCallback(() => {
     onWidgetDragEnd();
@@ -1015,7 +1040,7 @@ function readCollapsedSize(config: Record<string, unknown>): { w: number; h: num
          * mas celdas; al achicarla, menos. Los widgets nunca cambian de tamano:
          * lo que se ajusta es el numero de huecos, no la celda.
          */}
-        <div ref={areaRef} className="w-full">
+        <div ref={areaRef} className="w-full h-full">
           <div
             id="dashboard-drop-area"
             ref={dropAreaRef}
@@ -1060,6 +1085,7 @@ function readCollapsedSize(config: Record<string, unknown>): { w: number; h: num
                 widget={widget}
                 box={rectToPixels(widget.position)}
                 cols={cols}
+                maxRows={maxRows}
                 onDelete={handleDelete}
                 onConfigChange={handleConfigChange}
                 onResize={handleResize}

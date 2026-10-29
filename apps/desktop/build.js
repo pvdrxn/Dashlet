@@ -11,11 +11,18 @@ const BACKEND_TARGET = path.join(RESOURCES, 'backend');
 const BACKEND_DEPS = {
   "@nestjs/common": "^11.0.0",
   "@nestjs/core": "^11.0.0",
+  "@nestjs/jwt": "^12.0.3",
+  "@nestjs/passport": "^12.0.0",
   "@nestjs/platform-express": "^11.0.0",
-  "@nestjs/serve-static": "^5.0.0",
+  "@nestjs/serve-static": "^5.0.5",
+  "@nestjs/throttler": "^6.7.1",
   "@prisma/client": "^6.6.0",
+  "bcrypt": "^6.0.0",
   "class-transformer": "^0.5.0",
   "class-validator": "^0.14.0",
+  "passport": "^0.7.0",
+  "passport-jwt": "^4.0.1",
+  "passport-local": "^1.0.0",
   "reflect-metadata": "^0.2.0",
   "rxjs": "^7.8.0",
 };
@@ -58,8 +65,9 @@ function writeJson(filePath, obj) {
 async function main() {
   console.log('\n=== Building Dashlet Desktop ===\n');
 
-  // 1. Build the backend
-  console.log('[1/4] Building backend...');
+  // 1. Build shared and backend
+  console.log('[1/4] Building shared and backend...');
+  run('npx tsc', path.join(ROOT, 'packages', 'shared'));
   run('npx tsc', BACKEND_DIR);
 
   // 2. Build the frontend
@@ -96,6 +104,12 @@ async function main() {
   // Install production dependencies (flat node_modules)
   console.log('  Installing production dependencies...');
   run('npm install --production --no-optional --ignore-scripts 2>&1', BACKEND_TARGET, true);
+
+  // Copy shared package into node_modules
+  const sharedTarget = path.join(BACKEND_TARGET, 'node_modules', '@widget-master', 'shared');
+  fs.mkdirSync(sharedTarget, { recursive: true });
+  copyRecursive(path.join(ROOT, 'packages', 'shared'), sharedTarget);
+  console.log('  Copied @widget-master/shared');
 
   // 4. Copy Prisma generated client + engine binary
   console.log('\n[4/4] Setting up Prisma...');

@@ -1,4 +1,4 @@
-﻿@import "tailwindcss";
+@import "tailwindcss";
 
 /*
  * Geist variable (pesos 100-900), self-hosted.
@@ -270,20 +270,31 @@ html.light {
   --dashlet-white: #09090b;
 }
 
-html {
-  background: var(--color-gray-950);
+html, body {
+  background: transparent !important;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden !important;
+  user-select: none;
+  margin: 0;
+  padding: 0;
+}
+
+#root {
+  position: fixed;
+  top: 25px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: transparent !important;
+  overflow: hidden !important;
+  user-select: none;
 }
 
 body {
   margin: 0;
   font-family: var(--font-sans);
-  background: var(--color-gray-950);
   color: var(--color-gray-300);
-}
-
-#root {
-  min-height: 100dvh;
-  background: var(--color-gray-950);
 }
 
 /*
@@ -541,7 +552,9 @@ body {
 
 /* Scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
+  display: none;
+  width: 0px;
+  height: 0px;
 }
 ::-webkit-scrollbar-track {
   background: #161616;

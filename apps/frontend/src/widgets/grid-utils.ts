@@ -55,9 +55,17 @@ export const CELL_H = 80;
 export const MIN_COLS = 3;
 export const MAX_COLS = 24;
 
+export const MIN_ROWS = 1;
+export const MAX_ROWS = 64;
+
 export function colsForWidth(containerWidth: number): number {
   const fit = Math.floor((containerWidth - CELL_GAP) / (CELL_W + CELL_GAP));
   return Math.max(MIN_COLS, Math.min(fit, MAX_COLS));
+}
+
+export function rowsForHeight(containerHeight: number): number {
+  const fit = Math.floor((containerHeight - CELL_GAP) / (CELL_H + CELL_GAP));
+  return Math.max(MIN_ROWS, Math.min(fit, MAX_ROWS));
 }
 
 /**
@@ -227,6 +235,7 @@ export function clampRect(
   type: string,
   cols: number = GRID_COLS,
   minH?: number,
+  maxRows?: number,
 ): Position {
   const min = minSize(type);
   const max = maxSize(type);
@@ -240,17 +249,20 @@ export function clampRect(
 
   let h = Math.round(rect.h);
   if (!Number.isFinite(h)) h = defaultSize(type).h;
-  h = Math.max(Math.min(h, max.h), MIN_CELLS_H);
+  const effectiveMaxH = maxRows !== undefined ? Math.min(max.h, maxRows) : max.h;
+  h = Math.max(Math.min(h, effectiveMaxH), MIN_CELLS_H);
 
   // El minimo del tipo, pero sin volver a pasarse del techo. `minH` lo pisa el
   // llamador para el widget retraido, que tiene que poder bajar a 1 celda sin
   // que este clamp lo vuelva a subir en el siguiente normalize.
   w = Math.max(w, Math.min(min.w, cols, max.w));
-  h = Math.max(h, Math.min(minH ?? min.h, max.h));
+  h = Math.max(h, Math.min(minH ?? min.h, effectiveMaxH));
+
+  const maxY = maxRows !== undefined ? Math.max(0, maxRows - h) : Infinity;
 
   return {
     x: Math.max(0, Math.min(Math.round(rect.x) || 0, cols - w)),
-    y: Math.max(0, Math.round(rect.y) || 0),
+    y: Math.max(0, Math.min(Math.round(rect.y) || 0, maxY)),
     w,
     h,
   };
@@ -280,14 +292,18 @@ export function findFirstSlot(
   type: string,
   cols: number = GRID_COLS,
   size?: { w: number; h: number },
+  maxRows?: number,
 ): { x: number; y: number } {
   const { w, h } = size ?? defaultSize(type);
   const width = Math.min(w, cols);
-  for (let y = 0; ; y++) {
+  const height = maxRows !== undefined ? Math.min(h, maxRows) : h;
+  const maxY = maxRows !== undefined ? Math.max(0, maxRows - height) : Infinity;
+  for (let y = 0; y <= maxY; y++) {
     for (let x = 0; x + width <= cols; x++) {
-      if (!occupantOf(widgets, { x, y, w: width, h }, '')) return { x, y };
+      if (!occupantOf(widgets, { x, y, w: width, h: height }, '')) return { x, y };
     }
   }
+  return { x: 0, y: Number.isFinite(maxY) ? maxY : 0 };
 }
 
 /** Hacia donde se empuja a los widgets que el que se mueve va a tapar. */
@@ -366,8 +382,13 @@ function pushStep(pos: Position, hits: Position[], dir: PushDirection): Position
 }
 
 /** ¿El rect sigue entrando en la grilla? */
-function insideGrid(pos: Position, cols: number): boolean {
-  return pos.x >= 0 && pos.y >= 0 && pos.x + pos.w <= cols;
+function insideGrid(pos: Position, cols: number, maxRows?: number): boolean {
+  return (
+    pos.x >= 0 &&
+    pos.y >= 0 &&
+    pos.x + pos.w <= cols &&
+    (maxRows === undefined || pos.y + pos.h <= maxRows)
+  );
 }
 
 /** Una pasada de empuje. `fits` dice si el resultado entro entero en la grilla. */
@@ -378,6 +399,7 @@ function pushPass(
   cols: number,
   gesture: PushDirection,
   forced: PushDirection | null,
+  maxRows?: number,
 ): { shifted: { id: string; position: Position }[]; fits: boolean } {
   // Todo lo ya resuelto. Empieza solo con el widget que se esta moviendo.
   const settled: Position[] = [rect];
@@ -387,7 +409,7 @@ function pushPass(
   const others = widgets.filter((w) => w.id !== id).sort(dropOrder(rect));
 
   for (const other of others) {
-    let pos = clampRect(other.position, other.type, cols, minHeightOf(other));
+    let pos = clampRect(other.position, other.type, cols, minHeightOf(other), maxRows);
     const before = pos;
 
     /*
@@ -407,7 +429,7 @@ function pushPass(
 
     // No se re-clampa el resultado: el clamp volveria a meter al widget encima
     // de lo que lo pisa. Si se salio de la grilla, la pasada se descarta.
-    if (!insideGrid(pos, cols)) fits = false;
+    if (!insideGrid(pos, cols, maxRows)) fits = false;
 
     settled.push(pos);
     if (pos.y !== before.y || pos.x !== before.x) {
@@ -443,20 +465,27 @@ export function resolveDrop(
   target: Position,
   cols: number = GRID_COLS,
   gesture: PushDirection = 'down',
+  maxRows?: number,
 ): { moved: WidgetData; shifted: { id: string; position: Position }[] } | null {
   const moving = widgets.find((w) => w.id === id);
   if (!moving) return null;
 
   // Piso por widget: arrastrar un widget retraido no lo despliega.
-  const rect = clampRect(target, moving.type, cols, minHeightOf(moving));
+  const rect = clampRect(target, moving.type, cols, minHeightOf(moving), maxRows);
 
   // Primero cada uno por su lado. Si alguno se queda sin grilla, la pasada se
   // descarta completa -- no se reintenta solo el que no entra, porque dejandolo
   // atado al rect soltado volveria a chocar con el -- y se repite hacia abajo.
-  const first = pushPass(widgets, id, rect, cols, gesture, null);
-  const result = first.fits ? first : pushPass(widgets, id, rect, cols, gesture, 'down');
+  const first = pushPass(widgets, id, rect, cols, gesture, null, maxRows);
+  if (first.fits) {
+    return { moved: { ...moving, position: rect }, shifted: first.shifted };
+  }
+  const fallback = pushPass(widgets, id, rect, cols, gesture, 'down', maxRows);
+  if (fallback.fits) {
+    return { moved: { ...moving, position: rect }, shifted: fallback.shifted };
+  }
 
-  return { moved: { ...moving, position: rect }, shifted: result.shifted };
+  return null;
 }
 
 /** Cuantas filas hay que dibujar para que quepa todo, sin desbordar con scrollbar innecesaria. */
@@ -499,12 +528,13 @@ export function pointToCell(
   clientY: number,
   rect: DOMRect,
   cols: number = GRID_COLS,
+  maxRows?: number,
 ): { x: number; y: number } {
   const col = Math.floor((clientX - rect.left - CELL_GAP) / (CELL_W + CELL_GAP));
   const row = Math.floor((clientY - rect.top - CELL_GAP) / (CELL_H + CELL_GAP));
   return {
     x: Math.max(0, Math.min(col, cols - 1)),
-    y: Math.max(0, row),
+    y: Math.max(0, maxRows !== undefined ? Math.min(row, maxRows - 1) : row),
   };
 }
 
@@ -536,7 +566,11 @@ function isLegacyRect(p: Position, cols: number): boolean {
  * colocar en la primera ranura libre, en orden de lectura. Es lo que permite
  * migrar sin script: basta con que al pintar se detecten y se repartan.
  */
-export function normalizeLayout(widgets: WidgetData[], cols: number = GRID_COLS): WidgetData[] {
+export function normalizeLayout(
+  widgets: WidgetData[],
+  cols: number = GRID_COLS,
+  maxRows?: number,
+): WidgetData[] {
   const placed: WidgetData[] = [];
 
   for (const w of widgets) {
@@ -547,20 +581,20 @@ export function normalizeLayout(widgets: WidgetData[], cols: number = GRID_COLS)
     let rect: Position;
 
     if (!legacy) {
-      rect = clampRect(w.position, w.type, cols, floor);
+      rect = clampRect(w.position, w.type, cols, floor, maxRows);
       // Si choca con lo ya colocado, se va a la primera ranura libre.
       if (occupantOf(placed, rect, '')) {
         // Se conserva el tamano que ya traia. Forzar `defaultSize` aqui
         // devolveria al default a un widget que el usuario ya agrando, y
         // agrandaria solo a los recien creados: justo lo contrario de lo que se
         // quiere, que el tamano cambie cuando el usuario lo cambie.
-        const slot = findFirstSlot(placed, w.type, cols, { w: rect.w, h: rect.h });
-        rect = clampRect({ ...slot, w: rect.w, h: rect.h }, w.type, cols, floor);
+        const slot = findFirstSlot(placed, w.type, cols, { w: rect.w, h: rect.h }, maxRows);
+        rect = clampRect({ ...slot, w: rect.w, h: rect.h }, w.type, cols, floor, maxRows);
       }
     } else {
       const size = { w: defaultSize(w.type).w, h: floor };
-      const slot = findFirstSlot(placed, w.type, cols, size);
-      rect = clampRect({ ...slot, ...size }, w.type, cols, floor);
+      const slot = findFirstSlot(placed, w.type, cols, size, maxRows);
+      rect = clampRect({ ...slot, ...size }, w.type, cols, floor, maxRows);
     }
 
     placed.push({ ...w, position: rect });

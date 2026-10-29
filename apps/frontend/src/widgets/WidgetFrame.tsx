@@ -411,7 +411,9 @@ export const WidgetFrame = memo(function WidgetFrame({
   return (
     <div
       data-widget-id={id}
-      className={`group flex h-full w-full flex-col overflow-hidden rounded-lg border transition-all duration-300 ${
+      onMouseEnter={() => window.electronAPI?.setIgnoreMouseEvents?.(false)}
+      onMouseLeave={() => window.electronAPI?.setIgnoreMouseEvents?.(true, { forward: true })}
+      className={`pointer-events-auto group flex h-full w-full flex-col overflow-hidden rounded-lg border transition-all duration-300 ${
         highlighted
           ? 'border-p2 shadow-[0_8px_28px_-6px_rgba(217,164,65,0.22),inset_0_1px_0_rgba(255,255,255,0.07)]'
           : isDragging

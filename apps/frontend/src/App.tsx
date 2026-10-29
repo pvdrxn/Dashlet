@@ -1,10 +1,11 @@
-import { useCallback, useState, useRef, useEffect, Suspense } from 'react';
+import { useCallback, useState, useRef, useEffect, useMemo, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { WidgetGrid } from './widgets';
 import { OPEN_TABLE_EVENT } from './widgets/data-table/DataTableWidget';
 import { OPEN_CALENDAR_EVENT } from './widgets/calendar/open-calendar';
-import { Toolbar } from './components/Toolbar';
+import { FloatingDock } from './components/FloatingDock';
+import { FloatingAddWidgetButton } from './components/FloatingAddWidgetButton';
 import { TabBar } from './components/TabBar';
 import { TrashWindow } from './components/TrashWindow';
 import { TaskPickerModal } from './components/TaskPickerModal';
@@ -41,11 +42,20 @@ function Dashboard() {
   const [viewSidebarOpen, setViewSidebarOpen] = useState(false);
 
   useEffect(() => {
+    if (viewSidebarOpen || trashOpen || taskPickerOpen || activeView !== 'widgets') {
+      window.electronAPI?.setIgnoreMouseEvents?.(false);
+    }
+  }, [viewSidebarOpen, trashOpen, taskPickerOpen, activeView]);
+
+  const handleInteractiveMouseEnter = useCallback(() => {
+    window.electronAPI?.setIgnoreMouseEvents?.(false);
+  }, []);
+
+  useEffect(() => {
     const onOpenTable = () => {
       setViewSidebarOpen(false);
       setActiveView('table');
     };
-    // El dia que pidio el widget queda en localStorage y la vista lo lee al montarse.
     const onOpenCalendar = () => {
       setViewSidebarOpen(false);
       setActiveView('calendar');
@@ -82,17 +92,14 @@ function Dashboard() {
   const transferWidgetRefs = useRef(new Map<string, (action: TransferAction) => void>());
 
   const tabBarRef = useRef<HTMLDivElement>(null);
-  const [tabBarHeight, setTabBarHeight] = useState(0);
 
-  useEffect(() => {
-    const el = tabBarRef.current;
-    if (!el) return;
-    const update = () => setTabBarHeight(el.offsetHeight);
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(el);
-    return () => observer.disconnect();
+  const desktopMetrics = useMemo(() => {
+    return window.electronAPI?.getMetricsSync?.() ?? null;
   }, []);
+
+  const bottomTaskbarInset = desktopMetrics
+    ? desktopMetrics.taskbarHeight + desktopMetrics.bottomExtra
+    : 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -325,9 +332,8 @@ function Dashboard() {
   }, []);
 
   const widgetsSkeleton = (
-    <main className="min-h-screen bg-gray-900">
+    <main className="h-screen w-screen bg-transparent">
       <div className="flex flex-col gap-2 px-4 py-3" aria-hidden="true">
-        <div className="skeleton h-8 w-full rounded-lg" />
         <div className="skeleton h-8 w-56 rounded-lg" />
         <div className="skeleton mt-4 h-56 w-80 rounded-lg" />
       </div>
@@ -350,7 +356,7 @@ function Dashboard() {
 
   if (authLoading) {
     return (
-      <main className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <main className="h-screen w-screen bg-transparent flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="skeleton h-8 w-24 rounded" />
           <div className="skeleton h-4 w-40 rounded" />
@@ -364,13 +370,28 @@ function Dashboard() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-900">
+    <main className="h-full w-full overflow-hidden bg-transparent pointer-events-none select-none">
+      <FloatingDock
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onSelectTab={handleSelectTab}
+        onCreateTab={handleCreateTab}
+        activeView={activeView}
+        onSelectView={setActiveView}
+        onOpenTrash={() => setTrashOpen(true)}
+      />
+      <FloatingAddWidgetButton
+        onAddWidget={handleAddWidget}
+        onAddWidgetDeferred={handleAddWidgetDeferred}
+        onPredictAdd={handlePredictAdd}
+        onRevealWidgets={handleRevealWidgets}
+      />
       {activeView === 'widgets' ? (
         !tabsLoaded ? (
           widgetsSkeleton
         ) : (
           <>
-            <div ref={tabBarRef}>
+            <div ref={tabBarRef} className="hidden">
               <TabBar
                 tabs={tabs}
                 activeTabId={activeTabId}
@@ -385,17 +406,12 @@ function Dashboard() {
                 leading={viewSwitchButton}
               />
             </div>
-            <Toolbar
-              onAddWidget={handleAddWidget}
-              onAddWidgetDeferred={handleAddWidgetDeferred}
-              onPredictAdd={handlePredictAdd}
-              onRevealWidgets={handleRevealWidgets}
-              onOpenTrash={() => setTrashOpen(true)}
-              topOffset={tabBarHeight}
-            />
-            <div className="p-4">
+            <div
+              className="p-4 pointer-events-none overflow-hidden h-full box-border"
+              style={{ paddingBottom: `${bottomTaskbarInset + 16}px` }}
+            >
               {tabs.map((tab) => (
-                <div key={tab.id} className={activeTabId === tab.id ? '' : 'hidden'}>
+                <div key={tab.id} className={activeTabId === tab.id ? 'h-full w-full' : 'hidden'}>
                   <WidgetGrid
                     tabId={tab.id}
                     onAddWidgetRef={registerAddWidgetRef}
@@ -414,42 +430,52 @@ function Dashboard() {
           </>
         )
       ) : (
-        <Suspense
-          fallback={
-            <div className="flex min-h-screen flex-col gap-3 p-4" aria-hidden="true">
-              <div className="skeleton h-9 w-full rounded-lg" />
-              <div className="skeleton h-64 w-full rounded-lg" />
-            </div>
-          }
+        <div
+          className="pointer-events-auto flex-1 min-h-0 h-full overflow-auto"
+          onMouseEnter={handleInteractiveMouseEnter}
         >
-          {activeView === 'calendar' ? (
-            <CalendarView leading={viewSwitchButton} />
-          ) : (
-            <TableView leading={viewSwitchButton} />
-          )}
-        </Suspense>
+          <Suspense
+            fallback={
+              <div className="flex min-h-screen flex-col gap-3 p-4" aria-hidden="true">
+                <div className="skeleton h-9 w-full rounded-lg" />
+                <div className="skeleton h-64 w-full rounded-lg" />
+              </div>
+            }
+          >
+            {activeView === 'calendar' ? (
+              <CalendarView leading={viewSwitchButton} />
+            ) : (
+              <TableView leading={viewSwitchButton} />
+            )}
+          </Suspense>
+        </div>
       )}
-      <ViewSidebar
-        open={viewSidebarOpen}
-        activeViewId={activeView}
-        onSelect={setActiveView}
-        onClose={() => setViewSidebarOpen(false)}
-      />
-      {trashOpen && (
-        <TrashWindow
-          onClose={() => setTrashOpen(false)}
-          onRestoreComplete={handleRestoreComplete}
+      <div
+        className="pointer-events-auto"
+        onMouseEnter={handleInteractiveMouseEnter}
+      >
+        <ViewSidebar
+          open={viewSidebarOpen}
+          activeViewId={activeView}
+          onSelect={setActiveView}
+          onClose={() => setViewSidebarOpen(false)}
         />
-      )}
-      {taskPickerOpen && (
-        <TaskPickerModal
-          targetWidgetId={taskPickerTargetRef.current}
-          onClose={() => {
-            taskPickerTargetRef.current = undefined;
-            setTaskPickerOpen(false);
-          }}
-        />
-      )}
+        {trashOpen && (
+          <TrashWindow
+            onClose={() => setTrashOpen(false)}
+            onRestoreComplete={handleRestoreComplete}
+          />
+        )}
+        {taskPickerOpen && (
+          <TaskPickerModal
+            targetWidgetId={taskPickerTargetRef.current}
+            onClose={() => {
+              taskPickerTargetRef.current = undefined;
+              setTaskPickerOpen(false);
+            }}
+          />
+        )}
+      </div>
     </main>
   );
 }

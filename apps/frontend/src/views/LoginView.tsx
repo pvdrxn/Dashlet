@@ -81,7 +81,7 @@ export function LoginView() {
   };
 
   return (
-    <div className="relative min-h-screen bg-gray-950 flex items-center justify-center p-4">
+    <div className="relative min-h-full h-full w-full bg-gray-950 flex items-center justify-center p-4">
       <div className="absolute top-4 right-4">
         <LanguagePickerDropdown />
       </div>

@@ -16,13 +16,16 @@
     },
     "files": [
       "main.js",
-      "preload.js"
+      "preload.js",
+      "tray-icon.png"
     ],
     "extraResources": [
       {
         "from": "./resources",
         "to": "resources",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {},
