@@ -10,12 +10,11 @@ import { TabBar } from './components/TabBar';
 import { TrashWindow } from './components/TrashWindow';
 import { TaskPickerModal } from './components/TaskPickerModal';
 import { ViewSidebar } from './components/ViewSidebar';
-import { CalendarView, TableView, LoginView, RegisterView, SettingsView, getView, type ViewId } from './views';
+import { CalendarView, TableView, SettingsView, getView, type ViewId } from './views';
 import { FiMenu } from 'react-icons/fi';
 import { widgetBus } from './widgets/widget-bus';
 import * as tabsApi from './api/tabs';
 import * as widgetsApi from './api/widgets';
-import { AuthProvider, useAuth } from './hooks/useAuth';
 import type { TabDto } from '@widget-master/shared';
 import type { Position } from './widgets/types';
 import {
@@ -35,17 +34,16 @@ function readStoredView(): ViewId {
 
 function Dashboard() {
   const { t } = useTranslation();
-  const { user, loading: authLoading } = useAuth();
   const [trashOpen, setTrashOpen] = useState(false);
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const [activeView, setActiveView] = useState<ViewId>(readStoredView);
   const [viewSidebarOpen, setViewSidebarOpen] = useState(false);
 
   useEffect(() => {
-    if (viewSidebarOpen || trashOpen || taskPickerOpen || activeView !== 'widgets') {
+    if (viewSidebarOpen || trashOpen || taskPickerOpen) {
       window.electronAPI?.setIgnoreMouseEvents?.(false);
     }
-  }, [viewSidebarOpen, trashOpen, taskPickerOpen, activeView]);
+  }, [viewSidebarOpen, trashOpen, taskPickerOpen]);
 
   const handleInteractiveMouseEnter = useCallback(() => {
     window.electronAPI?.setIgnoreMouseEvents?.(false);
@@ -354,21 +352,6 @@ function Dashboard() {
     </button>
   );
 
-  if (authLoading) {
-    return (
-      <main className="h-screen w-screen bg-transparent flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="skeleton h-8 w-24 rounded" />
-          <div className="skeleton h-4 w-40 rounded" />
-        </div>
-      </main>
-    );
-  }
-
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
   return (
     <main className="h-full w-full overflow-hidden bg-transparent pointer-events-none select-none">
       <FloatingDock
@@ -430,10 +413,7 @@ function Dashboard() {
           </>
         )
       ) : (
-        <div
-          className="pointer-events-auto flex-1 min-h-0 h-full overflow-auto"
-          onMouseEnter={handleInteractiveMouseEnter}
-        >
+        <div className="flex-1 min-h-0 h-full w-full overflow-hidden bg-transparent pointer-events-none select-none">
           <Suspense
             fallback={
               <div className="flex min-h-screen flex-col gap-3 p-4" aria-hidden="true">
@@ -443,9 +423,9 @@ function Dashboard() {
             }
           >
             {activeView === 'calendar' ? (
-              <CalendarView leading={viewSwitchButton} />
+              <CalendarView leading={viewSwitchButton} onClose={() => setActiveView('widgets')} />
             ) : (
-              <TableView leading={viewSwitchButton} />
+              <TableView leading={viewSwitchButton} onClose={() => setActiveView('widgets')} />
             )}
           </Suspense>
         </div>
@@ -482,17 +462,13 @@ function Dashboard() {
 
 function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<LoginView />} />
-          <Route path="/register" element={<RegisterView />} />
-          <Route path="/settings" element={<SettingsView />} />
-          <Route path="/" element={<Dashboard />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/settings" element={<SettingsView />} />
+        <Route path="/" element={<Dashboard />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
 

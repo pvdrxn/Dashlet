@@ -2,6 +2,8 @@ export interface DesktopMetrics {
   taskbarHeight: number;
   bottomExtra: number;
   topOffset: number;
+  bounds?: { width: number; height: number; x: number; y: number };
+  workArea?: { width: number; height: number; x: number; y: number };
 }
 
 export interface ElectronAPI {

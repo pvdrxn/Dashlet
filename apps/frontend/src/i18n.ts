@@ -19,6 +19,7 @@ const resources = {
       widgets: { types: {"todo-list":"Todo List","pomodoro":"Timer","notes":"Notes","calculator":"Calculator","habit-tracker":"Habit Tracker","diary":"Diary","data-table":"Table","calendar":"Calendar"} },
       toolbar: {"addWidget":"Add widget","openTrash":"Open trash","userMenu":"User menu","account":"Account"},
       calendar: {
+        backToWidgets: "Back to widgets",
         addEvent: "Add event",
         editEventModal: "Edit event",
         newEventModal: "New event",
@@ -274,6 +275,7 @@ const resources = {
       widgets: { types: {"todo-list":"Lista de tareas","pomodoro":"Temporizador","notes":"Notas","calculator":"Calculadora","habit-tracker":"Hábitos","diary":"Diario","data-table":"Tabla","calendar":"Calendario"} },
       toolbar: {"addWidget":"Añadir widget","openTrash":"Abrir papelera","userMenu":"Menú de usuario","account":"Cuenta"},
       calendar: {
+        backToWidgets: "Volver a widgets",
         addEvent: "Añadir evento",
         editEventModal: "Editar evento",
         newEventModal: "Nuevo evento",
@@ -529,6 +531,7 @@ const resources = {
       widgets: { types: {"todo-list":"Liste de tâches","pomodoro":"Minuteur","notes":"Notes","calculator":"Calculatrice","habit-tracker":"Suivi d’habitudes","diary":"Journal","data-table":"Tableau","calendar":"Calendrier"} },
       toolbar: {"addWidget":"Ajouter un widget","openTrash":"Ouvrir la corbeille","userMenu":"Menu utilisateur","account":"Compte"},
       calendar: {
+        backToWidgets: "Retour aux widgets",
         addEvent: "Ajouter un événement",
         editEventModal: "Modifier l’événement",
         newEventModal: "Nouvel événement",
@@ -784,6 +787,7 @@ const resources = {
       widgets: { types: {"todo-list":"Lista attività","pomodoro":"Timer","notes":"Note","calculator":"Calcolatrice","habit-tracker":"Abitudini","diary":"Diario","data-table":"Tabella","calendar":"Calendario"} },
       toolbar: {"addWidget":"Aggiungi widget","openTrash":"Apri cestino","userMenu":"Menu utente","account":"Account"},
       calendar: {
+        backToWidgets: "Torna ai widget",
         addEvent: "Aggiungi evento",
         editEventModal: "Modifica evento",
         newEventModal: "Nuovo evento",
@@ -1039,6 +1043,7 @@ const resources = {
       widgets: { types: {"todo-list":"Список задач","pomodoro":"Таймер","notes":"Заметки","calculator":"Калькулятор","habit-tracker":"Привычки","diary":"Дневник","data-table":"Таблица","calendar":"Календарь"} },
       toolbar: {"addWidget":"Добавить виджет","openTrash":"Открыть корзину","userMenu":"Меню пользователя","account":"Аккаунт"},
       calendar: {
+        backToWidgets: "Назад к виджетам",
         addEvent: "Добавить событие",
         editEventModal: "Изменить событие",
         newEventModal: "Новое событие",

@@ -193,6 +193,8 @@ function setupIpc() {
       taskbarHeight,
       bottomExtra: BOTTOM_EXTRA,
       topOffset: TOP_OFFSET,
+      bounds: display.bounds,
+      workArea: display.workArea,
     };
   });
 }

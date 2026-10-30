@@ -1,50 +1,49 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param } from '@nestjs/common';
 import { TabsService } from './tabs.service';
 import { CreateTabDto, UpdateTabDto } from '@widget-master/shared';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { LOCAL_USER_ID } from '../prisma/prisma.service';
 
 @Controller('tabs')
-@UseGuards(JwtAuthGuard)
 export class TabsController {
   constructor(private readonly service: TabsService) {}
 
   @Get()
-  findAll(@Req() req: Request & { user: { sub: string } }) {
-    return this.service.findAll(req.user.sub);
+  findAll() {
+    return this.service.findAll(LOCAL_USER_ID);
   }
 
   @Get('trash')
-  findTrash(@Req() req: Request & { user: { sub: string } }) {
-    return this.service.findTrash(req.user.sub);
+  findTrash() {
+    return this.service.findTrash(LOCAL_USER_ID);
   }
 
   @Post()
-  create(@Req() req: Request & { user: { sub: string } }, @Body() dto: CreateTabDto) {
-    return this.service.create(req.user.sub, dto);
+  create(@Body() dto: CreateTabDto) {
+    return this.service.create(LOCAL_USER_ID, dto);
   }
 
   @Post('reorder')
-  reorder(@Req() req: Request & { user: { sub: string } }, @Body('ids') ids: string[]) {
-    return this.service.reorder(req.user.sub, ids ?? []);
+  reorder(@Body('ids') ids: string[]) {
+    return this.service.reorder(LOCAL_USER_ID, ids ?? []);
   }
 
   @Patch(':id')
-  update(@Req() req: Request & { user: { sub: string } }, @Param('id') id: string, @Body() dto: UpdateTabDto) {
-    return this.service.update(req.user.sub, id, dto);
+  update(@Param('id') id: string, @Body() dto: UpdateTabDto) {
+    return this.service.update(LOCAL_USER_ID, id, dto);
   }
 
   @Post(':id/restore')
-  restore(@Req() req: Request & { user: { sub: string } }, @Param('id') id: string) {
-    return this.service.restore(req.user.sub, id);
+  restore(@Param('id') id: string) {
+    return this.service.restore(LOCAL_USER_ID, id);
   }
 
   @Delete(':id')
-  remove(@Req() req: Request & { user: { sub: string } }, @Param('id') id: string) {
-    return this.service.remove(req.user.sub, id);
+  remove(@Param('id') id: string) {
+    return this.service.remove(LOCAL_USER_ID, id);
   }
 
   @Delete(':id/forever')
-  removeForever(@Req() req: Request & { user: { sub: string } }, @Param('id') id: string) {
-    return this.service.removeForever(req.user.sub, id);
+  removeForever(@Param('id') id: string) {
+    return this.service.removeForever(LOCAL_USER_ID, id);
   }
 }

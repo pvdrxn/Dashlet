@@ -4,64 +4,39 @@ import { LuCalendar } from 'react-icons/lu';
 import { LuTable2 } from 'react-icons/lu';
 import { registerView } from './registry';
 
-/*
- * El componente de la vista de widgets es el dashboard de siempre, que ya vive
- * en `App.tsx`. No se registra el componente en el registro: lo que el registro
- * describe es la ENTRADA del sidebar (icono, etiqueta, descripcion), y el
- * render de cada vista lo decide `App.tsx` segun el id. Meter el componente
- * aca obligaria a mover el dashboard entero adentro de un archivo que hoy es
- * el composition root de la app.
- *
- * El calendario si va con `lazy()`: es lo unico que se puede cargar acá, y es
- * exactamente el caso para el que el lazy sirve -- la mayoria de las sesiones
- * van a estar en la vista de widgets y no hay que bajar la grilla de meses.
- */
 const CalendarView = lazy(() =>
   import('./calendar/CalendarView').then((m) => ({ default: m.CalendarView })),
 );
 
-/*
- * La tabla va con `lazy()` por la misma razon que el calendario: la mayoria de las
- * sesiones van a estar en la vista de widgets y no hay que bajar el cliente HTTP
- * ni la grilla hasta que se abre.
- */
 const TableView = lazy(() =>
   import('./table/TableView').then((m) => ({ default: m.TableView })),
-);
-
-const LoginView = lazy(() =>
-  import('./LoginView').then((m) => ({ default: m.LoginView })),
-);
-
-const RegisterView = lazy(() =>
-  import('./RegisterView').then((m) => ({ default: m.RegisterView })),
 );
 
 const SettingsView = lazy(() =>
   import('./SettingsView').then((m) => ({ default: m.SettingsView })),
 );
 
-export { CalendarView, TableView, LoginView, RegisterView, SettingsView };
+export { CalendarView, TableView, SettingsView };
 export type { ViewId, ViewDefinition } from './registry';
 export { getView, getAllViews } from './registry';
 
 registerView({
   id: 'widgets',
   label: 'Widget View',
-  description: 'Your widget dashboards',
   icon: FiGrid,
+  description: 'Panel principal de widgets',
 });
 
 registerView({
   id: 'calendar',
   label: 'Calendar View',
-  description: 'Agenda by months and hours',
   icon: LuCalendar,
+  description: 'Vista de agenda y bloques horarios',
 });
 
 registerView({
   id: 'table',
   label: 'Table View',
-  description: 'Your data tables',
   icon: LuTable2,
+  description: 'Vista tabular y gestión de datos',
 });

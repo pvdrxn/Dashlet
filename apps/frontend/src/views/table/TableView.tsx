@@ -1,6 +1,6 @@
 import i18n from '../../i18n';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { FiPlus, FiChevronDown, FiTrash2, FiX } from 'react-icons/fi';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FiPlus, FiChevronDown, FiTrash2, FiX, FiGrid } from 'react-icons/fi';
 import { TableGrid } from './TableGrid';
 import * as tablesApi from '../../api/tables';
 import { apiErrorMessage } from '../../api/error';
@@ -20,15 +20,35 @@ import type { CellValue, TableColumnDto, TableDto, TableRowDto, TableSummaryDto 
 interface TableViewProps {
   /** Boton de cambiar vista, que la app pone delante de las pestanas. */
   leading?: React.ReactNode;
+  onClose?: () => void;
 }
 
 /** Clave de la tabla que el widget pidio abrir. La consume y se borra. */
 const PENDING_TABLE_KEY = 'dashlet-pending-table';
 
-export function TableView({ leading }: TableViewProps) {
+export function TableView({ leading, onClose }: TableViewProps) {
   const [tables, setTables] = useState<TableSummaryDto[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [table, setTable] = useState<TableDto | null>(null);
+
+  const desktopMetrics = useMemo(() => {
+    return window.electronAPI?.getMetricsSync?.() ?? null;
+  }, []);
+
+  const topOffset = desktopMetrics?.topOffset ?? 25;
+  const bottomTaskbarInset = desktopMetrics
+    ? (desktopMetrics.bounds && desktopMetrics.workArea
+        ? desktopMetrics.bounds.height - desktopMetrics.workArea.height
+        : desktopMetrics.taskbarHeight || 48)
+    : 48;
+
+  const handleInteractiveMouseEnter = useCallback(() => {
+    window.electronAPI?.setIgnoreMouseEvents?.(false);
+  }, []);
+
+  const handleInteractiveMouseLeave = useCallback(() => {
+    window.electronAPI?.setIgnoreMouseEvents?.(true, { forward: true });
+  }, []);
   /*
    * La tabla del ultimo render, para leerla desde un camino que se completa
    * DESPUES de un await.
@@ -391,15 +411,29 @@ export function TableView({ leading }: TableViewProps) {
    */
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-gray-900 text-white">
-      {/*
-       * Barra superior: el boton de vistas, el selector de tablas y el nombre.
-       *
-       * `shrink-0` en los tres: sin el, el flex los aplasta para dejarle lugar al
-       * contenido, y el nombre de la tabla es justo lo que mas se encoge.
-       */}
-      <header className="flex shrink-0 items-center gap-2 border-b border-gray-700 px-3 py-2">
-        {leading}
+    <div
+      className="h-full w-full overflow-hidden bg-transparent pointer-events-none select-none flex flex-col items-center justify-center px-4 text-white"
+      style={{
+        paddingTop: `${topOffset}px`,
+        paddingBottom: `${bottomTaskbarInset + 16}px`,
+      }}
+    >
+      <div
+        className="pointer-events-auto flex flex-col w-full max-w-[1310px] h-[78vh] -translate-y-[2%] rounded-2xl border border-gray-800 bg-gray-900/90 shadow-2xl backdrop-blur-md min-h-0 overflow-hidden"
+        style={{
+          maxHeight: `calc(100vh - ${bottomTaskbarInset + 20}px - ${topOffset + 10}px)`,
+        }}
+        onMouseEnter={handleInteractiveMouseEnter}
+        onMouseLeave={handleInteractiveMouseLeave}
+      >
+        {/*
+         * Barra superior: el boton de vistas, el selector de tablas y el nombre.
+         *
+         * `shrink-0` en los tres: sin el, el flex los aplasta para dejarle lugar al
+         * contenido, y el nombre de la tabla es justo lo que mas se encoge.
+         */}
+        <header className="flex shrink-0 items-center gap-2 border-b border-gray-800 px-4 py-2.5 bg-gray-900/50">
+          {leading}
 
         {loading ? (
           <div className="skeleton h-6 w-40 rounded" />
@@ -502,6 +536,19 @@ export function TableView({ leading }: TableViewProps) {
             {i18n.t('table.newTable', 'New table')}
           </button>
         )}
+
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="ml-auto flex items-center gap-1.5 rounded-lg border border-gray-700/60 bg-gray-800/80 px-2.5 py-1 text-xs font-medium text-gray-300 transition-all hover:border-gray-600 hover:bg-gray-700 hover:text-white active:scale-95"
+            title={i18n.t('calendar.backToWidgets', 'Back to widgets')}
+            aria-label={i18n.t('calendar.backToWidgets', 'Back to widgets')}
+          >
+            <FiGrid size={13} className="text-p2" />
+            <span>{i18n.t('calendar.backToWidgets', 'Back to widgets')}</span>
+          </button>
+        )}
       </header>
 
       {error && (
@@ -566,6 +613,7 @@ export function TableView({ leading }: TableViewProps) {
           </div>
         )}
       </main>
+      </div>
     </div>
   );
 }

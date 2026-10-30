@@ -1,7 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { FiPlus, FiTrash2, FiChevronLeft, FiChevronRight, FiX, FiCalendar } from 'react-icons/fi';
-import { TabStrip } from '../../components/TabStrip';
+import { FiPlus, FiTrash2, FiChevronLeft, FiChevronRight, FiX, FiCalendar, FiGrid } from 'react-icons/fi';
 import { TagPicker } from './TagPicker';
 import { TagFilterChips } from './TagFilterChips';
 import * as api from '../../api/calendar';
@@ -71,15 +70,6 @@ function readPendingDate(anchorMonth: string): string | null {
   return stored;
 }
 
-/** Los meses de la tira: una ventana fija alrededor del actual. */
-function buildMonthTabs(anchorMonth: string): string[] {
-  const months: string[] = [];
-  for (let i = -MONTH_TABS_BEFORE; i <= MONTH_TABS_AFTER; i++) {
-    months.push(addMonths(anchorMonth, i));
-  }
-  return months;
-}
-
 /**
  * El editor de la barra de abajo.
  *
@@ -109,12 +99,35 @@ type Editor =
     }
   | null;
 
-export function CalendarView({ leading }: { leading?: ReactNode }) {
+export interface CalendarViewProps {
+  leading?: ReactNode;
+  onClose?: () => void;
+}
+
+export function CalendarView({ leading, onClose }: CalendarViewProps) {
   const { t } = useTranslation();
   const today = dateKey(new Date());
   const anchorMonth = monthKey(new Date());
 
-  const months = useMemo(() => buildMonthTabs(anchorMonth), [anchorMonth]);
+  const desktopMetrics = useMemo(() => {
+    return window.electronAPI?.getMetricsSync?.() ?? null;
+  }, []);
+
+  const topOffset = desktopMetrics?.topOffset ?? 25;
+  const bottomTaskbarInset = desktopMetrics
+    ? (desktopMetrics.bounds && desktopMetrics.workArea
+        ? desktopMetrics.bounds.height - desktopMetrics.workArea.height
+        : desktopMetrics.taskbarHeight || 48)
+    : 48;
+
+  const handleInteractiveMouseEnter = useCallback(() => {
+    window.electronAPI?.setIgnoreMouseEvents?.(false);
+  }, []);
+
+  const handleInteractiveMouseLeave = useCallback(() => {
+    window.electronAPI?.setIgnoreMouseEvents?.(true, { forward: true });
+  }, []);
+
   /*
    * Se lee en el inicializador y se borra en un efecto, no en el inicializador:
    * en desarrollo React lo ejecuta dos veces, y si la primera lo borrara la
@@ -479,121 +492,101 @@ export function CalendarView({ leading }: { leading?: ReactNode }) {
     }
   }, [refreshTags]);
 
-  const handleSelectMonth = useCallback((id: string) => {
-    if (MONTH_KEY_RE.test(id)) setActiveMonth(id);
-  }, []);
-
   /* ---------------------------------------------------------------------- */
   /* Render                                                                  */
   /* ---------------------------------------------------------------------- */
 
-  const stripItems = months.map((m) => ({ id: m, label: formatMonthLabel(m, true) }));
-
   return (
-    /*
-     * `h-dvh`, no `min-h-screen`.
-     *
-     * Es la diferencia entre que la pagina scrollee o no. `min-h-screen` deja
-     * que la raiz CREZCA por debajo del viewport, asi que las 24 filas de hora
-     * empujaban el documento y habia que scrollear para llegar al final. Acá la
-     * raiz mide EXACTO el alto de la ventana y `overflow-hidden` impide que algo
-     * la desborde: si no entra, scrollea adentro del panel, no la pagina entera.
-     *
-     * `dvh` y no `vh` porque en Electron la barra de titulo y la barra de tareas
-     * cambian el alto util entre ventanas, y `vh` no las tiene en cuenta.
-     */
-    <div className="flex h-dvh flex-col overflow-hidden bg-gray-900">
-      <TabStrip
-        items={stripItems}
-        activeId={activeMonth}
-        onSelect={handleSelectMonth}
-        leading={leading}
-        trailing={
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setActiveMonth((m) => addMonths(m, -1))}
-              aria-label={t('calendar.prevMonth', 'Previous month')}
-              className="flex h-7 w-7 items-center justify-center rounded text-gray-400 transition-colors hover:bg-white/5 hover:text-gray-200"
-            >
-              <FiChevronLeft size={15} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveMonth((m) => addMonths(m, 1))}
-              aria-label={t('calendar.nextMonth', 'Next month')}
-              className="flex h-7 w-7 items-center justify-center rounded text-gray-400 transition-colors hover:bg-white/5 hover:text-gray-200"
-            >
-              <FiChevronRight size={15} />
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveMonth(anchorMonth);
-                setSelectedDate(today);
-              }}
-              className="ml-1 rounded px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-white/5 hover:text-gray-200"
-            >
-              {t('calendar.today', 'Today')}
-            </button>
+    <div
+      className="h-full w-full overflow-hidden bg-transparent pointer-events-none select-none flex flex-col items-center justify-center px-4"
+      style={{
+        paddingTop: `${topOffset}px`,
+        paddingBottom: `${bottomTaskbarInset + 16}px`,
+      }}
+    >
+      <div
+        className="pointer-events-auto flex flex-col w-full max-w-[1180px] h-[78vh] -translate-y-[2%] rounded-2xl border border-gray-800 bg-gray-900/90 shadow-2xl backdrop-blur-md min-h-0 overflow-hidden"
+        style={{
+          maxHeight: `calc(100vh - ${bottomTaskbarInset + 20}px - ${topOffset + 10}px)`,
+        }}
+        onMouseEnter={handleInteractiveMouseEnter}
+        onMouseLeave={handleInteractiveMouseLeave}
+      >
+        {/* Header con navegación de mes y botón de volver */}
+        <header className="flex items-center justify-between border-b border-gray-800 px-4 py-2.5 shrink-0 bg-gray-900/50">
+          <div className="flex items-center gap-2">
+            {leading}
+            <div className="flex items-center gap-2">
+              <FiCalendar size={17} className="text-p2 shrink-0" />
+              <h1 className="text-sm font-semibold text-white tracking-wide">
+                {formatMonthLabel(activeMonth)}
+              </h1>
+            </div>
+            <div className="flex items-center gap-1 ml-2">
+              <button
+                type="button"
+                onClick={() => setActiveMonth((m) => addMonths(m, -1))}
+                aria-label={t('calendar.prevMonth', 'Previous month')}
+                className="flex h-7 w-7 items-center justify-center rounded text-gray-400 transition-colors hover:bg-white/5 hover:text-gray-200"
+              >
+                <FiChevronLeft size={15} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveMonth((m) => addMonths(m, 1))}
+                aria-label={t('calendar.nextMonth', 'Next month')}
+                className="flex h-7 w-7 items-center justify-center rounded text-gray-400 transition-colors hover:bg-white/5 hover:text-gray-200"
+              >
+                <FiChevronRight size={15} />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveMonth(anchorMonth);
+                  setSelectedDate(today);
+                }}
+                className="ml-1 rounded bg-white/5 px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-white/10 hover:text-gray-200"
+              >
+                {t('calendar.today', 'Today')}
+              </button>
+            </div>
           </div>
-        }
-      />
 
-      {/*
-         * `min-h-0` en el contenedor: sin el, un hijo flexible no baja de su
-         * altura de contenido y `flex-1` no alcanza -- es el `min-height: auto`
-         * por defecto de los items flex. Es lo que hacia que esta caja midiera
-         * lo que quisieran sus hijos en vez de lo que le sobra.
-         */}
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex items-center gap-1.5 rounded-lg border border-gray-700/60 bg-gray-800/80 px-2.5 py-1 text-xs font-medium text-gray-300 transition-all hover:border-gray-600 hover:bg-gray-700 hover:text-white active:scale-95"
+              title={t('calendar.backToWidgets', 'Back to widgets')}
+              aria-label={t('calendar.backToWidgets', 'Back to widgets')}
+            >
+              <FiGrid size={13} className="text-p2" />
+              <span>{t('calendar.backToWidgets', 'Back to widgets')}</span>
+            </button>
+          )}
+        </header>
+
+        {/* Doble columna compacta: izquierda mini-mes + tags, derecha agenda diaria */}
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden p-4 lg:flex-row">
-        {/* ---------------------------------------------------------------- */}
-        {/* Grilla del mes                                                     */}
-        {/* ---------------------------------------------------------------- */}
-        {/*
-           * Abajo de `lg` las dos secciones se apilan y cada una toma la mitad
-           * (`flex-1`). Arriba conviven: el mes queda fijo en 420px con
-           * `lg:flex-none` y el panel del dia se lleva el resto.
-           */}
-          <section className="flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-lg border border-gray-600 bg-gray-800/90 lg:w-[420px] lg:flex-none">
-          {/*
-           * El filtro vive en la cabecera del mes, a la derecha.
-           *
-           * Afecta a las DOS columnas -- esconde bloques del panel del dia Y
-           * cambia los contadores de la grilla -- pero esta es la unica cabecera
-           * donde cabe: la fila aparte que hubo antes arriba de todo occupies
-           * ancho completo para un control de 30px de alto. Pegado al borde
-           * derecho se lee como parte del encabezado y no como algo suelto.
-           */}
-          <header className="flex items-center gap-3 border-b border-gray-700/60 px-4 py-2.5">
-            {/* El contador va PEGADO al mes, no al borde opuesto: separado se
-                leia como el total de la columna y con el filtro puesto daba la
-                impresion de que el filtro no hacia nada. */}
-            <div className="flex shrink-0 items-baseline gap-2">
-              <h2 className="text-sm font-medium text-white">{formatMonthLabel(activeMonth)}</h2>
-              <span className="text-xs text-gray-500">
+          {/* Panel izquierdo: Mini-mes + Tag chips */}
+          <section className="flex min-h-0 w-full flex-col overflow-hidden rounded-xl border border-gray-800 bg-gray-950/40 lg:w-[400px] lg:flex-none">
+            <header className="flex items-center justify-between border-b border-gray-800/80 px-3.5 py-2 shrink-0 bg-gray-900/30">
+              <span className="text-xs font-medium text-gray-400">
                 {visibleEvents.length} {visibleEvents.length === 1 ? t('calendar.event', 'event') : t('calendar.events', 'events')}
               </span>
-            </div>
-            <TagFilterChips
-              tags={tags}
-              activeIds={activeTagIds}
-              onToggle={handleToggleTag}
-              onClear={handleClearTags}
-            />
-          </header>
+            </header>
 
-          <div className="grid grid-cols-7 border-b border-gray-700/60">
-            {weekdayInitials().map((w, i) => (
-              <div
-                key={i}
-                className="py-2 text-center text-xs font-medium text-gray-500"
-                aria-hidden="true"
-              >
-                {w}
-              </div>
-            ))}
-          </div>
+            <div className="grid grid-cols-7 border-b border-gray-800/80">
+              {weekdayInitials().map((w, i) => (
+                <div
+                  key={i}
+                  className="py-1.5 text-center text-xs font-medium text-gray-500"
+                  aria-hidden="true"
+                >
+                  {w}
+                </div>
+              ))}
+            </div>
 
           {/*
            * `grid-rows-6` sobre una caja `flex-1`: las 6 filas se estiran hasta
@@ -655,7 +648,7 @@ export function CalendarView({ leading }: { leading?: ReactNode }) {
                     }`}
                   >
                     <span
-                      className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${
+                      className={`flex h-7 w-7 items-center justify-center rounded-full text-xs ${
                         isToday(cell.key)
                           ? 'bg-p2 font-medium text-gray-900'
                           : isSelected
@@ -732,13 +725,23 @@ export function CalendarView({ leading }: { leading?: ReactNode }) {
               }),
             )}
           </div>
+
+          {/* Chips de etiquetas al pie del panel izquierdo */}
+          <div className="border-t border-gray-800/80 p-2.5 shrink-0 overflow-x-auto bg-gray-900/30">
+            <TagFilterChips
+              tags={tags}
+              activeIds={activeTagIds}
+              onToggle={handleToggleTag}
+              onClear={handleClearTags}
+            />
+          </div>
         </section>
 
         {/* ---------------------------------------------------------------- */}
         {/* Panel del dia: bloques por hora                                  */}
         {/* ---------------------------------------------------------------- */}
-        <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-600 bg-gray-800/90">
-          <header className="flex items-center justify-between border-b border-gray-700/60 px-4 py-2.5">
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-gray-800 bg-gray-950/40">
+          <header className="flex items-center justify-between border-b border-gray-800/80 px-4 py-2.5 shrink-0 bg-gray-900/30">
             <div className="flex items-baseline gap-2">
               <h2 className="text-sm font-medium text-white">{formatDayLabel(selectedDate)}</h2>
               <span className="text-xs text-gray-500">
@@ -975,14 +978,18 @@ export function CalendarView({ leading }: { leading?: ReactNode }) {
             })}
           </div>
 
+          </section>
+        </div>
+
         {/* Modal de creacion / edicion de evento */}
         {editor && (
           <div
-            className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/60 p-4"
+            className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 pointer-events-auto"
             onClick={() => setEditor(null)}
+            onMouseEnter={handleInteractiveMouseEnter}
           >
             <div
-              className="flex w-full max-w-md flex-col overflow-hidden rounded-lg border border-gray-700 bg-gray-800 shadow-2xl"
+              className="flex w-full max-w-md flex-col overflow-hidden rounded-xl border border-gray-700 bg-gray-800 shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between border-b border-gray-700 bg-gray-700 px-4 py-2.5 select-none">
@@ -1083,7 +1090,6 @@ export function CalendarView({ leading }: { leading?: ReactNode }) {
             </div>
           </div>
         )}
-        </section>
       </div>
     </div>
   );

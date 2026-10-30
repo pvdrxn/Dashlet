@@ -3,14 +3,12 @@ import {
   FiGrid,
   FiTrash2,
   FiSettings,
-  FiLogOut,
   FiPlus,
   FiCalendar,
   FiTable,
 } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
 import type { TabDto } from '@widget-master/shared';
 import type { ViewId } from '../views';
 
@@ -36,7 +34,6 @@ export function FloatingDock({
   onOpenTrash,
 }: FloatingDockProps) {
   const { t } = useTranslation();
-  const { logout } = useAuth();
   const navigate = useNavigate();
 
   // Posición del botón flotante (en píxeles)
@@ -255,18 +252,6 @@ export function FloatingDock({
                 title="Ajustes"
               >
                 <FiSettings size={14} />
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  setIsOpen(false);
-                  await logout();
-                  navigate('/login');
-                }}
-                className="flex h-7 w-7 items-center justify-center rounded text-danger hover:bg-danger/10"
-                title="Cerrar sesión"
-              >
-                <FiLogOut size={14} />
               </button>
             </div>
           </div>
