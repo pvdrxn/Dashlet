@@ -32,6 +32,18 @@ const BAR_W = 'w-16';
  */
 const BAR_H = 'h-2';
 
+/** Glass AI Compose - Estilos de panel de vidrio */
+const GLASS_PANEL = {
+  background:
+    'linear-gradient(180deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.02) 100%), rgba(18, 18, 22, 0.45)',
+  border: '1px solid rgba(255, 255, 255, 0.12)',
+  boxShadow:
+    '0 8px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.10)',
+} as const;
+
+const GLASS_ACTIVE_GLOW =
+  '0 8px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0 0 1.5px rgba(217, 164, 65, 0.6), 0 0 20px rgba(217, 164, 65, 0.2)';
+
 function toneColor(tone: 'neutral' | 'p2' | 'p3' | undefined): string {
   if (tone === 'p3') return 'var(--color-p3)';
   if (tone === 'p2') return 'var(--color-p2)';
@@ -413,31 +425,39 @@ export const WidgetFrame = memo(function WidgetFrame({
       data-widget-id={id}
       onMouseEnter={() => window.electronAPI?.setIgnoreMouseEvents?.(false)}
       onMouseLeave={() => window.electronAPI?.setIgnoreMouseEvents?.(true, { forward: true })}
-      className={`pointer-events-auto group flex h-full w-full flex-col overflow-hidden rounded-lg border transition-all duration-300 ${
-        highlighted
-          ? 'border-p2 shadow-[0_8px_28px_-6px_rgba(217,164,65,0.22),inset_0_1px_0_rgba(255,255,255,0.07)]'
-          : isDragging
-            ? 'border-p2 bg-gray-800/90 shadow-[0_18px_44px_-10px_rgba(217,164,65,0.32),inset_0_1px_0_rgba(255,255,255,0.07)]'
-            : 'border-gray-600 bg-gray-800/90 shadow-[0_8px_24px_-6px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.08)]'
+      className={`pointer-events-auto group relative isolate flex h-full w-full flex-col overflow-hidden rounded-2xl transition-all duration-300 ${
+        highlighted || isDragging
+          ? 'border-p2/70'
+          : 'border-white/10 hover:border-white/20'
       }`}
+      style={{
+        borderWidth: '1px',
+        borderStyle: 'solid',
+        background: GLASS_PANEL.background,
+        boxShadow: highlighted || isDragging ? GLASS_ACTIVE_GLOW : GLASS_PANEL.boxShadow,
+      }}
       onWheel={(e) => e.stopPropagation()}
-      /*
-       * Scrollear NO puede terminar siendo un long-press.
-       *
-       * Va en captura y no en `onScroll` porque el scroll no burbujea: asi
-       * `onScrollCapture` ve el de cualquier descendant --la tabla-- y no solo el
-       * del elemento que lleva el handler.
-       *
-       * Hace falta sobre todo para la BARRA de scroll. Al arrastrarla el
-       * navegador se queda con el puntero y no le manda al renderer ningun
-       * `pointermove`: el `pointerdown` si llega y arma el temporizador de 450ms,
-       * pero los `pointermove` que lo cancelan no existen, y el widget se
-       * retraia a mitad del scroll. El scroll si se ve siempre --es lo que
-       * dispara el arrastre--, asi que es la unica senal que no depende de a quien
-       * se le entregue el puntero.
-       */
       onScrollCapture={clearHoldTimer}
     >
+      {/* Glass AI Compose - Capa de desenfoque y saturación (difunde el fondo del escritorio al 180% de color) */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 -z-10 rounded-2xl"
+        style={{
+          backdropFilter: 'blur(28px) saturate(1.8)',
+          WebkitBackdropFilter: 'blur(28px) saturate(1.8)',
+        }}
+      />
+
+      {/* Glass AI Compose - Reflejo especular superior de 1px */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute left-6 right-6 top-0 z-10 h-[1px]"
+        style={{
+          background:
+            'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent)',
+        }}
+      />
       <div
         /*
          * `transition-colors` y no `transition-all`: lo unico que cambia de golpe
@@ -525,26 +545,23 @@ export const WidgetFrame = memo(function WidgetFrame({
           placeholder={label}
           aria-label="Widget title"
         />
-        <div className="ml-1 flex shrink-0 items-center divide-x divide-gray-700/60 bg-gray-800/50 ring-1 ring-gray-600/40">
+        <div className="ml-1.5 mr-2 flex shrink-0 items-center">
           {headerAction && (
-            /*
-             * Va PRIMERO, antes del de retraer: es la accion que se usa con el
-             * widget abierto, y retraer es el gesto que ya esta en su sitio.
-             * Icono solo --la barra mide 25px y el texto no entra--, con el texto
-             * en el `title`, que es el tooltip de los otros dos.
-             */
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                headerAction.onSelect();
-              }}
-              className="relative flex h-6 w-6 items-center justify-center text-gray-400 transition-all duration-150 after:pointer-events-auto after:absolute after:-inset-1 after:content-[''] hover:bg-white/5 hover:text-gray-200 active:scale-90"
-              title={headerAction.label}
-              aria-label={headerAction.label}
-            >
-              <headerAction.icon size={15} />
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  headerAction.onSelect();
+                }}
+                className="flex h-5 w-5 items-center justify-center rounded text-white/50 transition-colors hover:bg-white/10 hover:text-white active:scale-95"
+                title={headerAction.label}
+                aria-label={headerAction.label}
+              >
+                <headerAction.icon size={13} />
+              </button>
+              <div className="mx-1 h-3 w-[1px] bg-white/20" aria-hidden="true" />
+            </>
           )}
           <button
             type="button"
@@ -552,24 +569,29 @@ export const WidgetFrame = memo(function WidgetFrame({
               e.stopPropagation();
               onConfigChange(id, { ...config, collapsed: !collapsed });
             }}
-            className={`relative flex h-6 w-6 items-center justify-center transition-all duration-150 after:pointer-events-auto after:absolute after:-inset-1 after:content-[''] active:scale-90 ${collapsed ? 'bg-p2/10 text-p2' : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'}`}
+            className={`flex h-5 w-5 items-center justify-center rounded transition-colors active:scale-95 ${
+              collapsed
+                ? 'text-p2 hover:bg-p2/20 hover:text-p2'
+                : 'text-white/50 hover:bg-white/10 hover:text-white'
+            }`}
             title={collapsed ? 'Expand widget' : 'Collapse widget'}
             aria-label={collapsed ? 'Expand widget' : 'Collapse widget'}
             aria-pressed={collapsed}
           >
-            {collapsed ? <FiChevronDown size={15} /> : <FiChevronUp size={15} />}
+            {collapsed ? <FiChevronDown size={13} /> : <FiChevronUp size={13} />}
           </button>
+          <div className="mx-1 h-3 w-[1px] bg-white/20" aria-hidden="true" />
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
               onDelete(id);
             }}
-            className="relative flex h-6 w-6 items-center justify-center text-gray-500 transition-all duration-150 after:pointer-events-auto after:absolute after:-inset-1 after:content-[''] hover:bg-danger/10 hover:text-danger active:scale-90"
+            className="flex h-5 w-5 items-center justify-center rounded text-white/50 transition-colors hover:bg-danger/20 hover:text-danger active:scale-95"
             title="Delete widget"
             aria-label="Delete widget"
           >
-            <FiX size={15} />
+            <FiX size={13} />
           </button>
         </div>
       </div>

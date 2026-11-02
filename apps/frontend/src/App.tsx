@@ -1,11 +1,10 @@
-import { useCallback, useState, useRef, useEffect, useMemo, Suspense } from 'react';
+import { useCallback, useState, useRef, useEffect, useMemo } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { WidgetGrid } from './widgets';
 import { OPEN_TABLE_EVENT } from './widgets/data-table/DataTableWidget';
 import { OPEN_CALENDAR_EVENT } from './widgets/calendar/open-calendar';
-import { FloatingDock } from './components/FloatingDock';
-import { FloatingAddWidgetButton } from './components/FloatingAddWidgetButton';
+import { GlassSidebar } from './components/GlassSidebar';
 import { TabBar } from './components/TabBar';
 import { TrashWindow } from './components/TrashWindow';
 import { TaskPickerModal } from './components/TaskPickerModal';
@@ -37,7 +36,30 @@ function Dashboard() {
   const [trashOpen, setTrashOpen] = useState(false);
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const [activeView, setActiveView] = useState<ViewId>(readStoredView);
+  const [exitingView, setExitingView] = useState<ViewId | null>(null);
+  const transitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [viewSidebarOpen, setViewSidebarOpen] = useState(false);
+
+  const handleSelectView = useCallback((nextView: ViewId) => {
+    setActiveView((current) => {
+      if (current === nextView) return current;
+      if (transitionTimerRef.current) {
+        clearTimeout(transitionTimerRef.current);
+      }
+      setExitingView(current);
+      transitionTimerRef.current = setTimeout(() => {
+        setExitingView(null);
+        transitionTimerRef.current = null;
+      }, 220);
+      return nextView;
+    });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (viewSidebarOpen || trashOpen || taskPickerOpen) {
@@ -52,11 +74,11 @@ function Dashboard() {
   useEffect(() => {
     const onOpenTable = () => {
       setViewSidebarOpen(false);
-      setActiveView('table');
+      handleSelectView('table');
     };
     const onOpenCalendar = () => {
       setViewSidebarOpen(false);
-      setActiveView('calendar');
+      handleSelectView('calendar');
     };
     window.addEventListener(OPEN_TABLE_EVENT, onOpenTable);
     window.addEventListener(OPEN_CALENDAR_EVENT, onOpenCalendar);
@@ -64,7 +86,7 @@ function Dashboard() {
       window.removeEventListener(OPEN_TABLE_EVENT, onOpenTable);
       window.removeEventListener(OPEN_CALENDAR_EVENT, onOpenCalendar);
     };
-  }, []);
+  }, [handleSelectView]);
 
   const taskPickerTargetRef = useRef<string | undefined>(undefined);
   const [tabs, setTabs] = useState<TabDto[]>([]);
@@ -329,14 +351,64 @@ function Dashboard() {
       .catch(() => {});
   }, []);
 
-  const widgetsSkeleton = (
-    <main className="h-screen w-screen bg-transparent">
-      <div className="flex flex-col gap-2 px-4 py-3" aria-hidden="true">
-        <div className="skeleton h-8 w-56 rounded-lg" />
-        <div className="skeleton mt-4 h-56 w-80 rounded-lg" />
+  const renderWidgetsView = () => {
+    return (
+      <div className="h-full w-full pointer-events-none">
+        <div ref={tabBarRef} className="hidden">
+          <TabBar
+            tabs={tabs}
+            activeTabId={activeTabId}
+            onSelectTab={handleSelectTab}
+            onCreateTab={handleCreateTab}
+            onRenameTab={handleRenameTab}
+            onDeleteTab={handleDeleteTab}
+            onReorderTabs={handleReorderTabs}
+            editingTabId={editingTabId}
+            onEditingTabIdChange={setEditingTabId}
+            widgetDragActive={widgetDragActive}
+            leading={viewSwitchButton}
+          />
+        </div>
+        <div
+          className="p-4 pointer-events-none overflow-hidden h-full box-border"
+          style={{ paddingBottom: `${bottomTaskbarInset + 16}px` }}
+        >
+          {tabs.map((tab) => (
+            <div key={tab.id} className={activeTabId === tab.id ? 'h-full w-full' : 'hidden'}>
+              <WidgetGrid
+                tabId={tab.id}
+                onAddWidgetRef={registerAddWidgetRef}
+                onPredictAddRef={registerPredictAddRef}
+                onRevealRef={registerRevealRef}
+                onRefreshRef={registerRefreshRef}
+                onTransferRef={registerTransferRef}
+                onWidgetDragStart={handleWidgetDragStart}
+                onWidgetDragEnd={handleWidgetDragEnd}
+                onWidgetTransferred={handleWidgetTransferred}
+                onWidgetSynced={handleWidgetSynced}
+              />
+            </div>
+          ))}
+        </div>
       </div>
-    </main>
-  );
+    );
+  };
+
+  const renderViewContent = (viewId: ViewId) => {
+    if (viewId === 'widgets') {
+      return renderWidgetsView();
+    }
+
+    return (
+      <div className="flex-1 min-h-0 h-full w-full overflow-hidden bg-transparent pointer-events-none select-none">
+        {viewId === 'calendar' ? (
+          <CalendarView leading={viewSwitchButton} onClose={() => handleSelectView('widgets')} />
+        ) : (
+          <TableView leading={viewSwitchButton} onClose={() => handleSelectView('widgets')} />
+        )}
+      </div>
+    );
+  };
 
   const viewSwitchButton = (
     <button
@@ -352,84 +424,77 @@ function Dashboard() {
     </button>
   );
 
+  if (!tabsLoaded) {
+    return (
+      <main className="flex h-screen w-screen items-center justify-center bg-transparent pointer-events-none select-none">
+        <div
+          className="h-6 w-6 animate-spin rounded-full border-2 border-amber-400/20 border-t-amber-400"
+          role="status"
+          aria-label="Cargando..."
+        />
+      </main>
+    );
+  }
+
   return (
     <main className="h-full w-full overflow-hidden bg-transparent pointer-events-none select-none">
-      <FloatingDock
-        tabs={tabs}
-        activeTabId={activeTabId}
-        onSelectTab={handleSelectTab}
-        onCreateTab={handleCreateTab}
+      <GlassSidebar
         activeView={activeView}
-        onSelectView={setActiveView}
+        onSelectView={handleSelectView}
+        trashOpen={trashOpen}
         onOpenTrash={() => setTrashOpen(true)}
-      />
-      <FloatingAddWidgetButton
+        onCloseTrash={() => setTrashOpen(false)}
         onAddWidget={handleAddWidget}
         onAddWidgetDeferred={handleAddWidgetDeferred}
         onPredictAdd={handlePredictAdd}
         onRevealWidgets={handleRevealWidgets}
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onSelectTab={handleSelectTab}
+        onCreateTab={handleCreateTab}
       />
-      {activeView === 'widgets' ? (
-        !tabsLoaded ? (
-          widgetsSkeleton
-        ) : (
-          <>
-            <div ref={tabBarRef} className="hidden">
-              <TabBar
-                tabs={tabs}
-                activeTabId={activeTabId}
-                onSelectTab={handleSelectTab}
-                onCreateTab={handleCreateTab}
-                onRenameTab={handleRenameTab}
-                onDeleteTab={handleDeleteTab}
-                onReorderTabs={handleReorderTabs}
-                editingTabId={editingTabId}
-                onEditingTabIdChange={setEditingTabId}
-                widgetDragActive={widgetDragActive}
-                leading={viewSwitchButton}
-              />
-            </div>
-            <div
-              className="p-4 pointer-events-none overflow-hidden h-full box-border"
-              style={{ paddingBottom: `${bottomTaskbarInset + 16}px` }}
-            >
-              {tabs.map((tab) => (
-                <div key={tab.id} className={activeTabId === tab.id ? 'h-full w-full' : 'hidden'}>
-                  <WidgetGrid
-                    tabId={tab.id}
-                    onAddWidgetRef={registerAddWidgetRef}
-                    onPredictAddRef={registerPredictAddRef}
-                    onRevealRef={registerRevealRef}
-                    onRefreshRef={registerRefreshRef}
-                    onTransferRef={registerTransferRef}
-                    onWidgetDragStart={handleWidgetDragStart}
-                    onWidgetDragEnd={handleWidgetDragEnd}
-                    onWidgetTransferred={handleWidgetTransferred}
-                    onWidgetSynced={handleWidgetSynced}
-                  />
-                </div>
-              ))}
-            </div>
-          </>
-        )
-      ) : (
-        <div className="flex-1 min-h-0 h-full w-full overflow-hidden bg-transparent pointer-events-none select-none">
-          <Suspense
-            fallback={
-              <div className="flex min-h-screen flex-col gap-3 p-4" aria-hidden="true">
-                <div className="skeleton h-9 w-full rounded-lg" />
-                <div className="skeleton h-64 w-full rounded-lg" />
+      {/* Vistas persistentes en el DOM con transición crossfade */}
+      <div className="relative h-full w-full overflow-hidden bg-transparent pointer-events-none select-none">
+        {(['widgets', 'calendar', 'table'] as const).map((viewId) => {
+          const isActive = activeView === viewId;
+          const isExiting = exitingView === viewId;
+
+          if (!isActive && !isExiting) {
+            return (
+              <div
+                key={viewId}
+                className="absolute inset-0 z-0 overflow-hidden opacity-0 pointer-events-none"
+                aria-hidden="true"
+              >
+                {renderViewContent(viewId)}
               </div>
-            }
-          >
-            {activeView === 'calendar' ? (
-              <CalendarView leading={viewSwitchButton} onClose={() => setActiveView('widgets')} />
-            ) : (
-              <TableView leading={viewSwitchButton} onClose={() => setActiveView('widgets')} />
-            )}
-          </Suspense>
-        </div>
-      )}
+            );
+          }
+
+          if (isExiting) {
+            return (
+              <div
+                key={`exit-${viewId}`}
+                className="absolute inset-0 pointer-events-none z-0 overflow-hidden animate-view-fade-out"
+                aria-hidden="true"
+              >
+                {renderViewContent(viewId)}
+              </div>
+            );
+          }
+
+          return (
+            <div
+              key={`active-${viewId}`}
+              className={`absolute inset-0 z-10 overflow-hidden opacity-100 ${
+                exitingView ? 'animate-view-fade-in' : ''
+              }`}
+            >
+              {renderViewContent(viewId)}
+            </div>
+          );
+        })}
+      </div>
       <div
         className="pointer-events-auto"
         onMouseEnter={handleInteractiveMouseEnter}
@@ -437,7 +502,7 @@ function Dashboard() {
         <ViewSidebar
           open={viewSidebarOpen}
           activeViewId={activeView}
-          onSelect={setActiveView}
+          onSelect={handleSelectView}
           onClose={() => setViewSidebarOpen(false)}
         />
         {trashOpen && (

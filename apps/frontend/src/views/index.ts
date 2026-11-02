@@ -1,20 +1,10 @@
-import { lazy } from 'react';
 import { FiGrid } from 'react-icons/fi';
 import { LuCalendar } from 'react-icons/lu';
 import { LuTable2 } from 'react-icons/lu';
 import { registerView } from './registry';
-
-const CalendarView = lazy(() =>
-  import('./calendar/CalendarView').then((m) => ({ default: m.CalendarView })),
-);
-
-const TableView = lazy(() =>
-  import('./table/TableView').then((m) => ({ default: m.TableView })),
-);
-
-const SettingsView = lazy(() =>
-  import('./SettingsView').then((m) => ({ default: m.SettingsView })),
-);
+import { CalendarView } from './calendar/CalendarView';
+import { TableView } from './table/TableView';
+import { SettingsView } from './SettingsView';
 
 export { CalendarView, TableView, SettingsView };
 export type { ViewId, ViewDefinition } from './registry';

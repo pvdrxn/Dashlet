@@ -2003,7 +2003,7 @@ export function TableGrid({
    * sin relleno las filas se ven pasar POR DEBAJO al scrollear. Tiene que ser
    * opaco.
    */
-  const banda = density === 'compact' ? 'bg-gray-800' : 'bg-gray-900';
+  const banda = density === 'compact' ? 'bg-white/[0.04] backdrop-blur-md' : 'bg-gray-900';
 
   /** Orden de lectura de las celdas: la fila entera y despues la siguiente. */
   const cells = useMemo(

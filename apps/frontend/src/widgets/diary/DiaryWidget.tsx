@@ -64,7 +64,7 @@ export const DiaryWidget = memo(function DiaryWidget({ config, onConfigChange }:
 
   return (
     <div className="flex h-full flex-col gap-2">
-      <div className="flex items-center justify-between border-b border-gray-700 pb-1">
+      <div className="flex items-center justify-between border-b border-white/10 pb-1.5">
         <button
           type="button"
           onClick={goPrev}
@@ -81,7 +81,7 @@ export const DiaryWidget = memo(function DiaryWidget({ config, onConfigChange }:
             const newPage = parseInt(e.target.value) || 1;
             if (newPage !== page && newPage > 0) setPage(newPage);
           }}
-          className="w-16 rounded border border-gray-600 bg-gray-700 px-2 py-0.5 text-sm text-gray-200 outline-none focus:border-gray-400 text-center"
+          className="w-14 rounded-none border-0 border-b border-white/20 bg-transparent px-1 py-0.5 text-sm text-gray-200 outline-none focus:border-p2 text-center transition-colors"
           placeholder="Page"
         />
         <button type="button" onClick={toggleSearch} className="text-gray-400 hover:text-gray-100" aria-label="Search entries" title="Search">
@@ -100,10 +100,10 @@ export const DiaryWidget = memo(function DiaryWidget({ config, onConfigChange }:
             placeholder="Search entries..."
             spellCheck={false}
             aria-label="Search entries"
-            className="w-full rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm text-gray-200 outline-none focus:border-gray-400 placeholder-gray-500"
+            className="w-full rounded-none border-0 border-b border-white/20 bg-transparent px-2 py-1 text-sm text-gray-200 outline-none focus:border-p2 placeholder-white/30 transition-colors"
           />
           {results.length > 0 && (
-            <div className="max-h-48 overflow-y-auto rounded border border-gray-700 bg-gray-800">
+            <div className="max-h-48 overflow-y-auto rounded-xl border border-white/10 bg-gray-900/90 backdrop-blur-xl shadow-xl">
               {results.map((p) => {
                 const text = entries[String(p)] ?? '';
                 return (
@@ -141,7 +141,7 @@ export const DiaryWidget = memo(function DiaryWidget({ config, onConfigChange }:
         placeholder="Write something..."
         spellCheck={false}
         aria-label="Diary entry content"
-        className="flex-1 resize-none px-2 py-1 text-sm text-gray-200 outline-none placeholder-gray-500 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-500/40"
+        className="flex-1 resize-none bg-transparent px-2 py-1 text-sm text-gray-200 outline-none placeholder-white/30 focus-visible:ring-0"
       />
     </div>
   );

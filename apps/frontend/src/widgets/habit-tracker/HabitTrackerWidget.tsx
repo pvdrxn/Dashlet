@@ -196,7 +196,7 @@ const SortableHabit = memo(function SortableHabit({
                 const val = e.target.value === '' ? 0 : Number(e.target.value);
                 logValue(habit.id, today, val);
               }}
-              className="w-8 rounded border border-gray-600 bg-gray-700 px-1 py-0.5 text-xs text-gray-200 outline-none focus:border-gray-400 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              className="w-8 rounded-none border-0 border-b border-white/20 bg-transparent px-1 py-0.5 text-xs text-gray-200 outline-none focus:border-p2 transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               aria-label={`Log value for "${habit.name}"`}
             />
             {habit.unit && (
@@ -208,7 +208,7 @@ const SortableHabit = memo(function SortableHabit({
             type="checkbox"
             checked={isCompletedToday}
             onChange={() => toggleToday(habit.id)}
-            className="ml-1 h-5 w-5 shrink-0 cursor-pointer appearance-none rounded border border-gray-500 bg-gray-700 transition-colors checked:border-gray-400 checked:bg-gray-400 checked:bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2016%2016%27%20fill=%27none%27%20stroke=%27white%27%20stroke-width=%272.5%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%3E%3Cpath%20d=%27M3.5%208.5l3%203%206-7%27/%3E%3C/svg%3E')] checked:bg-center checked:bg-no-repeat checked:bg-[length:14px_14px] hover:border-gray-400"
+            className="ml-1 h-5 w-5 shrink-0 cursor-pointer appearance-none rounded border border-white/30 bg-white/[0.04] transition-all checked:border-p2 checked:bg-p2 checked:bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2016%2016%27%20fill=%27none%27%20stroke=%27%23121212%27%20stroke-width=%272.5%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%3E%3Cpath%20d=%27M3.5%208.5l3%203%206-7%27/%3E%3C/svg%3E')] checked:bg-center checked:bg-no-repeat checked:bg-[length:14px_14px] hover:border-white/60"
             aria-label={`Mark "${habit.name}" as completed`}
           />
         )}
@@ -233,7 +233,7 @@ const SortableHabit = memo(function SortableHabit({
                   setEditing(false);
                 }
               }}
-              className="flex-1 rounded border border-gray-500 bg-gray-800 px-1 py-0.5 text-sm text-gray-200 outline-none focus-visible:ring-1 focus-visible:ring-gray-500/60 min-w-0 truncate"
+              className="flex-1 rounded-none border-0 border-b border-p2 bg-transparent px-1 py-0.5 text-sm text-gray-200 outline-none min-w-0 truncate"
               aria-label="Edit habit name"
             />
           ) : (
@@ -321,7 +321,7 @@ const SortableHabit = memo(function SortableHabit({
                   } ${
                     completed
                       ? 'bg-p2 text-gray-900 hover:bg-p2/85'
-                      : 'bg-gray-700 text-gray-400 hover:bg-gray-600 hover:text-gray-100'
+                      : 'border border-white/10 bg-white/[0.04] text-gray-400 hover:bg-white/[0.08] hover:text-white'
                   }`}
                   title={cell.date}
                   aria-label={`${cell.date} - ${completed ? 'completed' : 'not completed'}`}
@@ -529,23 +529,23 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({
           e.preventDefault();
           addHabit();
         }}
-        className="border-t border-gray-700 pt-1 flex items-center gap-1"
+        className="border-t border-white/10 pt-1.5 flex items-center gap-1.5"
       >
         <input
           value={newName}
           spellCheck={false}
           onChange={(e) => setNewName(e.target.value)}
           placeholder="Add a habit..."
-          className="flex-1 min-w-0 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-200 outline-none focus:border-gray-400 placeholder-gray-500"
+          className="flex-1 min-w-0 rounded-none border-0 border-b border-white/20 bg-transparent px-1 py-1 text-xs text-gray-200 outline-none focus:border-p2 placeholder-white/30 transition-colors"
           aria-label="New habit name"
         />
         <button
           type="button"
           onClick={() => setNewMode(newMode === 'binary' ? 'quantitative' : 'binary')}
-          className={`shrink-0 rounded px-1.5 py-1 text-[9px] font-medium transition-colors ${
+          className={`shrink-0 rounded-md border border-white/10 px-1.5 py-1 text-[10px] font-medium transition-colors ${
             newMode === 'quantitative'
-              ? 'bg-gray-600 text-white'
-              : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+              ? 'bg-p2/20 text-p2 border-p2/30 font-semibold'
+              : 'bg-white/[0.04] text-white/50 hover:bg-white/[0.08] hover:text-white/80'
           }`}
         >
           {newMode === 'binary' ? 'Bin' : 'Num'}
@@ -558,7 +558,7 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({
               step={1}
               value={newTarget}
               onChange={(e) => setNewTarget(Number(e.target.value) || 1)}
-              className="w-10 shrink-0 rounded border border-gray-600 bg-gray-700 px-1 py-1 text-[9px] text-gray-200 outline-none focus:border-gray-400 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              className="w-10 shrink-0 rounded-none border-0 border-b border-white/20 bg-transparent px-1 py-1 text-[10px] text-gray-200 outline-none focus:border-p2 transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               aria-label="Target value"
             />
             <input
@@ -566,7 +566,7 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({
               spellCheck={false}
               onChange={(e) => setNewUnit(e.target.value)}
               placeholder="unit"
-              className="w-12 shrink-0 rounded border border-gray-600 bg-gray-700 px-1 py-1 text-[9px] text-gray-200 outline-none focus:border-gray-400 placeholder-gray-500"
+              className="w-12 shrink-0 rounded-none border-0 border-b border-white/20 bg-transparent px-1 py-1 text-[10px] text-gray-200 outline-none focus:border-p2 placeholder-white/30 transition-colors"
               aria-label="Unit"
             />
           </>

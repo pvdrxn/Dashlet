@@ -293,7 +293,7 @@ const TaskRowContent = memo(function TaskRowContent({
         type="checkbox"
         checked={item.completed}
         onChange={() => toggleItem(item.id)}
-        className="h-4 w-4 shrink-0 cursor-pointer appearance-none rounded border border-gray-500 bg-gray-700 transition-colors checked:border-gray-400 checked:bg-gray-400 checked:bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2016%2016%27%20fill=%27none%27%20stroke=%27white%27%20stroke-width=%272.5%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%3E%3Cpath%20d=%27M3.5%208.5l3%203%206-7%27/%3E%3C/svg%3E')] checked:bg-center checked:bg-no-repeat checked:bg-[length:12px_12px] hover:border-gray-400"
+        className="h-4 w-4 shrink-0 cursor-pointer appearance-none rounded border border-white/30 bg-white/[0.04] transition-all checked:border-p2 checked:bg-p2 checked:bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2016%2016%27%20fill=%27none%27%20stroke=%27%23121212%27%20stroke-width=%272.5%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%3E%3Cpath%20d=%27M3.5%208.5l3%203%206-7%27/%3E%3C/svg%3E')] checked:bg-center checked:bg-no-repeat checked:bg-[length:12px_12px] hover:border-white/60"
         aria-label={`Mark "${item.text}" as completed`}
       />
       {editing ? (
@@ -322,7 +322,7 @@ const TaskRowContent = memo(function TaskRowContent({
                 onEditingChange(false);
               }
             }}
-            className="rounded border border-gray-500 bg-gray-800 px-1 py-0.5 text-sm text-gray-200 outline-none focus-visible:ring-1 focus-visible:ring-gray-500/60"
+            className="rounded-none border-0 border-b border-p2 bg-transparent px-1 py-0.5 text-sm text-gray-200 outline-none"
             aria-label="Edit task text"
           />
         </>
@@ -1081,14 +1081,14 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
 
       <form
         onSubmit={(e) => { e.preventDefault(); addItem(); }}
-        className="flex gap-1 border-t border-gray-700 pt-1"
+        className="flex items-center gap-1.5 border-t border-white/10 pt-1.5"
       >
         <AutoGrowInput
           expand
           value={newText}
           placeholder="Add a task..."
           onChange={(e) => setNewText(e.target.value)}
-          className="rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-200 outline-none placeholder-gray-500 focus:border-gray-400"
+          className="rounded-none border-0 border-b border-white/20 bg-transparent px-1 py-1 text-xs text-gray-200 outline-none placeholder-white/30 focus:border-p2 transition-colors"
           aria-label="New task text"
         />
         <div className="relative flex w-[4.5rem] shrink-0 items-center">
@@ -1104,19 +1104,19 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
                 addItem();
               }
             }}
-            className="no-spinner w-full rounded border border-gray-600 bg-gray-700 px-2 py-1 pr-9 text-xs text-gray-200 outline-none placeholder-gray-500 focus:border-gray-400"
+            className="no-spinner w-full rounded-none border-0 border-b border-white/20 bg-transparent px-1 py-1 pr-8 text-xs text-gray-200 outline-none placeholder-white/30 focus:border-p2 transition-colors"
             aria-label="Estimated time"
           />
           <button
             type="button"
             onClick={() => setNewTimeUnit((u) => (u === 'min' ? 'hr' : 'min'))}
-            className="absolute right-1 rounded px-1 text-[10px] font-medium text-gray-400 hover:bg-gray-600/60 hover:text-gray-200"
+            className="absolute right-0.5 rounded px-1 text-[10px] font-medium text-white/40 hover:text-white/80 transition-colors"
             aria-label="Toggle time unit"
           >
             {newTimeUnit}
           </button>
         </div>
-        <div className="flex rounded border border-gray-600 bg-gray-700 text-xs">
+        <div className="flex items-center rounded-md border border-white/10 bg-white/[0.04] p-0.5 text-xs">
           {(['1', '2', '3'] as const).map((val) => {
             const labels = { '1': 'Low', '2': 'Med', '3': 'High' };
             const colors = {
@@ -1130,7 +1130,11 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
                 key={val}
                 type="button"
                 onClick={() => setNewUrgency(active ? '' : val)}
-                className={`px-2 py-1 transition-colors ${active ? `bg-gray-600 ${colors[val]}` : 'text-gray-500 hover:text-gray-300'}`}
+                className={`rounded px-2 py-0.5 text-[11px] font-medium transition-all ${
+                  active
+                    ? `bg-white/15 ${colors[val]} shadow-sm border border-white/20 font-semibold`
+                    : 'text-white/40 hover:text-white/80 hover:bg-white/[0.04]'
+                }`}
               >
                 {labels[val]}
               </button>
@@ -1140,7 +1144,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
         <button
           type="submit"
           title="Add task"
-          className="rounded bg-gray-600 p-1 text-white hover:bg-gray-500 disabled:opacity-50"
+          className="flex h-7 w-7 items-center justify-center rounded-lg border border-p2/40 bg-p2/20 text-p2 hover:bg-p2/30 transition-all disabled:opacity-30"
           disabled={!newText.trim()}
           aria-label="Add task"
         >

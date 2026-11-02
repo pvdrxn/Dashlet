@@ -505,15 +505,19 @@ export function CalendarView({ leading, onClose }: CalendarViewProps) {
       }}
     >
       <div
-        className="pointer-events-auto flex flex-col w-full max-w-[1180px] h-[78vh] -translate-y-[2%] rounded-2xl border border-gray-800 bg-gray-900/90 shadow-2xl backdrop-blur-md min-h-0 overflow-hidden"
+        className="pointer-events-auto flex flex-col w-full max-w-[1180px] h-[78vh] -translate-y-[2%] rounded-2xl border border-white/10 shadow-2xl min-h-0 overflow-hidden"
         style={{
           maxHeight: `calc(100vh - ${bottomTaskbarInset + 20}px - ${topOffset + 10}px)`,
+          background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.02) 100%), rgba(18, 18, 22, 0.55)',
+          backdropFilter: 'blur(28px) saturate(1.8)',
+          WebkitBackdropFilter: 'blur(28px) saturate(1.8)',
+          boxShadow: '0 8px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
         }}
         onMouseEnter={handleInteractiveMouseEnter}
         onMouseLeave={handleInteractiveMouseLeave}
       >
         {/* Header con navegación de mes y botón de volver */}
-        <header className="flex items-center justify-between border-b border-gray-800 px-4 py-2.5 shrink-0 bg-gray-900/50">
+        <header className="flex items-center justify-between border-b border-white/10 px-4 py-2.5 shrink-0 bg-white/[0.04]">
           <div className="flex items-center gap-2">
             {leading}
             <div className="flex items-center gap-2">

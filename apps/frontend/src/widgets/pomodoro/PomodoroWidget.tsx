@@ -351,19 +351,19 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
                         }
                         if (e.key === 'Escape') setEditingField(null);
                       }}
-                      className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-sm text-gray-200 outline-none focus:ring-1 focus:ring-gray-500"
+                      className="mt-0.5 w-full rounded-lg border border-white/10 bg-white/[0.05] px-2 py-1 text-sm text-gray-200 outline-none focus:border-p2/50 focus:bg-white/[0.08]"
                     />
                   ) : (
                     <button
                       type="button"
                       onClick={() => setEditingField(item.key)}
-                      className="mt-0.5 flex w-full items-center justify-between rounded bg-gray-800 px-2 py-1.5 text-sm text-gray-200 hover:bg-white/5 transition-colors"
+                      className="mt-0.5 flex w-full items-center justify-between rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5 text-sm text-gray-200 hover:bg-white/[0.08] transition-colors"
                     >
                       <span>{item.value} {item.suffix}</span>
                     </button>
                   )
                 ) : (
-                  <div className="mt-0.5 flex w-full items-center justify-between rounded bg-gray-800/50 px-2 py-1.5 text-sm text-gray-400">
+                  <div className="mt-0.5 flex w-full items-center justify-between rounded-lg border border-white/5 bg-white/[0.02] px-2 py-1.5 text-sm text-gray-400">
                     <span>{item.value} {item.suffix}</span>
                   </div>
                 )}
@@ -395,7 +395,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
               </button>
               {alarmOpen && alarmPos && createPortal(
                 <div
-                  className="z-50 rounded-b bg-gray-800 py-0.5 shadow-xl"
+                  className="z-50 rounded-xl border border-white/15 bg-gray-900/90 py-1 shadow-2xl backdrop-blur-xl"
                   style={{ position: 'fixed', top: alarmPos.top, left: alarmPos.left, width: alarmPos.width }}
                 >
                   {alarmOptions.map((opt) => (
@@ -428,28 +428,25 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
 
   return (
     <div className="flex h-full flex-col items-center justify-center">
-      <div className="flex w-full justify-center gap-0.5 rounded border border-gray-700 bg-gray-800 p-0.5">
-        {TECHNIQUE_KEYS.map((tech) => (
-          <button
-            key={tech}
-            type="button"
-            onClick={() => selectTechnique(tech)}
-            className={`min-w-0 flex-1 truncate rounded px-1.5 py-1 text-[10px] font-medium transition-colors ${
-              !linkedTaskId && technique === tech
-                ? 'bg-gray-600 text-gray-100'
-                : 'text-gray-500 hover:text-gray-300'
-            }`}
-            title={tech === 'custom' ? 'Custom' : TECHNIQUES[tech].label}
-          >
-            {/*
-           * `truncate` + `min-w-0` porque "Stopwatch" es el nombre mas largo de
-           * la fila y con solo `flex-1` se desborda en vez de encogerse: el ancho
-           * minimo de un flex item es su contenido, asi que sin `min-w-0` el
-           * `truncate` no tiene nada que recortar y la pill se sale del widget.
-           */}
-          {tech === 'custom' ? <FiEdit size={12} className="mx-auto" /> : TECHNIQUES[tech].label}
-          </button>
-        ))}
+      <div className="flex w-full items-center justify-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] p-1 backdrop-blur-md shadow-[inset_0_1px_1px_rgba(255,255,255,0.08),0_2px_8px_rgba(0,0,0,0.2)]">
+        {TECHNIQUE_KEYS.map((tech) => {
+          const isActive = !linkedTaskId && technique === tech;
+          return (
+            <button
+              key={tech}
+              type="button"
+              onClick={() => selectTechnique(tech)}
+              className={`min-w-0 flex-1 truncate rounded-md px-1.5 py-1 text-[11px] font-medium transition-all duration-150 ${
+                isActive
+                  ? 'border border-p2/40 bg-p2/20 text-p2 shadow-[0_2px_10px_rgba(217,164,65,0.25),inset_0_1px_0_rgba(255,255,255,0.2)] font-semibold'
+                  : 'border border-transparent text-white/50 hover:bg-white/[0.06] hover:text-white/80'
+              }`}
+              title={tech === 'custom' ? 'Custom' : TECHNIQUES[tech].label}
+            >
+              {tech === 'custom' ? <FiEdit size={12} className="mx-auto" /> : TECHNIQUES[tech].label}
+            </button>
+          );
+        })}
       </div>
 
       {linkedTaskId ? (
@@ -582,7 +579,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
             role="dialog"
             aria-modal="true"
             aria-label="Change technique"
-            className="w-full max-w-52 rounded-lg border border-gray-600 bg-gray-800 p-3 shadow-xl"
+            className="w-full max-w-52 rounded-xl border border-white/15 bg-gray-900/90 p-3 shadow-2xl backdrop-blur-xl"
           >
             <p className="text-sm text-gray-200">
               Change technique? Current timer will be reset.

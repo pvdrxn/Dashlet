@@ -1,6 +1,6 @@
 import i18n from '../../i18n';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FiPlus, FiChevronDown, FiTrash2, FiX, FiGrid } from 'react-icons/fi';
+import { FiPlus, FiChevronDown, FiTrash2, FiX, FiGrid, FiTable } from 'react-icons/fi';
 import { TableGrid } from './TableGrid';
 import * as tablesApi from '../../api/tables';
 import { apiErrorMessage } from '../../api/error';
@@ -419,200 +419,201 @@ export function TableView({ leading, onClose }: TableViewProps) {
       }}
     >
       <div
-        className="pointer-events-auto flex flex-col w-full max-w-[1310px] h-[78vh] -translate-y-[2%] rounded-2xl border border-gray-800 bg-gray-900/90 shadow-2xl backdrop-blur-md min-h-0 overflow-hidden"
+        className="pointer-events-auto flex flex-col w-full max-w-[1180px] h-[78vh] -translate-y-[2%] rounded-2xl border border-white/10 shadow-2xl min-h-0 overflow-hidden"
         style={{
           maxHeight: `calc(100vh - ${bottomTaskbarInset + 20}px - ${topOffset + 10}px)`,
+          background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.02) 100%), rgba(18, 18, 22, 0.55)',
+          backdropFilter: 'blur(28px) saturate(1.8)',
+          WebkitBackdropFilter: 'blur(28px) saturate(1.8)',
+          boxShadow: '0 8px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
         }}
         onMouseEnter={handleInteractiveMouseEnter}
         onMouseLeave={handleInteractiveMouseLeave}
       >
         {/*
-         * Barra superior: el boton de vistas, el selector de tablas y el nombre.
-         *
-         * `shrink-0` en los tres: sin el, el flex los aplasta para dejarle lugar al
-         * contenido, y el nombre de la tabla es justo lo que mas se encoge.
+         * Barra superior: el boton de vistas, icono, selector de tablas, nombre y acciones.
          */}
-        <header className="flex shrink-0 items-center gap-2 border-b border-gray-800 px-4 py-2.5 bg-gray-900/50">
-          {leading}
+        <header className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-2.5 bg-white/[0.04]">
+          <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
+            {leading}
+            <div className="flex items-center gap-2 shrink-0">
+              <FiTable size={17} className="text-p2 shrink-0" />
+            </div>
 
-        {loading ? (
-          <div className="skeleton h-6 w-40 rounded" />
-        ) : (
-          <div ref={pickerRef} className="relative">
-            <button
-              type="button"
-              onClick={() => setPickerOpen((v) => !v)}
-              disabled={!tables.length}
-              className="flex max-w-[16rem] items-center gap-1.5 rounded border border-gray-700 px-2 py-1 text-sm text-gray-200 transition-colors hover:border-gray-600 disabled:opacity-40"
-            >
-              <span className="truncate">{table?.name ?? i18n.t('table.noTablesDropdown', 'No tables')}</span>
-              {tables.length > 0 && <FiChevronDown size={13} className="shrink-0 text-gray-500" />}
-            </button>
-
-            {pickerOpen && (
-              <div className="absolute top-full left-0 z-[var(--z-menu)] mt-1 w-64 overflow-hidden rounded border border-gray-600 bg-gray-800 shadow-xl">
-                <div className="max-h-64 overflow-y-auto">
-                  {tables.map((t) => (
-                    <div key={t.id} className="flex items-center gap-1 pr-1">
-                      <button
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          setActiveId(t.id);
-                          setPickerOpen(false);
-                        }}
-                        className={`flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-white/5 ${
-                          t.id === activeId ? 'text-white' : 'text-gray-300'
-                        }`}
-                      >
-                        <span className="min-w-0 flex-1 truncate">{t.name}</span>
-                        <span className="shrink-0 text-xs tabular-nums text-gray-600">
-                          {t.rowCount}
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          setPickerOpen(false);
-                          void deleteTable(t.id);
-                        }}
-                        aria-label={i18n.t('table.deleteTableNamed', { name: t.name, defaultValue: `Delete table ${t.name}` })}
-                        title={i18n.t('table.deleteTable', 'Delete table')}
-                        className="shrink-0 rounded p-1 text-gray-600 transition-colors hover:bg-danger/15 hover:text-danger"
-                      >
-                        <FiTrash2 size={11} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
+            {loading ? (
+              <div className="skeleton h-6 w-40 rounded" />
+            ) : (
+              <div ref={pickerRef} className="relative shrink-0">
                 <button
                   type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => {
-                    setPickerOpen(false);
-                    void createTable();
-                  }}
-                  className="flex w-full items-center gap-2 border-t border-gray-700 px-2 py-1.5 text-left text-sm text-gray-300 hover:bg-white/5"
+                  onClick={() => setPickerOpen((v) => !v)}
+                  disabled={!tables.length}
+                  className="flex max-w-[16rem] items-center gap-1.5 rounded-lg border border-gray-700/80 bg-gray-800/80 px-2.5 py-1 text-sm text-gray-200 transition-colors hover:border-gray-600 disabled:opacity-40"
                 >
-                  <FiPlus size={12} className="text-gray-500" />
+                  <span className="truncate">{table?.name ?? i18n.t('table.noTablesDropdown', 'No tables')}</span>
+                  {tables.length > 0 && <FiChevronDown size={13} className="shrink-0 text-gray-400" />}
+                </button>
+
+                {pickerOpen && (
+                  <div className="absolute top-full left-0 z-[var(--z-menu)] mt-1 w-64 overflow-hidden rounded-lg border border-gray-700 bg-gray-800 shadow-xl">
+                    <div className="max-h-64 overflow-y-auto">
+                      {tables.map((t) => (
+                        <div key={t.id} className="flex items-center gap-1 pr-1">
+                          <button
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              setActiveId(t.id);
+                              setPickerOpen(false);
+                            }}
+                            className={`flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-white/5 ${
+                              t.id === activeId ? 'text-white' : 'text-gray-300'
+                            }`}
+                          >
+                            <span className="min-w-0 flex-1 truncate">{t.name}</span>
+                            <span className="shrink-0 text-xs tabular-nums text-gray-600">
+                              {t.rowCount}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              setPickerOpen(false);
+                              void deleteTable(t.id);
+                            }}
+                            aria-label={i18n.t('table.deleteTableNamed', { name: t.name, defaultValue: `Delete table ${t.name}` })}
+                            title={i18n.t('table.deleteTable', 'Delete table')}
+                            className="shrink-0 rounded p-1 text-gray-600 transition-colors hover:bg-danger/15 hover:text-danger"
+                          >
+                            <FiTrash2 size={11} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        setPickerOpen(false);
+                        void createTable();
+                      }}
+                      className="flex w-full items-center gap-2 border-t border-gray-700 px-2 py-1.5 text-left text-sm text-gray-300 hover:bg-white/5"
+                    >
+                      <FiPlus size={12} className="text-gray-500" />
+                      {i18n.t('table.newTable', 'New table')}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {table && (
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <input
+                  ref={titleRef}
+                  defaultValue={table.name}
+                  key={table.id}
+                  onBlur={(e) => void renameTable(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur();
+                    if (e.key === 'Escape') {
+                      e.currentTarget.value = table.name;
+                      e.currentTarget.blur();
+                    }
+                  }}
+                  aria-label={i18n.t('table.tableName', 'Table name')}
+                  className="min-w-0 max-w-xs rounded px-2 py-1 text-sm font-medium text-white transition-colors hover:bg-white/[0.04] focus:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-p2"
+                />
+                <span className="shrink-0 rounded bg-gray-800/80 px-2 py-0.5 text-xs tabular-nums text-gray-400 border border-gray-700/50">
+                  {table.rowCount} {table.rowCount === 1 ? i18n.t('table.row', 'row') : i18n.t('table.rows', 'rows')}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {!loading && (
+              <button
+                type="button"
+                onClick={() => void createTable()}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-p2/20 border border-p2/40 px-2.5 py-1 text-xs font-medium text-p2 transition-colors hover:bg-p2/30"
+                title={i18n.t('table.newTable', 'New table')}
+              >
+                <FiPlus size={13} />
+                <span className="hidden sm:inline">{i18n.t('table.newTable', 'New table')}</span>
+              </button>
+            )}
+
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex items-center gap-1.5 rounded-lg border border-gray-700/60 bg-gray-800/80 px-2.5 py-1 text-xs font-medium text-gray-300 transition-all hover:border-gray-600 hover:bg-gray-700 hover:text-white active:scale-95"
+                title={i18n.t('calendar.backToWidgets', 'Back to widgets')}
+                aria-label={i18n.t('calendar.backToWidgets', 'Back to widgets')}
+              >
+                <FiGrid size={13} className="text-p2" />
+                <span>{i18n.t('calendar.backToWidgets', 'Back to widgets')}</span>
+              </button>
+            )}
+          </div>
+        </header>
+
+        {error && (
+          <div
+            role="alert"
+            className="flex shrink-0 items-start gap-2 bg-danger/15 px-4 py-2 text-xs text-danger border-b border-danger/20"
+          >
+            <span className="min-w-0 flex-1">{error}</span>
+            <button
+              type="button"
+              onClick={() => setError(null)}
+              aria-label="Dismiss"
+              title="Dismiss"
+              className="-mr-1 shrink-0 rounded p-0.5 transition-colors hover:bg-danger/20"
+            >
+              <FiX size={12} />
+            </button>
+          </div>
+        )}
+
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
+          <main className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-gray-800 bg-gray-950/40 p-3">
+            {loading ? (
+              <div className="skeleton h-full w-full rounded-lg" />
+            ) : table ? (
+              <TableGrid
+                columns={table.columns}
+                rows={table.rows}
+                density="full"
+                onCellChange={changeCell}
+                onRowAdd={() => void addRow()}
+                onColumnsChange={changeColumns}
+                onColumnWidth={setColumnWidth}
+                onRowReorder={(next, rowId, position) => void changeRowOrder(next, rowId, position)}
+                onRowSelect={toggleRowSelection}
+                isDeleteMode={isDeleteMode}
+                selectedRows={selectedRows}
+                onRowDelete={deleteSelectedRows}
+                onToggleDeleteMode={toggleDeleteMode}
+                hiddenRowCount={Math.max(0, table.rowCount - table.rows.length)}
+              />
+            ) : (
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+                <p className="text-sm text-gray-500">{i18n.t('table.noTables', 'No tables yet.')}</p>
+                <button
+                  type="button"
+                  onClick={() => void createTable()}
+                  className="flex items-center gap-1.5 rounded bg-p2 px-3 py-1.5 text-sm font-medium text-gray-900 transition-colors hover:bg-p2/85"
+                >
+                  <FiPlus size={14} />
                   {i18n.t('table.newTable', 'New table')}
                 </button>
               </div>
             )}
-          </div>
-        )}
-
-        {table && (
-          <>
-            <input
-              ref={titleRef}
-              defaultValue={table.name}
-              key={table.id}
-              onBlur={(e) => void renameTable(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') e.currentTarget.blur();
-                if (e.key === 'Escape') {
-                  e.currentTarget.value = table.name;
-                  e.currentTarget.blur();
-                }
-              }}
-              aria-label={i18n.t('table.tableName', 'Table name')}
-              className="min-w-0 flex-1 rounded bg-transparent px-1.5 py-1 text-sm text-gray-400 transition-colors hover:bg-white/[0.03] focus:bg-gray-800 focus:text-white focus:outline-none"
-            />
-            <span className="shrink-0 text-xs tabular-nums text-gray-600">
-              {table.rowCount} {table.rowCount === 1 ? i18n.t('table.row', 'row') : i18n.t('table.rows', 'rows')}
-            </span>
-          </>
-        )}
-
-        {!loading && !tables.length && (
-          <button
-            type="button"
-            onClick={() => void createTable()}
-            className="ml-auto flex shrink-0 items-center gap-1.5 rounded bg-p2 px-2.5 py-1 text-sm font-medium text-gray-900 transition-colors hover:bg-p2/85"
-          >
-            <FiPlus size={13} />
-            {i18n.t('table.newTable', 'New table')}
-          </button>
-        )}
-
-        {onClose && (
-          <button
-            type="button"
-            onClick={onClose}
-            className="ml-auto flex items-center gap-1.5 rounded-lg border border-gray-700/60 bg-gray-800/80 px-2.5 py-1 text-xs font-medium text-gray-300 transition-all hover:border-gray-600 hover:bg-gray-700 hover:text-white active:scale-95"
-            title={i18n.t('calendar.backToWidgets', 'Back to widgets')}
-            aria-label={i18n.t('calendar.backToWidgets', 'Back to widgets')}
-          >
-            <FiGrid size={13} className="text-p2" />
-            <span>{i18n.t('calendar.backToWidgets', 'Back to widgets')}</span>
-          </button>
-        )}
-      </header>
-
-      {error && (
-        /*
-         * Con su boton de cerrar, y no como un <p> fijo.
-         *
-         * Antes el cartel no se iba nunca: no habia un solo `setError(null)` en
-         * el archivo, asi que un fallo puntual --la vista abierta sin backend, un
-         * PATCH que se cayo-- dejaba el mensaje pegado para siempre. Y ahi esta
-         * la mitad del bug que reporto el usuario: el aviso "Could not change the
-         * columns" seguia ahi mientras las columnas se cambiaban bien, porque ya
-         * no decia nada del estado actual sino de uno viejo.
-         */
-        <div
-          role="alert"
-          className="flex shrink-0 items-start gap-2 bg-danger/15 px-3 py-1.5 text-xs text-danger"
-        >
-          <span className="min-w-0 flex-1">{error}</span>
-          <button
-            type="button"
-            onClick={() => setError(null)}
-            aria-label="Dismiss"
-            title="Dismiss"
-            className="-mr-1 shrink-0 rounded p-0.5 transition-colors hover:bg-danger/20"
-          >
-            <FiX size={12} />
-          </button>
+          </main>
         </div>
-      )}
-
-      <main className="flex min-h-0 flex-1 flex-col px-3 py-3">
-        {loading ? (
-          <div className="skeleton h-full w-full rounded-lg" />
-        ) : table ? (
-          <TableGrid
-            columns={table.columns}
-            rows={table.rows}
-            density="full"
-            onCellChange={changeCell}
-            onRowAdd={() => void addRow()}
-            onColumnsChange={changeColumns}
-            onColumnWidth={setColumnWidth}
-            onRowReorder={(next, rowId, position) => void changeRowOrder(next, rowId, position)}
-            onRowSelect={toggleRowSelection}
-            isDeleteMode={isDeleteMode}
-            selectedRows={selectedRows}
-            onRowDelete={deleteSelectedRows}
-            onToggleDeleteMode={toggleDeleteMode}
-            hiddenRowCount={Math.max(0, table.rowCount - table.rows.length)}
-          />
-        ) : (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-            <p className="text-sm text-gray-500">{i18n.t('table.noTables', 'No tables yet.')}</p>
-            <button
-              type="button"
-              onClick={() => void createTable()}
-              className="flex items-center gap-1.5 rounded bg-p2 px-3 py-1.5 text-sm font-medium text-gray-900 transition-colors hover:bg-p2/85"
-            >
-              <FiPlus size={14} />
-              {i18n.t('table.newTable', 'New table')}
-            </button>
-          </div>
-        )}
-      </main>
       </div>
     </div>
   );
