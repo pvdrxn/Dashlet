@@ -1,5 +1,5 @@
 const { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, screen, nativeImage } = require('electron');
-const { fork, spawn } = require('child_process');
+const { fork } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -21,19 +21,14 @@ function setupTray() {
 
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: 'Dashlet (Widgets Desktop)',
+      label: 'Dashlet',
       enabled: false,
     },
     { type: 'separator' },
     {
       label: 'Mostrar / Ocultar (Ctrl+Shift+D)',
       click: () => {
-        if (!mainWindow) return;
-        if (mainWindow.isVisible()) {
-          mainWindow.hide();
-        } else {
-          mainWindow.show();
-        }
+        toggleWindow();
       },
     },
     { type: 'separator' },
@@ -45,19 +40,13 @@ function setupTray() {
     },
   ]);
 
-  tray.setToolTip('Dashlet');
+  tray.setToolTip('Dashlet (Ctrl+Shift+D)');
   tray.setContextMenu(contextMenu);
 
   tray.on('double-click', () => {
-    if (!mainWindow) return;
-    if (mainWindow.isVisible()) {
-      mainWindow.hide();
-    } else {
-      mainWindow.show();
-    }
+    toggleWindow();
   });
 }
-
 
 const isDev = !app.isPackaged;
 const BACKEND_PORT = 3001;
@@ -176,116 +165,107 @@ function startFrontendServer(publicPath) {
   });
 }
 
+function toggleWindow() {
+  if (!mainWindow) return;
+
+  if (mainWindow.isVisible()) {
+    if (mainWindow.isFocused()) {
+      mainWindow.hide();
+    } else {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  } else {
+    mainWindow.show();
+    mainWindow.focus();
+  }
+}
+
 function setupIpc() {
-  ipcMain.on('set-ignore-mouse-events', (event, ignore, options) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    if (!win) return;
-    win.setIgnoreMouseEvents(Boolean(ignore), options || { forward: true });
+  ipcMain.on('window-minimize', () => {
+    if (mainWindow) {
+      mainWindow.minimize();
+    }
+  });
+
+  ipcMain.on('window-maximize', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  });
+
+  ipcMain.on('window-close', (_event, toTray) => {
+    if (!mainWindow) return;
+    if (toTray && tray) {
+      mainWindow.hide();
+    } else {
+      mainWindow.close();
+    }
+  });
+
+  ipcMain.on('window-is-maximized-sync', (event) => {
+    event.returnValue = mainWindow ? mainWindow.isMaximized() : false;
+  });
+
+  ipcMain.on('window-toggle-fullscreen', () => {
+    if (mainWindow) {
+      mainWindow.setFullScreen(!mainWindow.isFullScreen());
+    }
+  });
+
+  ipcMain.on('window-is-fullscreen-sync', (event) => {
+    event.returnValue = mainWindow ? mainWindow.isFullScreen() : false;
+  });
+
+  ipcMain.on('hide-window', () => {
+    if (mainWindow && mainWindow.isVisible()) {
+      mainWindow.hide();
+    }
+  });
+
+  ipcMain.on('show-window', () => {
+    if (mainWindow) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
   });
 
   ipcMain.on('get-desktop-metrics-sync', (event) => {
-    const display = screen.getPrimaryDisplay();
-    const taskbarHeight = Math.max(
-      0,
-      display.bounds.height - (display.workArea.y + display.workArea.height),
-    );
+    const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+    const currentDisplay = win
+      ? screen.getDisplayMatching(win.getBounds())
+      : screen.getPrimaryDisplay();
     event.returnValue = {
-      taskbarHeight,
-      bottomExtra: BOTTOM_EXTRA,
-      topOffset: TOP_OFFSET,
-      bounds: display.bounds,
-      workArea: display.workArea,
+      taskbarHeight: 0,
+      bottomExtra: 0,
+      topOffset: 0,
+      bounds: currentDisplay.bounds,
+      workArea: currentDisplay.workArea,
+      isMaximized: win ? win.isMaximized() : false,
     };
   });
 }
 
-const TOP_OFFSET = 25;
-const BOTTOM_EXTRA = 60;
-
-function setupWin32DesktopWindow(win) {
-  if (process.platform !== 'win32') return;
-
-  const hwndBuf = win.getNativeWindowHandle();
-  const hwndStr =
-    hwndBuf.length === 8
-      ? hwndBuf.readBigUInt64LE(0).toString()
-      : hwndBuf.readUInt32LE(0).toString();
-
-  const psScript = `
-Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-
-public static class Win32Desktop {
-    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern IntPtr FindWindowEx(IntPtr parentHandle, IntPtr childAfter, string className, string windowTitle);
-
-    [DllImport("user32.dll")]
-    public static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
-
-    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr")]
-    public static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
-
-    public static IntPtr GetShellDefView() {
-        IntPtr progman = FindWindow("Progman", null);
-        IntPtr defView = FindWindowEx(progman, IntPtr.Zero, "SHELLDLL_DefView", null);
-        if (defView == IntPtr.Zero) {
-            EnumWindows((h, l) => {
-                IntPtr dv = FindWindowEx(h, IntPtr.Zero, "SHELLDLL_DefView", null);
-                if (dv != IntPtr.Zero) {
-                    defView = dv;
-                    return false;
-                }
-                return true;
-            }, IntPtr.Zero);
-        }
-        return defView;
-    }
-
-    public static void PinToDesktop(long rawHwnd) {
-        IntPtr hwnd = new IntPtr(rawHwnd);
-        IntPtr defView = GetShellDefView();
-        if (defView != IntPtr.Zero) {
-            SetWindowLongPtr(hwnd, -8, defView);
-        }
-    }
-}
-"@
-[Win32Desktop]::PinToDesktop([long]${hwndStr})
-`;
-
-  const encoded = Buffer.from(psScript, 'utf16le').toString('base64');
-  spawn(
-    'powershell.exe',
-    ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand', encoded],
-    { windowsHide: true, stdio: 'ignore' },
-  );
-}
-
 async function createWindow(frontendUrl) {
-  const primaryBounds = screen.getPrimaryDisplay().bounds;
-
   mainWindow = new BrowserWindow({
-    width: primaryBounds.width,
-    height: primaryBounds.height + TOP_OFFSET + BOTTOM_EXTRA,
-    x: primaryBounds.x,
-    y: primaryBounds.y - TOP_OFFSET,
-    transparent: true,
+    width: 1280,
+    height: 800,
+    minWidth: 900,
+    minHeight: 600,
+    center: true,
+    title: 'Dashlet',
+    backgroundColor: '#0F1013',
     frame: false,
-    hasShadow: false,
-    backgroundColor: '#00000000',
+    transparent: false,
     resizable: true,
-    movable: false,
-    minimizable: false,
-    maximizable: false,
-    enableLargerThanScreen: true,
-    skipTaskbar: true,
-    fullscreenable: false,
+    movable: true,
+    minimizable: true,
+    maximizable: true,
+    fullscreenable: true,
+    skipTaskbar: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -296,20 +276,25 @@ async function createWindow(frontendUrl) {
     autoHideMenuBar: true,
   });
 
-  mainWindow.setIgnoreMouseEvents(true, { forward: true });
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    if (input.key === 'F11' && input.type === 'keyDown') {
+      mainWindow.setFullScreen(!mainWindow.isFullScreen());
+    }
+  });
+
+  mainWindow.on('maximize', () => {
+    mainWindow?.webContents.send('window-maximize-changed', true);
+  });
+
+  mainWindow.on('unmaximize', () => {
+    mainWindow?.webContents.send('window-maximize-changed', false);
+  });
 
   mainWindow.loadURL(frontendUrl);
 
   mainWindow.once('ready-to-show', () => {
-    mainWindow.setBounds({
-      x: primaryBounds.x,
-      y: primaryBounds.y - TOP_OFFSET,
-      width: primaryBounds.width,
-      height: primaryBounds.height + TOP_OFFSET + BOTTOM_EXTRA,
-    });
     mainWindow.show();
-    mainWindow.setMenuBarVisibility(false);
-    setupWin32DesktopWindow(mainWindow);
+    mainWindow.focus();
   });
 
   mainWindow.on('closed', () => {
@@ -322,12 +307,7 @@ app.on('ready', async () => {
   setupIpc();
   setupTray();
   globalShortcut.register('CommandOrControl+Shift+D', () => {
-    if (!mainWindow) return;
-    if (mainWindow.isVisible()) {
-      mainWindow.hide();
-    } else {
-      mainWindow.show();
-    }
+    toggleWindow();
   });
 
   if (!isDev) {
@@ -335,7 +315,7 @@ app.on('ready', async () => {
     const port = await startFrontendServer(publicPath);
     createWindow(`http://localhost:${port}`);
   } else {
-    createWindow(`http://localhost:${BACKEND_PORT}`);
+    createWindow(process.env.FRONTEND_DEV_URL || `http://localhost:${BACKEND_PORT}`);
   }
   startBackend().catch((err) => {
     console.error('Failed to start backend:', err);

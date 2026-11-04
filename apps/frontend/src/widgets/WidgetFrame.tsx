@@ -1,5 +1,5 @@
-﻿import { memo, useState, useCallback, useRef, useEffect, useSyncExternalStore, Suspense } from 'react';
-import { FiChevronUp, FiChevronDown, FiX, FiMoreVertical, FiPlay, FiPause } from 'react-icons/fi';
+import { memo, useState, useCallback, useRef, useEffect, useSyncExternalStore, Suspense } from 'react';
+import { FiChevronUp, FiChevronDown, FiX, FiMoreVertical, FiPlay, FiPause, FiColumns } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
 import { widgetBus } from './widget-bus';
 import { getWidget } from './registry';
@@ -32,17 +32,16 @@ const BAR_W = 'w-16';
  */
 const BAR_H = 'h-2';
 
-/** Glass AI Compose - Estilos de panel de vidrio */
-const GLASS_PANEL = {
-  background:
-    'linear-gradient(180deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.02) 100%), rgba(18, 18, 22, 0.45)',
-  border: '1px solid rgba(255, 255, 255, 0.12)',
-  boxShadow:
-    '0 8px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.10)',
+/** Estilos Magic Bento para las tarjetas de widget */
+const BENTO_THEME = {
+  surface: 'linear-gradient(180deg, #1a1820 0%, #121116 100%)',
+  edge: 'rgba(255, 255, 255, 0.07)',
+  highlight: 'rgba(255, 255, 255, 0.08)',
+  shadow: '0 24px 48px -28px rgba(0, 0, 0, 0.85), 0 8px 18px -12px rgba(0, 0, 0, 0.6)',
+  activeGlow:
+    '0 24px 48px -28px rgba(0, 0, 0, 0.85), 0 0 0 1.5px rgba(229, 168, 75, 0.8), 0 0 24px rgba(229, 168, 75, 0.25)',
+  glowRgb: '229, 168, 75',
 } as const;
-
-const GLASS_ACTIVE_GLOW =
-  '0 8px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0 0 1.5px rgba(217, 164, 65, 0.6), 0 0 20px rgba(217, 164, 65, 0.2)';
 
 function toneColor(tone: 'neutral' | 'p2' | 'p3' | undefined): string {
   if (tone === 'p3') return 'var(--color-p3)';
@@ -144,7 +143,7 @@ function CollapsedBody({
   const bar = summary?.bar && summary.bar.total > 0 ? summary.bar : null;
   const ring = summary?.ring && summary.ring.total > 0 ? summary.ring : null;
   return (
-    <div className="flex min-h-0 flex-1 items-center gap-2 px-3">
+    <div className="relative z-10 flex min-h-0 items-center gap-2.5 px-3.5 pb-2 pt-1.5">
       {ring && <MiniRing done={ring.done} total={ring.total} tone={summary!.tone} />}
       {/*
        * Todo el readout va al MISMO tamano que el texto de tarea del todo-list
@@ -258,9 +257,13 @@ interface WidgetFrameProps {
   label: string;
   /** props de dnd-kit para el tirador de arrastre */
   dragHandleProps: DragHandleProps;
-  dragHandleRef: (node: HTMLElement | null) => void;
+  dragHandleRef?: (node: HTMLElement | null) => void;
+  colSpan?: number;
+  onToggleColSpan?: () => void;
   /** El widget esta siguiendo al cursor. Enciende la senal de color. */
   isDragging?: boolean;
+  /** Hay algun widget siendo arrastrado en la grilla. */
+  isAnyDragging?: boolean;
 }
 /** Handlers de dnd-kit que se componen con los del frame. */
 export interface DragHandleProps {
@@ -285,6 +288,9 @@ export const WidgetFrame = memo(function WidgetFrame({
   dragHandleProps,
   dragHandleRef,
   isDragging = false,
+  isAnyDragging = false,
+  colSpan = 1,
+  onToggleColSpan,
 }: WidgetFrameProps) {
   const [highlighted, setHighlighted] = useState(false);
   // El colapso lo decide la celda, que es la que mide su alto (ver
@@ -300,8 +306,6 @@ export const WidgetFrame = memo(function WidgetFrame({
   // calcula en cada render y sin esto quedaria en el idioma anterior.
   useTranslation();
   const headerAction = getWidget(type)?.headerAction?.(id, config) ?? null;
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pointerPosRef = useRef({ x: 0, y: 0 });
   const HOLD_THRESHOLD = 450;
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdPosRef = useRef({ x: 0, y: 0 });
@@ -323,6 +327,7 @@ export const WidgetFrame = memo(function WidgetFrame({
   }, [onConfigChange, id, config, collapsed]);
   const handleHoldPointerDown = useCallback(
     (e: React.PointerEvent) => {
+      if (isDragging || isAnyDragging) return;
       if (e.button !== 0) return;
       if (isHoldTargetInteractive(e.target)) return;
       holdPosRef.current = { x: e.clientX, y: e.clientY };
@@ -347,27 +352,29 @@ export const WidgetFrame = memo(function WidgetFrame({
         e.currentTarget.setPointerCapture(e.pointerId);
       } catch {}
     },
-    [isHoldTargetInteractive, clearHoldTimer, fireHoldToggle],
+    [isDragging, isAnyDragging, isHoldTargetInteractive, clearHoldTimer, fireHoldToggle],
   );
   const handleTitleHoldPointerDown = useCallback(
     (e: React.PointerEvent) => {
+      if (isDragging || isAnyDragging) return;
       if (e.button !== 0) return;
       e.stopPropagation();
       holdPosRef.current = { x: e.clientX, y: e.clientY };
       clearHoldTimer();
       holdTimerRef.current = setTimeout(fireHoldToggle, HOLD_THRESHOLD);
     },
-    [clearHoldTimer, fireHoldToggle],
+    [isDragging, isAnyDragging, clearHoldTimer, fireHoldToggle],
   );
   const handleHoldPointerMove = useCallback(
     (e: React.PointerEvent) => {
+      if (isDragging || isAnyDragging) return;
       if (!holdTimerRef.current) return;
       if ((e.buttons & 1) === 0) return clearHoldTimer();
       const dx = Math.abs(e.clientX - holdPosRef.current.x);
       const dy = Math.abs(e.clientY - holdPosRef.current.y);
       if (dx > 5 || dy > 5) clearHoldTimer();
     },
-    [clearHoldTimer],
+    [isDragging, isAnyDragging, clearHoldTimer],
   );
   const handleHoldPointerUp = useCallback(
     (e: React.PointerEvent) => {
@@ -378,31 +385,8 @@ export const WidgetFrame = memo(function WidgetFrame({
     },
     [clearHoldTimer],
   );
-  const handleHeaderPointerDown = useCallback((e: React.PointerEvent) => {
-    if (e.button !== 0) return;
-    pointerPosRef.current = { x: e.clientX, y: e.clientY };
-    // dnd-kit escucha en el tirador; este timeout solo evita que un clic
-    // simple (sin movimiento) dispare un arrastre.
-    longPressTimerRef.current = setTimeout(() => {
-      longPressTimerRef.current = null;
-    }, 25);
-  }, []);
-  const handleHeaderPointerUp = useCallback(() => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-  }, []);
-  const handleHeaderPointerMove = useCallback((e: React.PointerEvent) => {
-    if (!longPressTimerRef.current) return;
-    if ((e.buttons & 1) === 0) return handleHeaderPointerUp();
-    const dx = Math.abs(e.clientX - pointerPosRef.current.x);
-    const dy = Math.abs(e.clientY - pointerPosRef.current.y);
-    if (dx > 5 || dy > 5) handleHeaderPointerUp();
-  }, [handleHeaderPointerUp]);
   useEffect(() => {
     return () => {
-      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
       if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
     };
   }, []);
@@ -416,46 +400,84 @@ export const WidgetFrame = memo(function WidgetFrame({
       off();
     };
   }, [id]);
+  const frameRef = useRef<HTMLDivElement>(null);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (isDragging || isAnyDragging) return;
+    const el = frameRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    el.style.setProperty('--mb-x', `${x.toFixed(1)}px`);
+    el.style.setProperty('--mb-y', `${y.toFixed(1)}px`);
+    el.style.setProperty('--mb-hot', '1');
+    el.style.setProperty('--mb-near', '1');
+  }, [isDragging, isAnyDragging]);
+
+  const handlePointerLeave = useCallback(() => {
+    const el = frameRef.current;
+    if (!el) return;
+    el.style.setProperty('--mb-hot', '0');
+    el.style.setProperty('--mb-near', '0');
+    window.electronAPI?.setIgnoreMouseEvents?.(true, { forward: true });
+  }, []);
+
   const handleConfigChangeWrapped = useCallback(
     (newConfig: Record<string, unknown>) => onConfigChange(id, newConfig),
     [id, onConfigChange],
   );
   return (
     <div
+      ref={frameRef}
       data-widget-id={id}
       onMouseEnter={() => window.electronAPI?.setIgnoreMouseEvents?.(false)}
-      onMouseLeave={() => window.electronAPI?.setIgnoreMouseEvents?.(true, { forward: true })}
-      className={`pointer-events-auto group relative isolate flex h-full w-full flex-col overflow-hidden rounded-2xl transition-all duration-300 ${
-        highlighted || isDragging
-          ? 'border-p2/70'
-          : 'border-white/10 hover:border-white/20'
+      onPointerMove={handlePointerMove}
+      onPointerLeave={handlePointerLeave}
+      className={`pointer-events-auto group relative isolate flex h-auto flex-col overflow-hidden rounded-[20px] ${
+        collapsed ? 'w-fit max-w-full p-1.5' : 'w-full'
+      } ${
+        isDragging
+          ? 'ring-1 ring-p2/80'
+          : highlighted
+            ? 'ring-1 ring-p2/80 transition-all duration-300'
+            : 'transition-all duration-300'
       }`}
       style={{
-        borderWidth: '1px',
-        borderStyle: 'solid',
-        background: GLASS_PANEL.background,
-        boxShadow: highlighted || isDragging ? GLASS_ACTIVE_GLOW : GLASS_PANEL.boxShadow,
+        background: BENTO_THEME.surface,
+        boxShadow: highlighted || isDragging ? BENTO_THEME.activeGlow : BENTO_THEME.shadow,
+        color: '#f4f4f5',
       }}
       onWheel={(e) => e.stopPropagation()}
       onScrollCapture={clearHoldTimer}
     >
-      {/* Glass AI Compose - Capa de desenfoque y saturación (difunde el fondo del escritorio al 180% de color) */}
-      <div
+      {/* Magic Bento - Spotlight reactivo al cursor */}
+      <span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 -z-10 rounded-2xl"
+        className="pointer-events-none absolute inset-0 z-0 rounded-[inherit] transition-opacity duration-300"
         style={{
-          backdropFilter: 'blur(28px) saturate(1.8)',
-          WebkitBackdropFilter: 'blur(28px) saturate(1.8)',
+          background: `radial-gradient(280px circle at var(--mb-x, -999px) var(--mb-y, -999px), rgba(${BENTO_THEME.glowRgb}, calc(0.08 * var(--mb-hot, 0))) 0%, rgba(${BENTO_THEME.glowRgb}, calc(0.03 * var(--mb-hot, 0))) 45%, transparent 100%)`,
         }}
       />
 
-      {/* Glass AI Compose - Reflejo especular superior de 1px */}
-      <div
+      {/* Magic Bento - Rim interno con bisel superior e inset edge */}
+      <span
         aria-hidden="true"
-        className="pointer-events-none absolute left-6 right-6 top-0 z-10 h-[1px]"
+        className="pointer-events-none absolute inset-0 z-[1] rounded-[inherit]"
         style={{
-          background:
-            'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent)',
+          boxShadow: `inset 0 0 0 1px ${BENTO_THEME.edge}, inset 0 1px 0 ${BENTO_THEME.highlight}`,
+        }}
+      />
+
+      {/* Magic Bento - Glowing Border que ilumina el contorno al pasar el mouse */}
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 z-[2] box-border rounded-[inherit] p-[1px]"
+        style={{
+          background: `radial-gradient(220px circle at var(--mb-x, -999px) var(--mb-y, -999px), rgba(${BENTO_THEME.glowRgb}, calc(0.75 * var(--mb-near, 0))) 0%, rgba(${BENTO_THEME.glowRgb}, calc(0.3 * var(--mb-near, 0))) 35%, transparent 70%)`,
+          WebkitMask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
+          WebkitMaskComposite: 'xor',
+          mask: 'linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0)',
         }}
       />
       <div
@@ -469,10 +491,12 @@ export const WidgetFrame = memo(function WidgetFrame({
          * entero. Lo que si tiene que coincidir es con la caja, que se retrae a la
          * vez que esta barra se tiÃ±e.
          */
-        className={`flex w-full shrink-0 select-none items-center transition-colors duration-[var(--motion-sizing)] ease-in-out ${
+        className={`relative z-10 flex w-full shrink-0 select-none items-center rounded-xl transition-colors duration-[var(--motion-sizing)] ease-in-out ${
+          collapsed ? 'gap-1.5 px-1.5 py-1' : ''
+        } ${
           isDragging ? 'bg-p2/15' : collapsed ? 'bg-p2/10' : 'bg-transparent'
         }`}
-        style={{ height: HEADER_HEIGHT }}
+        style={{ height: collapsed ? HEADER_HEIGHT + 6 : HEADER_HEIGHT }}
         onPointerDown={handleHoldPointerDown}
         onPointerMove={handleHoldPointerMove}
         onPointerUp={handleHoldPointerUp}
@@ -483,28 +507,6 @@ export const WidgetFrame = memo(function WidgetFrame({
           {...dragHandleProps}
           ref={dragHandleRef}
           className="flex shrink-0 cursor-grab touch-none items-center self-stretch pl-[6px] pr-1 active:cursor-grabbing"
-          /*
-           * Ojo con el orden: los handlers de dnd-kit (`dragHandleProps`) traen
-           * su propio onPointerDown, y este onPointerDown lo SOBREESCRIBE. Si
-           * se pierde, el sensor nunca arranca y el widget no se puede mover.
-           * Por eso se componen en vez de reemplazarse.
-           */
-          onPointerDown={(e) => {
-            handleHeaderPointerDown(e);
-            dragHandleProps.onPointerDown?.(e);
-          }}
-          onPointerUp={(e) => {
-            handleHeaderPointerUp();
-            dragHandleProps.onPointerUp?.(e);
-          }}
-          onPointerCancel={(e) => {
-            handleHeaderPointerUp();
-            dragHandleProps.onPointerCancel?.(e);
-          }}
-          onPointerMove={(e) => {
-            handleHeaderPointerMove(e);
-            dragHandleProps.onPointerMove?.(e);
-          }}
         >
           <FiMoreVertical size={15} className="text-gray-500" />
         </span>
@@ -528,24 +530,35 @@ export const WidgetFrame = memo(function WidgetFrame({
             if (e.key === 'Enter') e.currentTarget.blur();
           }}
           onClick={(e) => e.stopPropagation()}
-          onPointerDown={handleTitleHoldPointerDown}
+          onPointerDown={(e) => {
+            if (isDragging || isAnyDragging) return;
+            handleTitleHoldPointerDown(e);
+          }}
           onPointerMove={(e) => {
+            if (isDragging || isAnyDragging) return;
             e.stopPropagation();
             handleHoldPointerMove(e);
           }}
           onPointerUp={(e) => {
+            if (isDragging || isAnyDragging) return;
             e.stopPropagation();
             handleHoldPointerUp(e);
           }}
           onPointerCancel={(e) => {
+            if (isDragging || isAnyDragging) return;
             e.stopPropagation();
             handleHoldPointerUp(e);
           }}
-          className="min-w-0 flex-1 cursor-text truncate border border-transparent bg-transparent text-sm font-medium tracking-[-0.01em] text-white focus:border-gray-400 focus:bg-gray-700/40 focus:ring-1 focus:ring-gray-500/40 focus:outline-none"
+          size={collapsed ? Math.max(6, Math.min(20, (((config.title as string) || label).length || 6) + 1)) : undefined}
+          className={`truncate border border-transparent bg-transparent text-sm font-medium tracking-[-0.01em] text-white focus:border-gray-400 focus:bg-gray-700/40 focus:ring-1 focus:ring-gray-500/40 focus:outline-none ${
+            collapsed ? 'w-auto shrink-0' : 'min-w-0 flex-1'
+          } ${
+            isDragging || isAnyDragging ? 'pointer-events-none cursor-grabbing select-none' : 'cursor-text'
+          }`}
           placeholder={label}
           aria-label="Widget title"
         />
-        <div className="ml-1.5 mr-2 flex shrink-0 items-center">
+        <div className={`${collapsed ? 'ml-auto pl-2 mr-1' : 'ml-1.5 mr-2'} flex shrink-0 items-center`}>
           {headerAction && (
             <>
               <button
@@ -559,6 +572,27 @@ export const WidgetFrame = memo(function WidgetFrame({
                 aria-label={headerAction.label}
               >
                 <headerAction.icon size={13} />
+              </button>
+              <div className="mx-1 h-3 w-[1px] bg-white/20" aria-hidden="true" />
+            </>
+          )}
+          {onToggleColSpan && !collapsed && (
+            <>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleColSpan();
+                }}
+                className={`flex h-5 w-5 items-center justify-center rounded transition-colors active:scale-95 ${
+                  colSpan === 2
+                    ? 'text-p2 hover:bg-p2/20 hover:text-p2'
+                    : 'text-white/50 hover:bg-white/10 hover:text-white'
+                }`}
+                title={colSpan === 2 ? 'Reducir a 1 columna' : 'Ampliar a 2 columnas (máx. 2 de 4)'}
+                aria-label={colSpan === 2 ? 'Reducir a 1 columna' : 'Ampliar a 2 columnas (máx. 2 de 4)'}
+              >
+                <FiColumns size={12} />
               </button>
               <div className="mx-1 h-3 w-[1px] bg-white/20" aria-hidden="true" />
             </>
@@ -605,7 +639,7 @@ export const WidgetFrame = memo(function WidgetFrame({
         <CollapsedBody type={type} widgetId={id} config={config} />
       ) : (
         <div
-          className="flex min-h-0 flex-1 flex-col overflow-hidden p-3"
+          className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden p-3"
           onPointerDown={handleHoldPointerDown}
           onPointerMove={handleHoldPointerMove}
           onPointerUp={handleHoldPointerUp}

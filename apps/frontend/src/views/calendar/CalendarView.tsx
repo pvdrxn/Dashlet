@@ -109,25 +109,6 @@ export function CalendarView({ leading, onClose }: CalendarViewProps) {
   const today = dateKey(new Date());
   const anchorMonth = monthKey(new Date());
 
-  const desktopMetrics = useMemo(() => {
-    return window.electronAPI?.getMetricsSync?.() ?? null;
-  }, []);
-
-  const topOffset = desktopMetrics?.topOffset ?? 25;
-  const bottomTaskbarInset = desktopMetrics
-    ? (desktopMetrics.bounds && desktopMetrics.workArea
-        ? desktopMetrics.bounds.height - desktopMetrics.workArea.height
-        : desktopMetrics.taskbarHeight || 48)
-    : 48;
-
-  const handleInteractiveMouseEnter = useCallback(() => {
-    window.electronAPI?.setIgnoreMouseEvents?.(false);
-  }, []);
-
-  const handleInteractiveMouseLeave = useCallback(() => {
-    window.electronAPI?.setIgnoreMouseEvents?.(true, { forward: true });
-  }, []);
-
   /*
    * Se lee en el inicializador y se borra en un efecto, no en el inicializador:
    * en desarrollo React lo ejecuta dos veces, y si la primera lo borrara la
@@ -497,84 +478,66 @@ export function CalendarView({ leading, onClose }: CalendarViewProps) {
   /* ---------------------------------------------------------------------- */
 
   return (
-    <div
-      className="h-full w-full overflow-hidden bg-transparent pointer-events-none select-none flex flex-col items-center justify-center px-4"
-      style={{
-        paddingTop: `${topOffset}px`,
-        paddingBottom: `${bottomTaskbarInset + 16}px`,
-      }}
-    >
-      <div
-        className="pointer-events-auto flex flex-col w-full max-w-[1180px] h-[78vh] -translate-y-[2%] rounded-2xl border border-white/10 shadow-2xl min-h-0 overflow-hidden"
-        style={{
-          maxHeight: `calc(100vh - ${bottomTaskbarInset + 20}px - ${topOffset + 10}px)`,
-          background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.02) 100%), rgba(18, 18, 22, 0.55)',
-          backdropFilter: 'blur(28px) saturate(1.8)',
-          WebkitBackdropFilter: 'blur(28px) saturate(1.8)',
-          boxShadow: '0 8px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
-        }}
-        onMouseEnter={handleInteractiveMouseEnter}
-        onMouseLeave={handleInteractiveMouseLeave}
-      >
-        {/* Header con navegación de mes y botón de volver */}
-        <header className="flex items-center justify-between border-b border-white/10 px-4 py-2.5 shrink-0 bg-white/[0.04]">
+    <div className="h-full w-full overflow-hidden flex flex-col bg-[#0F1013] text-[#F1F3F5]">
+      {/* Header con navegación de mes y botón de volver */}
+      <header className="flex items-center justify-between border-b border-white/[0.08] px-4 py-2 shrink-0 bg-[#16181D]/60">
+        <div className="flex items-center gap-2">
+          {leading}
           <div className="flex items-center gap-2">
-            {leading}
-            <div className="flex items-center gap-2">
-              <FiCalendar size={17} className="text-p2 shrink-0" />
-              <h1 className="text-sm font-semibold text-white tracking-wide">
-                {formatMonthLabel(activeMonth)}
-              </h1>
-            </div>
-            <div className="flex items-center gap-1 ml-2">
-              <button
-                type="button"
-                onClick={() => setActiveMonth((m) => addMonths(m, -1))}
-                aria-label={t('calendar.prevMonth', 'Previous month')}
-                className="flex h-7 w-7 items-center justify-center rounded text-gray-400 transition-colors hover:bg-white/5 hover:text-gray-200"
-              >
-                <FiChevronLeft size={15} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveMonth((m) => addMonths(m, 1))}
-                aria-label={t('calendar.nextMonth', 'Next month')}
-                className="flex h-7 w-7 items-center justify-center rounded text-gray-400 transition-colors hover:bg-white/5 hover:text-gray-200"
-              >
-                <FiChevronRight size={15} />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveMonth(anchorMonth);
-                  setSelectedDate(today);
-                }}
-                className="ml-1 rounded bg-white/5 px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-white/10 hover:text-gray-200"
-              >
-                {t('calendar.today', 'Today')}
-              </button>
-            </div>
+            <FiCalendar size={15} className="text-p2 shrink-0" />
+            <h1 className="text-xs font-semibold text-white tracking-wide">
+              {formatMonthLabel(activeMonth)}
+            </h1>
           </div>
-
-          {onClose && (
+          <div className="flex items-center gap-1 ml-2">
             <button
               type="button"
-              onClick={onClose}
-              className="flex items-center gap-1.5 rounded-lg border border-gray-700/60 bg-gray-800/80 px-2.5 py-1 text-xs font-medium text-gray-300 transition-all hover:border-gray-600 hover:bg-gray-700 hover:text-white active:scale-95"
-              title={t('calendar.backToWidgets', 'Back to widgets')}
-              aria-label={t('calendar.backToWidgets', 'Back to widgets')}
+              onClick={() => setActiveMonth((m) => addMonths(m, -1))}
+              aria-label={t('calendar.prevMonth', 'Previous month')}
+              className="flex h-6 w-6 items-center justify-center rounded text-gray-400 transition-colors hover:bg-white/5 hover:text-gray-200"
             >
-              <FiGrid size={13} className="text-p2" />
-              <span>{t('calendar.backToWidgets', 'Back to widgets')}</span>
+              <FiChevronLeft size={14} />
             </button>
-          )}
-        </header>
+            <button
+              type="button"
+              onClick={() => setActiveMonth((m) => addMonths(m, 1))}
+              aria-label={t('calendar.nextMonth', 'Next month')}
+              className="flex h-6 w-6 items-center justify-center rounded text-gray-400 transition-colors hover:bg-white/5 hover:text-gray-200"
+            >
+              <FiChevronRight size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveMonth(anchorMonth);
+                setSelectedDate(today);
+              }}
+              className="ml-1 rounded bg-white/5 px-2 py-0.5 text-[11px] text-gray-400 transition-colors hover:bg-white/10 hover:text-gray-200"
+            >
+              {t('calendar.today', 'Today')}
+            </button>
+          </div>
+        </div>
 
-        {/* Doble columna compacta: izquierda mini-mes + tags, derecha agenda diaria */}
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden p-4 lg:flex-row">
-          {/* Panel izquierdo: Mini-mes + Tag chips */}
-          <section className="flex min-h-0 w-full flex-col overflow-hidden rounded-xl border border-gray-800 bg-gray-950/40 lg:w-[400px] lg:flex-none">
-            <header className="flex items-center justify-between border-b border-gray-800/80 px-3.5 py-2 shrink-0 bg-gray-900/30">
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-xs font-medium text-gray-300 transition-all hover:bg-white/[0.08] hover:text-white"
+            title={t('calendar.backToWidgets', 'Back to widgets')}
+            aria-label={t('calendar.backToWidgets', 'Back to widgets')}
+          >
+            <FiGrid size={12} className="text-p2" />
+            <span>{t('calendar.backToWidgets', 'Back to widgets')}</span>
+          </button>
+        )}
+      </header>
+
+      {/* Doble columna compacta: izquierda mini-mes + tags, derecha agenda diaria */}
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3 lg:flex-row">
+        {/* Panel izquierdo: Mini-mes + Tag chips */}
+        <section className="flex min-h-0 w-full flex-col overflow-hidden rounded-xl border border-white/[0.08] bg-[#16181D]/80 lg:w-[350px] lg:flex-none">
+          <header className="flex items-center justify-between border-b border-white/[0.08] px-3.5 py-2 shrink-0 bg-[#0F1013]/40">
               <span className="text-xs font-medium text-gray-400">
                 {visibleEvents.length} {visibleEvents.length === 1 ? t('calendar.event', 'event') : t('calendar.events', 'events')}
               </span>
@@ -744,8 +707,8 @@ export function CalendarView({ leading, onClose }: CalendarViewProps) {
         {/* ---------------------------------------------------------------- */}
         {/* Panel del dia: bloques por hora                                  */}
         {/* ---------------------------------------------------------------- */}
-        <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-gray-800 bg-gray-950/40">
-          <header className="flex items-center justify-between border-b border-gray-800/80 px-4 py-2.5 shrink-0 bg-gray-900/30">
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-white/[0.08] bg-[#16181D]/80">
+          <header className="flex items-center justify-between border-b border-white/[0.08] px-4 py-2 shrink-0 bg-[#0F1013]/40">
             <div className="flex items-baseline gap-2">
               <h2 className="text-sm font-medium text-white">{formatDayLabel(selectedDate)}</h2>
               <span className="text-xs text-gray-500">
@@ -988,9 +951,8 @@ export function CalendarView({ leading, onClose }: CalendarViewProps) {
         {/* Modal de creacion / edicion de evento */}
         {editor && (
           <div
-            className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 pointer-events-auto"
+            className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
             onClick={() => setEditor(null)}
-            onMouseEnter={handleInteractiveMouseEnter}
           >
             <div
               className="flex w-full max-w-md flex-col overflow-hidden rounded-xl border border-gray-700 bg-gray-800 shadow-2xl"
@@ -1094,7 +1056,6 @@ export function CalendarView({ leading, onClose }: CalendarViewProps) {
             </div>
           </div>
         )}
-      </div>
     </div>
   );
 }

@@ -1,16 +1,16 @@
-import { useCallback, useState, useRef, useEffect, useMemo } from 'react';
+import { useCallback, useState, useRef, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { WidgetGrid } from './widgets';
 import { OPEN_TABLE_EVENT } from './widgets/data-table/DataTableWidget';
 import { OPEN_CALENDAR_EVENT } from './widgets/calendar/open-calendar';
-import { GlassSidebar } from './components/GlassSidebar';
+import { HubHeader } from './components/HubHeader';
+import { AddWidgetButton } from './components/AddWidgetButton';
 import { TabBar } from './components/TabBar';
 import { TrashWindow } from './components/TrashWindow';
 import { TaskPickerModal } from './components/TaskPickerModal';
-import { ViewSidebar } from './components/ViewSidebar';
-import { CalendarView, TableView, SettingsView, getView, type ViewId } from './views';
-import { FiMenu } from 'react-icons/fi';
+import { SettingsModal } from './components/SettingsModal';
+import { CalendarView, TableView, getView, type ViewId } from './views';
 import { widgetBus } from './widgets/widget-bus';
 import * as tabsApi from './api/tabs';
 import * as widgetsApi from './api/widgets';
@@ -26,23 +26,39 @@ import {
 const ACTIVE_TAB_KEY = 'dashlet-active-tab';
 const ACTIVE_VIEW_KEY = 'dashlet-active-view';
 
+const VIEW_INDEX: Record<ViewId, number> = {
+  widgets: 0,
+  calendar: 1,
+  table: 2,
+};
+
 function readStoredView(): ViewId {
   const stored = localStorage.getItem(ACTIVE_VIEW_KEY);
   return stored && getView(stored as ViewId) ? (stored as ViewId) : 'widgets';
 }
 
-function Dashboard() {
+interface DashboardProps {
+  initialOpenSettings?: boolean;
+}
+
+function Dashboard({ initialOpenSettings = false }: DashboardProps) {
   const { t } = useTranslation();
   const [trashOpen, setTrashOpen] = useState(false);
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(initialOpenSettings);
+
   const [activeView, setActiveView] = useState<ViewId>(readStoredView);
   const [exitingView, setExitingView] = useState<ViewId | null>(null);
+  const [viewSlideDirection, setViewSlideDirection] = useState<'right' | 'left' | null>(null);
   const transitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [viewSidebarOpen, setViewSidebarOpen] = useState(false);
 
   const handleSelectView = useCallback((nextView: ViewId) => {
     setActiveView((current) => {
       if (current === nextView) return current;
+      const prevIdx = VIEW_INDEX[current] ?? 0;
+      const nextIdx = VIEW_INDEX[nextView] ?? 0;
+      setViewSlideDirection(nextIdx >= prevIdx ? 'right' : 'left');
+
       if (transitionTimerRef.current) {
         clearTimeout(transitionTimerRef.current);
       }
@@ -50,10 +66,49 @@ function Dashboard() {
       transitionTimerRef.current = setTimeout(() => {
         setExitingView(null);
         transitionTimerRef.current = null;
-      }, 220);
+      }, 280);
       return nextView;
     });
   }, []);
+
+  const handleEscape = useCallback(() => {
+    if (settingsOpen) {
+      setSettingsOpen(false);
+      return;
+    }
+    if (trashOpen) {
+      setTrashOpen(false);
+      return;
+    }
+    if (taskPickerOpen) {
+      setTaskPickerOpen(false);
+      return;
+    }
+    window.electronAPI?.hideWindow?.();
+  }, [settingsOpen, trashOpen, taskPickerOpen]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleEscape();
+      } else if (e.key === 'F11') {
+        e.preventDefault();
+        window.electronAPI?.toggleFullscreen?.();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [handleEscape]);
+
+  useEffect(() => {
+    const unsubEscape = window.electronAPI?.onEscapePressed?.(() => {
+      handleEscape();
+    });
+    return () => {
+      unsubEscape?.();
+    };
+  }, [handleEscape]);
 
   useEffect(() => {
     return () => {
@@ -62,22 +117,10 @@ function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (viewSidebarOpen || trashOpen || taskPickerOpen) {
-      window.electronAPI?.setIgnoreMouseEvents?.(false);
-    }
-  }, [viewSidebarOpen, trashOpen, taskPickerOpen]);
-
-  const handleInteractiveMouseEnter = useCallback(() => {
-    window.electronAPI?.setIgnoreMouseEvents?.(false);
-  }, []);
-
-  useEffect(() => {
     const onOpenTable = () => {
-      setViewSidebarOpen(false);
       handleSelectView('table');
     };
     const onOpenCalendar = () => {
-      setViewSidebarOpen(false);
       handleSelectView('calendar');
     };
     window.addEventListener(OPEN_TABLE_EVENT, onOpenTable);
@@ -94,6 +137,7 @@ function Dashboard() {
   const [activeTabId, setActiveTabId] = useState<string | null>(() =>
     localStorage.getItem(ACTIVE_TAB_KEY),
   );
+  const [slideDirection, setSlideDirection] = useState<'right' | 'left' | null>(null);
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [widgetDragActive, setWidgetDragActive] = useState(false);
   const addWidgetRefs = useRef(
@@ -112,14 +156,6 @@ function Dashboard() {
   const transferWidgetRefs = useRef(new Map<string, (action: TransferAction) => void>());
 
   const tabBarRef = useRef<HTMLDivElement>(null);
-
-  const desktopMetrics = useMemo(() => {
-    return window.electronAPI?.getMetricsSync?.() ?? null;
-  }, []);
-
-  const bottomTaskbarInset = desktopMetrics
-    ? desktopMetrics.taskbarHeight + desktopMetrics.bottomExtra
-    : 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -180,9 +216,22 @@ function Dashboard() {
     localStorage.setItem(ACTIVE_VIEW_KEY, activeView);
   }, [activeView]);
 
-  const handleSelectTab = useCallback((id: string) => {
-    setActiveTabId(id);
-  }, []);
+  const handleSelectTab = useCallback(
+    (id: string) => {
+      setActiveTabId((current) => {
+        if (current === id) return current;
+        const prevIndex = tabs.findIndex((t) => t.id === current);
+        const nextIndex = tabs.findIndex((t) => t.id === id);
+        if (prevIndex !== -1 && nextIndex !== -1) {
+          setSlideDirection(nextIndex >= prevIndex ? 'right' : 'left');
+        } else {
+          setSlideDirection(null);
+        }
+        return id;
+      });
+    },
+    [tabs],
+  );
 
   const handleWidgetDragStart = useCallback((widgetId: string, sourceTabId: string) => {
     beginDragSession({ widgetId, sourceTabId });
@@ -205,6 +254,7 @@ function Dashboard() {
     try {
       const defaultName = t('dashboard.newTab', 'New tab');
       const tab = await tabsApi.createTab(defaultName);
+      setSlideDirection('right');
       setTabs((prev) => [...prev, tab]);
       setActiveTabId(tab.id);
     } catch {}
@@ -223,7 +273,13 @@ function Dashboard() {
         await tabsApi.deleteTab(id);
         setTabs((prev) => {
           const next = prev.filter((t) => t.id !== id);
-          setActiveTabId((current) => (current === id ? (next[0]?.id ?? null) : current));
+          setActiveTabId((current) => {
+            if (current === id) {
+              setSlideDirection('left');
+              return next[0]?.id ?? null;
+            }
+            return current;
+          });
           return next;
         });
         if (editingTabId === id) setEditingTabId(null);
@@ -353,28 +409,50 @@ function Dashboard() {
 
   const renderWidgetsView = () => {
     return (
-      <div className="h-full w-full pointer-events-none">
-        <div ref={tabBarRef} className="hidden">
-          <TabBar
-            tabs={tabs}
-            activeTabId={activeTabId}
-            onSelectTab={handleSelectTab}
-            onCreateTab={handleCreateTab}
-            onRenameTab={handleRenameTab}
-            onDeleteTab={handleDeleteTab}
-            onReorderTabs={handleReorderTabs}
-            editingTabId={editingTabId}
-            onEditingTabIdChange={setEditingTabId}
-            widgetDragActive={widgetDragActive}
-            leading={viewSwitchButton}
-          />
-        </div>
+      <div className="flex h-full w-full flex-col overflow-hidden bg-[#0F1013]">
         <div
-          className="p-4 pointer-events-none overflow-hidden h-full box-border"
-          style={{ paddingBottom: `${bottomTaskbarInset + 16}px` }}
+          ref={tabBarRef}
+          className="relative flex items-end justify-between px-6 pt-3.5 pb-0 bg-[#0F1013] shrink-0 gap-3 border-b border-white/[0.08]"
         >
+          <div className="flex-1 min-w-0 overflow-hidden">
+            <TabBar
+              tabs={tabs}
+              activeTabId={activeTabId}
+              onSelectTab={handleSelectTab}
+              onCreateTab={handleCreateTab}
+              onRenameTab={handleRenameTab}
+              onDeleteTab={handleDeleteTab}
+              onReorderTabs={handleReorderTabs}
+              editingTabId={editingTabId}
+              onEditingTabIdChange={setEditingTabId}
+              widgetDragActive={widgetDragActive}
+            />
+          </div>
+          <div className="pb-2 shrink-0">
+            <AddWidgetButton
+              onAddWidget={handleAddWidget}
+              onAddWidgetDeferred={handleAddWidgetDeferred}
+              onPredictAdd={handlePredictAdd}
+              onRevealWidgets={handleRevealWidgets}
+            />
+          </div>
+        </div>
+        <div className="relative flex-1 min-h-0 overflow-hidden">
           {tabs.map((tab) => (
-            <div key={tab.id} className={activeTabId === tab.id ? 'h-full w-full' : 'hidden'}>
+            <div
+              key={tab.id}
+              className={
+                activeTabId === tab.id
+                  ? `h-full w-full ${
+                      slideDirection === 'right'
+                        ? 'animate-tab-slide-right'
+                        : slideDirection === 'left'
+                          ? 'animate-tab-slide-left'
+                          : ''
+                    }`
+                  : 'hidden'
+              }
+            >
               <WidgetGrid
                 tabId={tab.id}
                 onAddWidgetRef={registerAddWidgetRef}
@@ -400,35 +478,21 @@ function Dashboard() {
     }
 
     return (
-      <div className="flex-1 min-h-0 h-full w-full overflow-hidden bg-transparent pointer-events-none select-none">
+      <div className="flex-1 min-h-0 h-full w-full overflow-hidden bg-[#0F1013]">
         {viewId === 'calendar' ? (
-          <CalendarView leading={viewSwitchButton} onClose={() => handleSelectView('widgets')} />
+          <CalendarView onClose={() => handleSelectView('widgets')} />
         ) : (
-          <TableView leading={viewSwitchButton} onClose={() => handleSelectView('widgets')} />
+          <TableView onClose={() => handleSelectView('widgets')} />
         )}
       </div>
     );
   };
 
-  const viewSwitchButton = (
-    <button
-      type="button"
-      onClick={() => setViewSidebarOpen(true)}
-      title="Change view"
-      aria-label="Change view"
-      aria-haspopup="dialog"
-      aria-expanded={viewSidebarOpen}
-      className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded text-gray-400 transition-all duration-150 hover:bg-white/5 hover:text-gray-200 active:scale-90"
-    >
-      <FiMenu size={15} />
-    </button>
-  );
-
   if (!tabsLoaded) {
     return (
-      <main className="flex h-screen w-screen items-center justify-center bg-transparent pointer-events-none select-none">
+      <main className="flex h-screen w-screen items-center justify-center bg-[#0F1013]">
         <div
-          className="h-6 w-6 animate-spin rounded-full border-2 border-amber-400/20 border-t-amber-400"
+          className="h-6 w-6 animate-spin rounded-full border-2 border-p2/20 border-t-p2"
           role="status"
           aria-label="Cargando..."
         />
@@ -437,99 +501,96 @@ function Dashboard() {
   }
 
   return (
-    <main className="h-full w-full overflow-hidden bg-transparent pointer-events-none select-none">
-      <GlassSidebar
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#0F1013] text-[#F1F3F5] select-none">
+      <HubHeader
         activeView={activeView}
         onSelectView={handleSelectView}
-        trashOpen={trashOpen}
+        onOpenSettings={() => setSettingsOpen(true)}
         onOpenTrash={() => setTrashOpen(true)}
-        onCloseTrash={() => setTrashOpen(false)}
-        onAddWidget={handleAddWidget}
-        onAddWidgetDeferred={handleAddWidgetDeferred}
-        onPredictAdd={handlePredictAdd}
-        onRevealWidgets={handleRevealWidgets}
-        tabs={tabs}
-        activeTabId={activeTabId}
-        onSelectTab={handleSelectTab}
-        onCreateTab={handleCreateTab}
+        trashOpen={trashOpen}
       />
+
       {/* Vistas persistentes en el DOM con transición crossfade */}
-      <div className="relative h-full w-full overflow-hidden bg-transparent pointer-events-none select-none">
-        {(['widgets', 'calendar', 'table'] as const).map((viewId) => {
-          const isActive = activeView === viewId;
-          const isExiting = exitingView === viewId;
+      <div className="flex flex-1 flex-col min-w-0 h-full overflow-hidden relative">
+        <div className="relative h-full w-full overflow-hidden">
+          {(['widgets', 'calendar', 'table'] as const).map((viewId) => {
+            const isActive = activeView === viewId;
+            const isExiting = exitingView === viewId;
 
-          if (!isActive && !isExiting) {
+            if (!isActive && !isExiting) {
+              return (
+                <div
+                  key={viewId}
+                  className="absolute inset-0 z-0 overflow-hidden opacity-0 pointer-events-none"
+                  aria-hidden="true"
+                >
+                  {renderViewContent(viewId)}
+                </div>
+              );
+            }
+
+            if (isExiting) {
+              return (
+                <div
+                  key={`exit-${viewId}`}
+                  className="absolute inset-0 pointer-events-none z-0 overflow-hidden animate-view-fade-out"
+                  aria-hidden="true"
+                >
+                  {renderViewContent(viewId)}
+                </div>
+              );
+            }
+
             return (
               <div
-                key={viewId}
-                className="absolute inset-0 z-0 overflow-hidden opacity-0 pointer-events-none"
-                aria-hidden="true"
+                key={`active-${viewId}`}
+                className={`absolute inset-0 z-10 overflow-hidden opacity-100 ${
+                  viewSlideDirection === 'right'
+                    ? 'animate-tab-slide-right'
+                    : viewSlideDirection === 'left'
+                      ? 'animate-tab-slide-left'
+                      : exitingView
+                        ? 'animate-view-fade-in'
+                        : ''
+                }`}
               >
                 {renderViewContent(viewId)}
               </div>
             );
-          }
-
-          if (isExiting) {
-            return (
-              <div
-                key={`exit-${viewId}`}
-                className="absolute inset-0 pointer-events-none z-0 overflow-hidden animate-view-fade-out"
-                aria-hidden="true"
-              >
-                {renderViewContent(viewId)}
-              </div>
-            );
-          }
-
-          return (
-            <div
-              key={`active-${viewId}`}
-              className={`absolute inset-0 z-10 overflow-hidden opacity-100 ${
-                exitingView ? 'animate-view-fade-in' : ''
-              }`}
-            >
-              {renderViewContent(viewId)}
-            </div>
-          );
-        })}
+          })}
+        </div>
       </div>
-      <div
-        className="pointer-events-auto"
-        onMouseEnter={handleInteractiveMouseEnter}
-      >
-        <ViewSidebar
-          open={viewSidebarOpen}
-          activeViewId={activeView}
-          onSelect={handleSelectView}
-          onClose={() => setViewSidebarOpen(false)}
+
+      {trashOpen && (
+        <TrashWindow
+          onClose={() => setTrashOpen(false)}
+          onRestoreComplete={handleRestoreComplete}
         />
-        {trashOpen && (
-          <TrashWindow
-            onClose={() => setTrashOpen(false)}
-            onRestoreComplete={handleRestoreComplete}
-          />
-        )}
-        {taskPickerOpen && (
-          <TaskPickerModal
-            targetWidgetId={taskPickerTargetRef.current}
-            onClose={() => {
-              taskPickerTargetRef.current = undefined;
-              setTaskPickerOpen(false);
-            }}
-          />
-        )}
-      </div>
-    </main>
+      )}
+
+      {taskPickerOpen && (
+        <TaskPickerModal
+          targetWidgetId={taskPickerTargetRef.current}
+          onClose={() => {
+            taskPickerTargetRef.current = undefined;
+            setTaskPickerOpen(false);
+          }}
+        />
+      )}
+
+      <SettingsModal
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
+    </div>
   );
 }
 
-function App() {
+export function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/settings" element={<SettingsView />} />
+        <Route path="/settings" element={<Dashboard initialOpenSettings />} />
         <Route path="/" element={<Dashboard />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

@@ -128,35 +128,16 @@ function TabPill({
       data-tab-id={tab.id}
       role="tab"
       aria-selected={isActive}
-      className={`group relative flex h-9 shrink-0 cursor-pointer select-none items-center px-3 text-sm transition-colors ${
+      className={`group relative flex h-9 shrink-0 cursor-pointer select-none items-center px-3.5 pb-2 text-xs font-medium transition-colors ${
         isEditing ? 'gap-0' : 'gap-1.5'
       } ${
-        isActive ? 'text-white' : 'text-gray-400 hover:text-gray-200'
+        isActive ? 'text-[#F1F3F5] font-semibold' : 'text-[#8E95A2] hover:text-[#F1F3F5]'
       } ${isDragging ? 'cursor-grabbing opacity-80' : ''}`}
       onClick={() => onActivate(tab.id)}
       {...listeners}
     >
-      {/*
-        Indicador de la tab activa: una regla de 2px en p2, no una caja.
-        La tab deja de usar `bg-gray-800`, que es la superficie de widget: con
-        relleno, radio y sombra era indistinguible de un widget. Asi la regla
-        la conecta con el contenido de abajo y con el mismo token que marca
-        "esto esta activo" (Pomodoro corriendo, widget en arrastre).
-      */}
-      {isActive && <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-0.5 bg-p2" />}
       {isEditing ? (
         <div className="relative min-w-0">
-          {/*
-           * El input no crece: es `absolute inset-0`, o sea que lo unico que le
-           * da ancho es ESTE span invisible, que mide el texto con las mismas
-           * reglas que lo va a contener.
-           *
-           * "Las mismas" incluye el `px-2`. Sin esta cosa el span media el texto
-           * pelado y el input se comia 16px de padding: su caja de texto quedaba
-           * mas angosta que el texto que tenia adentro, scrolleaba sola y --con
-           * el cursor al final-- mostraba el FINAL del nombre y tapaba el
-           * principio. Con el padding en los dos lados el input entra exacto.
-           */}
           <span aria-hidden className="invisible whitespace-nowrap px-2 text-sm">
             {draftName || '\u00A0'}
           </span>
@@ -227,12 +208,6 @@ interface TabBarProps {
   onReorderTabs: (orderedIds: string[]) => void;
   editingTabId: string | null;
   onEditingTabIdChange: (id: string | null) => void;
-  /**
-   * Nodo a la izquierda de la primera pestaña: el botón que abre la sidebar de
-   * vistas. Vive acá, dentro del `TabBar`, y no en un contenedor por fuera,
-   * para que quede en la barra sticky y la acompañe al scroll en vez de
-   * quedarse pegado arriba mientras las pestañas se van.
-   */
   leading?: React.ReactNode;
 }
 
@@ -251,6 +226,39 @@ export function TabBar({
 }: TabBarProps) {
   const [draftName, setDraftName] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const tabsContainerRef = useRef<HTMLDivElement>(null);
+  const [indicator, setIndicator] = useState<{ left: number; width: number; ready: boolean }>({
+    left: 0,
+    width: 0,
+    ready: false,
+  });
+
+  const updateIndicator = useCallback(() => {
+    if (!tabsContainerRef.current || !activeTabId) {
+      setIndicator((prev) => (prev.ready ? { ...prev, ready: false } : prev));
+      return;
+    }
+    const activeEl = tabsContainerRef.current.querySelector(
+      `[data-tab-id="${activeTabId}"]`,
+    ) as HTMLElement | null;
+    if (!activeEl) return;
+    const containerRect = tabsContainerRef.current.getBoundingClientRect();
+    const tabRect = activeEl.getBoundingClientRect();
+    setIndicator({
+      left: tabRect.left - containerRect.left,
+      width: tabRect.width,
+      ready: true,
+    });
+  }, [activeTabId]);
+
+  useEffect(() => {
+    updateIndicator();
+    const el = tabsContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(updateIndicator);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [updateIndicator, tabs, draftName]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -319,14 +327,11 @@ export function TabBar({
   );
 
   return (
-    <div
-      className="sticky top-0 z-[var(--z-sticky)] flex items-center gap-1.5 overflow-hidden border-b border-gray-700/60 bg-gray-900/90 px-4 backdrop-blur-sm"
-      style={{ top: 0 }}
-    >
+    <div className="flex items-end gap-1.5 overflow-hidden bg-transparent">
       {leading}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
-          <div className="flex min-w-0 items-center gap-1.5">
+          <div ref={tabsContainerRef} className="relative flex min-w-0 items-end gap-1">
             {tabs.map((tab) => (
               <TabPill
                 key={tab.id}
@@ -343,18 +348,32 @@ export function TabBar({
                 onDelete={onDeleteTab}
               />
             ))}
+
+            {/* Indicador p2 deslizante sobre el divider con rebote sutil */}
+            {indicator.ready && (
+              <span
+                aria-hidden="true"
+                style={{
+                  transform: `translateX(${indicator.left}px)`,
+                  width: `${indicator.width}px`,
+                }}
+                className="absolute -bottom-[1px] left-0 h-[2px] bg-p2 rounded-full shadow-[0_0_8px_rgba(229,168,75,0.45)] z-10 pointer-events-none transition-all duration-300 ease-[cubic-bezier(0.34,1.4,0.64,1)]"
+              />
+            )}
           </div>
         </SortableContext>
       </DndContext>
-      <button
-        type="button"
-        title="New tab"
-        aria-label="New tab"
-        onClick={onCreateTab}
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-gray-400 transition-all duration-150 hover:text-gray-200 active:scale-90"
-      >
-        <FiPlus size={16} />
-      </button>
+      <div className="pb-1.5 shrink-0">
+        <button
+          type="button"
+          title="New tab"
+          aria-label="New tab"
+          onClick={onCreateTab}
+          className="flex h-7 w-7 items-center justify-center rounded-lg border border-dashed border-white/10 text-white/40 hover:text-white/80 hover:border-white/20 hover:bg-white/[0.04] transition-all duration-150 active:scale-90"
+        >
+          <FiPlus size={13} />
+        </button>
+      </div>
     </div>
   );
 }

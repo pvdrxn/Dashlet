@@ -493,7 +493,7 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={habits.map((h) => h.id)} strategy={rectSortingStrategy}>
           <div
-            className="flex-1 content-start items-start gap-x-2 gap-y-0.5 overflow-auto"
+            className="max-h-[400px] flex-1 content-start items-start gap-x-2 gap-y-0.5 overflow-auto"
             style={{
               display: 'grid',
               /*

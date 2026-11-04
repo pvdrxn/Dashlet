@@ -237,7 +237,7 @@
 
 :root,
 html.dark {
-  --dashlet-p2: #d9a441;
+  --dashlet-p2: #E5A84B;
   --dashlet-p2-oscura: #b7831d;
   --dashlet-gray-50: #f6f7f8;
   --dashlet-gray-100: #edeef0;
@@ -246,11 +246,11 @@ html.dark {
   --dashlet-gray-400: #a0a0a0;
   --dashlet-gray-500: #7a7a7a;
   --dashlet-gray-600: #4f4f4f;
-  --dashlet-gray-700: #383838;
-  --dashlet-gray-800: #191919;
-  --dashlet-gray-900: #121212;
-  --dashlet-gray-950: #121212;
-  --dashlet-white: #e8ecf2;
+  --dashlet-gray-700: #262930;
+  --dashlet-gray-800: #16181D;
+  --dashlet-gray-900: #0F1013;
+  --dashlet-gray-950: #0F1013;
+  --dashlet-white: #F1F3F5;
 }
 
 html.light {
@@ -282,7 +282,7 @@ html, body {
 
 #root {
   position: fixed;
-  top: 25px;
+  top: 0;
   left: 0;
   right: 0;
   bottom: 0;
@@ -684,4 +684,59 @@ body {
 .animate-dock-collapse-left {
   animation: dockCollapseLeft 180ms cubic-bezier(0.4, 0, 1, 1) forwards;
   pointer-events: none;
+}
+
+.app-region-drag {
+  -webkit-app-region: drag;
+}
+
+.app-region-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Tab switching slide animation with subtle bounce */
+@keyframes tabSlideFromRight {
+  0% {
+    opacity: 0;
+    transform: translateX(32px) scale(0.99);
+  }
+  70% {
+    opacity: 1;
+    transform: translateX(-3px) scale(1.001);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes tabSlideFromLeft {
+  0% {
+    opacity: 0;
+    transform: translateX(-32px) scale(0.99);
+  }
+  70% {
+    opacity: 1;
+    transform: translateX(3px) scale(1.001);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.animate-tab-slide-right {
+  animation: tabSlideFromRight 280ms cubic-bezier(0.34, 1.25, 0.64, 1) forwards;
+}
+
+.animate-tab-slide-left {
+  animation: tabSlideFromLeft 280ms cubic-bezier(0.34, 1.25, 0.64, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-tab-slide-right,
+  .animate-tab-slide-left {
+    animation: none;
+    transform: none;
+  }
 }

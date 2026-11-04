@@ -479,7 +479,7 @@ export function CalendarWidget({ config, onConfigChange, widgetId }: CalendarWid
             </button>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-0 max-h-[280px] flex-1 overflow-y-auto">
             {status === 'loading' && (
               <div className="flex flex-col gap-1.5 py-1" aria-hidden="true">
                 <div className="skeleton h-4 w-full rounded" />

@@ -1,4 +1,4 @@
-﻿import {
+import {
   Fragment,
   memo,
   useState,
@@ -988,7 +988,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
         onDragEnd={handleDragEnd}
       >
         <SortableContext items={view.sortableIds} strategy={verticalListSortingStrategy}>
-          <div className="-mx-3 flex-1 space-y-0.5 overflow-auto">
+          <div className="-mx-3 max-h-[420px] flex-1 space-y-0.5 overflow-auto">
             {view.activeTree}
             {view.completedCount > 0 && (
               <div className="mt-2 border-t border-gray-700/70 pt-1">

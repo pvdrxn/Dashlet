@@ -1,5 +1,5 @@
 import i18n from '../../i18n';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FiPlus, FiChevronDown, FiTrash2, FiX, FiGrid, FiTable } from 'react-icons/fi';
 import { TableGrid } from './TableGrid';
 import * as tablesApi from '../../api/tables';
@@ -31,24 +31,6 @@ export function TableView({ leading, onClose }: TableViewProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [table, setTable] = useState<TableDto | null>(null);
 
-  const desktopMetrics = useMemo(() => {
-    return window.electronAPI?.getMetricsSync?.() ?? null;
-  }, []);
-
-  const topOffset = desktopMetrics?.topOffset ?? 25;
-  const bottomTaskbarInset = desktopMetrics
-    ? (desktopMetrics.bounds && desktopMetrics.workArea
-        ? desktopMetrics.bounds.height - desktopMetrics.workArea.height
-        : desktopMetrics.taskbarHeight || 48)
-    : 48;
-
-  const handleInteractiveMouseEnter = useCallback(() => {
-    window.electronAPI?.setIgnoreMouseEvents?.(false);
-  }, []);
-
-  const handleInteractiveMouseLeave = useCallback(() => {
-    window.electronAPI?.setIgnoreMouseEvents?.(true, { forward: true });
-  }, []);
   /*
    * La tabla del ultimo render, para leerla desde un camino que se completa
    * DESPUES de un await.
@@ -411,29 +393,11 @@ export function TableView({ leading, onClose }: TableViewProps) {
    */
 
   return (
-    <div
-      className="h-full w-full overflow-hidden bg-transparent pointer-events-none select-none flex flex-col items-center justify-center px-4 text-white"
-      style={{
-        paddingTop: `${topOffset}px`,
-        paddingBottom: `${bottomTaskbarInset + 16}px`,
-      }}
-    >
-      <div
-        className="pointer-events-auto flex flex-col w-full max-w-[1180px] h-[78vh] -translate-y-[2%] rounded-2xl border border-white/10 shadow-2xl min-h-0 overflow-hidden"
-        style={{
-          maxHeight: `calc(100vh - ${bottomTaskbarInset + 20}px - ${topOffset + 10}px)`,
-          background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.02) 100%), rgba(18, 18, 22, 0.55)',
-          backdropFilter: 'blur(28px) saturate(1.8)',
-          WebkitBackdropFilter: 'blur(28px) saturate(1.8)',
-          boxShadow: '0 8px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
-        }}
-        onMouseEnter={handleInteractiveMouseEnter}
-        onMouseLeave={handleInteractiveMouseLeave}
-      >
-        {/*
-         * Barra superior: el boton de vistas, icono, selector de tablas, nombre y acciones.
-         */}
-        <header className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-2.5 bg-white/[0.04]">
+    <div className="h-full w-full overflow-hidden flex flex-col bg-[#0F1013] text-[#F1F3F5]">
+      {/*
+       * Barra superior: selector de tablas, nombre y acciones.
+       */}
+      <header className="flex shrink-0 items-center justify-between border-b border-white/[0.08] px-4 py-2 bg-[#16181D]/60">
           <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
             {leading}
             <div className="flex items-center gap-2 shrink-0">
@@ -578,8 +542,8 @@ export function TableView({ leading, onClose }: TableViewProps) {
           </div>
         )}
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
-          <main className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-gray-800 bg-gray-950/40 p-3">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
+          <main className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-white/[0.08] bg-[#16181D]/80 p-3">
             {loading ? (
               <div className="skeleton h-full w-full rounded-lg" />
             ) : table ? (
@@ -615,6 +579,5 @@ export function TableView({ leading, onClose }: TableViewProps) {
           </main>
         </div>
       </div>
-    </div>
   );
 }

@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FiX } from 'react-icons/fi';
 import { TableGrid } from '../../views/table/TableGrid';
 import * as tablesApi from '../../api/tables';
@@ -441,7 +441,7 @@ export function DataTableWidget({ config, onConfigChange }: DataTableWidgetProps
         * quedaba con el contenido y el widget le pagaba 180px de alto a la
         * nada. Medido: 432px de widget con 175px de tabla.
         */}
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 max-h-[380px] flex-1 flex-col">
         <TableGrid
           columns={table.columns}
           rows={table.rows}

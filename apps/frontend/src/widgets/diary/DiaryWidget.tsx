@@ -141,7 +141,7 @@ export const DiaryWidget = memo(function DiaryWidget({ config, onConfigChange }:
         placeholder="Write something..."
         spellCheck={false}
         aria-label="Diary entry content"
-        className="flex-1 resize-none bg-transparent px-2 py-1 text-sm text-gray-200 outline-none placeholder-white/30 focus-visible:ring-0"
+        className="min-h-[140px] flex-1 resize-y bg-transparent px-2 py-1 text-sm text-gray-200 outline-none placeholder-white/30 focus-visible:ring-0"
       />
     </div>
   );
