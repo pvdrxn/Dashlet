@@ -210,6 +210,10 @@ const resources = {
           label: 'Table View',
           desc: 'Your data tables',
         },
+        stats: {
+          label: 'Insights',
+          desc: 'Productivity and habits overview',
+        },
       },
       settings: {
         title: 'Settings',
@@ -465,6 +469,10 @@ const resources = {
         table: {
           label: 'Vista de Tablas',
           desc: 'Tus tablas de datos',
+        },
+        stats: {
+          label: 'Estadísticas',
+          desc: 'Métricas de productividad y hábitos',
         },
       },
       settings: {

@@ -49,8 +49,9 @@ export const HubHeader = memo(function HubHeader({
       setIndicator((prev) => (prev.ready ? { ...prev, ready: false } : prev));
       return;
     }
+    const targetId = activeView === 'widgets' ? 'dashboard' : activeView;
     const activeEl = containerRef.current.querySelector(
-      `[data-view-id="${activeView}"]`,
+      `[data-view-id="${targetId}"]`,
     ) as HTMLElement | null;
     if (!activeEl) return;
     const containerRect = containerRef.current.getBoundingClientRect();
@@ -86,7 +87,7 @@ export const HubHeader = memo(function HubHeader({
   }, []);
 
   const viewItems = [
-    { id: 'widgets' as const, label: t('sidebar.widgets.label', 'Dashboard (Widgets)'), icon: FiGrid },
+    { id: 'dashboard' as const, label: t('sidebar.dashboard.label', 'Dashboard'), icon: FiGrid },
     { id: 'calendar' as const, label: t('sidebar.calendar.label', 'Calendario'), icon: FiCalendar },
     { id: 'table' as const, label: t('sidebar.table.label', 'Tablas'), icon: FiTable },
   ];
@@ -97,7 +98,7 @@ export const HubHeader = memo(function HubHeader({
       <div className="flex items-center gap-2 app-region-no-drag">
         <div
           className="flex items-center gap-2 cursor-pointer group"
-          onClick={() => onSelectView('widgets')}
+          onClick={() => onSelectView('dashboard')}
           title="Dashlet"
         >
           <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-p2/40 bg-p2/20 text-p2 shadow-[0_0_10px_rgba(229,168,75,0.2)]">
@@ -129,7 +130,9 @@ export const HubHeader = memo(function HubHeader({
 
           {viewItems.map((item) => {
             const Icon = item.icon;
-            const isActive = activeView === item.id && !trashOpen;
+            const isActive =
+              (activeView === item.id || (activeView === 'widgets' && item.id === 'dashboard')) &&
+              !trashOpen;
             return (
               <button
                 key={item.id}

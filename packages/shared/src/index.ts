@@ -772,3 +772,72 @@ export interface ChangeEmailDto {
 export interface ChangeLanguageDto {
   language: SupportedLanguage;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Stats / Productivity Analytics                                            */
+/* -------------------------------------------------------------------------- */
+
+export interface StatsSummaryDto {
+  totalFocusMinutes: number;
+  tasksCompleted: number;
+  tasksPending: number;
+  completionRate: number; // 0-100
+  activeHabitsCount: number;
+  longestStreak: number;
+}
+
+export interface DailyFocusDto {
+  date: string; // YYYY-MM-DD
+  minutes: number;
+}
+
+export interface HabitHeatmapCellDto {
+  date: string; // YYYY-MM-DD
+  count: number;
+  level: 0 | 1 | 2 | 3 | 4;
+}
+
+export interface TagTimeDistributionDto {
+  tagId: string;
+  tagName: string;
+  color: string;
+  totalMinutes: number;
+  percentage: number;
+}
+
+export interface StatsOverviewResponseDto {
+  summary: StatsSummaryDto;
+  dailyFocus: DailyFocusDto[];
+  habitHeatmap: HabitHeatmapCellDto[];
+  tagDistribution: TagTimeDistributionDto[];
+}
+
+/* -------------------------------------------------------------------------- */
+/* Local Notes (.md / .txt)                                                   */
+/* -------------------------------------------------------------------------- */
+
+export interface NoteFileDto {
+  id: string;
+  filename: string;
+  title: string;
+  updatedAt: string;
+  size: number;
+}
+
+export interface NoteContentDto {
+  id: string;
+  filename: string;
+  content: string;
+  updatedAt: string;
+}
+
+export interface CreateNoteDto {
+  title: string;
+  content?: string;
+}
+
+export interface UpdateNoteDto {
+  title?: string;
+  content?: string;
+}
+

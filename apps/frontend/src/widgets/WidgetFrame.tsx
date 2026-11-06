@@ -1,4 +1,4 @@
-import { memo, useState, useCallback, useRef, useEffect, useSyncExternalStore, Suspense } from 'react';
+import { memo, useState, useCallback, useRef, useEffect, useLayoutEffect, useSyncExternalStore, Suspense } from 'react';
 import { FiChevronUp, FiChevronDown, FiX, FiMoreVertical, FiPlay, FiPause, FiColumns } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
 import { widgetBus } from './widget-bus';
@@ -305,6 +305,47 @@ export const WidgetFrame = memo(function WidgetFrame({
   // Suscribe el frame al cambio de idioma: la etiqueta de la accion de la barra se
   // calcula en cada render y sin esto quedaria en el idioma anterior.
   useTranslation();
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const justFocusedRef = useRef(false);
+
+  useLayoutEffect(() => {
+    if (!isEditingTitle && titleInputRef.current) {
+      titleInputRef.current.scrollLeft = 0;
+    }
+  }, [config.title, isEditingTitle]);
+
+  const handleTitleFocus = useCallback((e: React.FocusEvent<HTMLInputElement>) => {
+    setIsEditingTitle(true);
+    justFocusedRef.current = true;
+    const input = e.currentTarget;
+    const len = input.value.length;
+    requestAnimationFrame(() => {
+      try {
+        input.setSelectionRange(len, len);
+        input.scrollLeft = input.scrollWidth;
+      } catch {}
+    });
+  }, []);
+
+  const handleTitleBlur = useCallback((e: React.FocusEvent<HTMLInputElement>) => {
+    setIsEditingTitle(false);
+    justFocusedRef.current = false;
+    e.currentTarget.scrollLeft = 0;
+  }, []);
+
+  const handleTitleClick = useCallback((e: React.MouseEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    if (justFocusedRef.current) {
+      justFocusedRef.current = false;
+      const input = e.currentTarget;
+      const len = input.value.length;
+      try {
+        input.setSelectionRange(len, len);
+        input.scrollLeft = input.scrollWidth;
+      } catch {}
+    }
+  }, []);
   const headerAction = getWidget(type)?.headerAction?.(id, config) ?? null;
   const HOLD_THRESHOLD = 450;
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -511,10 +552,14 @@ export const WidgetFrame = memo(function WidgetFrame({
           <FiMoreVertical size={15} className="text-gray-500" />
         </span>
         <input
+          ref={titleInputRef}
           type="text"
           spellCheck={false}
           value={(config.title as string) ?? ''}
           onChange={(e) => onConfigChange(id, { ...config, title: e.target.value })}
+          onFocus={handleTitleFocus}
+          onBlur={handleTitleBlur}
+          onClick={handleTitleClick}
           onKeyDown={(e) => {
             /*
              * Enter sale del campo. El nombre YA esta guardado --se escribe en
@@ -529,7 +574,6 @@ export const WidgetFrame = memo(function WidgetFrame({
             e.stopPropagation();
             if (e.key === 'Enter') e.currentTarget.blur();
           }}
-          onClick={(e) => e.stopPropagation()}
           onPointerDown={(e) => {
             if (isDragging || isAnyDragging) return;
             handleTitleHoldPointerDown(e);
@@ -549,12 +593,13 @@ export const WidgetFrame = memo(function WidgetFrame({
             e.stopPropagation();
             handleHoldPointerUp(e);
           }}
-          size={collapsed ? Math.max(6, Math.min(20, (((config.title as string) || label).length || 6) + 1)) : undefined}
-          className={`truncate border border-transparent bg-transparent text-sm font-medium tracking-[-0.01em] text-white focus:border-gray-400 focus:bg-gray-700/40 focus:ring-1 focus:ring-gray-500/40 focus:outline-none ${
-            collapsed ? 'w-auto shrink-0' : 'min-w-0 flex-1'
+          size={collapsed ? Math.max(6, (((config.title as string) || label).length || 6) + 1) : undefined}
+          className={`min-w-0 flex-1 border border-transparent bg-transparent text-sm font-medium tracking-[-0.01em] text-white focus:border-gray-400 focus:bg-gray-700/40 focus:ring-1 focus:ring-gray-500/40 focus:outline-none ${
+            isEditingTitle ? 'overflow-x-auto [text-overflow:clip]' : 'truncate'
           } ${
             isDragging || isAnyDragging ? 'pointer-events-none cursor-grabbing select-none' : 'cursor-text'
           }`}
+          title={(config.title as string) || label}
           placeholder={label}
           aria-label="Widget title"
         />

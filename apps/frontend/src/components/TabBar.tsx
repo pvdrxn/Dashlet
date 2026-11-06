@@ -200,7 +200,7 @@ function TabPill({
 interface TabBarProps {
   tabs: TabDto[];
   activeTabId: string | null;
-  widgetDragActive: boolean;
+  widgetDragActive?: boolean;
   onSelectTab: (id: string) => void;
   onCreateTab: () => void;
   onRenameTab: (id: string, name: string) => void;
@@ -214,7 +214,7 @@ interface TabBarProps {
 export function TabBar({
   tabs,
   activeTabId,
-  widgetDragActive,
+  widgetDragActive = false,
   onSelectTab,
   onCreateTab,
   onRenameTab,

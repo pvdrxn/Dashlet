@@ -1,6 +1,7 @@
-import { memo, useState, useEffect, useCallback, useRef } from 'react';
+import { memo, useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { FaHeading } from 'react-icons/fa6';
-import { FiAlignCenter, FiAlignLeft, FiAlignRight, FiBold, FiChevronDown, FiItalic, FiLink, FiList, FiSearch, FiUnderline, FiX } from 'react-icons/fi';
+import { FiAlignCenter, FiAlignLeft, FiAlignRight, FiBold, FiChevronDown, FiItalic, FiLink, FiList, FiSearch, FiUnderline, FiX, FiMoreHorizontal } from 'react-icons/fi';
 
 interface NotesConfig {
   title?: string;
@@ -43,14 +44,11 @@ function sanitizeContent(html: string): string {
 export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }: NotesWidgetProps) {
   const { title = 'Notes', content = '' } = config as NotesConfig;
   const editorRef = useRef<HTMLDivElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editingRef = useRef(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [formats, setFormats] = useState({ bold: false, italic: false, underline: false });
   const [linkMenu, setLinkMenu] = useState<{ top: number; left: number } | null>(null);
   const [linkUrl, setLinkUrl] = useState('');
-  const [listMenuOpen, setListMenuOpen] = useState(false);
   const [align, setAlign] = useState(0);
   const [activeHeading, setActiveHeading] = useState('p');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -60,6 +58,138 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
   const contentRef = useRef('');
   const highlightOverlayRef = useRef<HTMLDivElement>(null);
   const editorContainerRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const [toolbarWidth, setToolbarWidth] = useState(300);
+  const hasOverflow = toolbarWidth < 252;
+
+  // Estados y refs para menús desplegables fuera del widget
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [headingMenuPos, setHeadingMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const headingBtnRef = useRef<HTMLButtonElement>(null);
+  const headingDropdownRef = useRef<HTMLDivElement>(null);
+
+  const [listMenuOpen, setListMenuOpen] = useState(false);
+  const [listMenuPos, setListMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const listBtnRef = useRef<HTMLButtonElement>(null);
+  const listDropdownRef = useRef<HTMLDivElement>(null);
+
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [moreMenuPos, setMoreMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const moreBtnRef = useRef<HTMLButtonElement>(null);
+  const moreDropdownRef = useRef<HTMLDivElement>(null);
+
+  const toggleHeadingMenu = useCallback(() => {
+    if (menuOpen) {
+      setMenuOpen(false);
+      setHeadingMenuPos(null);
+    } else {
+      setListMenuOpen(false);
+      setListMenuPos(null);
+      setMoreMenuOpen(false);
+      setMoreMenuPos(null);
+      const rect = headingBtnRef.current?.getBoundingClientRect();
+      if (rect) {
+        const menuWidth = 144;
+        let left = rect.left;
+        if (left + menuWidth > window.innerWidth - 8) {
+          left = Math.max(8, window.innerWidth - menuWidth - 8);
+        }
+        setHeadingMenuPos({ top: rect.bottom + 4, left });
+        setMenuOpen(true);
+      }
+    }
+  }, [menuOpen]);
+
+  const toggleListMenu = useCallback(() => {
+    if (listMenuOpen) {
+      setListMenuOpen(false);
+      setListMenuPos(null);
+    } else {
+      setMenuOpen(false);
+      setHeadingMenuPos(null);
+      setMoreMenuOpen(false);
+      setMoreMenuPos(null);
+      const rect = listBtnRef.current?.getBoundingClientRect();
+      if (rect) {
+        const menuWidth = 176;
+        let left = rect.left;
+        if (left + menuWidth > window.innerWidth - 8) {
+          left = Math.max(8, window.innerWidth - menuWidth - 8);
+        }
+        setListMenuPos({ top: rect.bottom + 4, left });
+        setListMenuOpen(true);
+      }
+    }
+  }, [listMenuOpen]);
+
+  const toggleMoreMenu = useCallback(() => {
+    if (moreMenuOpen) {
+      setMoreMenuOpen(false);
+      setMoreMenuPos(null);
+    } else {
+      setMenuOpen(false);
+      setHeadingMenuPos(null);
+      setListMenuOpen(false);
+      setListMenuPos(null);
+      const rect = moreBtnRef.current?.getBoundingClientRect();
+      if (rect) {
+        const menuWidth = 180;
+        let left = rect.left;
+        if (left + menuWidth > window.innerWidth - 8) {
+          left = Math.max(8, window.innerWidth - menuWidth - 8);
+        }
+        setMoreMenuPos({ top: rect.bottom + 4, left });
+        setMoreMenuOpen(true);
+      }
+    }
+  }, [moreMenuOpen]);
+
+  useLayoutEffect(() => {
+    const el = toolbarRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setToolbarWidth(entry.contentRect.width);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!menuOpen && !listMenuOpen && !moreMenuOpen) return;
+    const onClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (menuOpen && !headingBtnRef.current?.contains(target) && !headingDropdownRef.current?.contains(target)) {
+        setMenuOpen(false);
+        setHeadingMenuPos(null);
+      }
+      if (listMenuOpen && !listBtnRef.current?.contains(target) && !listDropdownRef.current?.contains(target)) {
+        setListMenuOpen(false);
+        setListMenuPos(null);
+      }
+      if (moreMenuOpen && !moreBtnRef.current?.contains(target) && !moreDropdownRef.current?.contains(target)) {
+        setMoreMenuOpen(false);
+        setMoreMenuPos(null);
+      }
+    };
+    const onScroll = () => {
+      setMenuOpen(false);
+      setHeadingMenuPos(null);
+      setListMenuOpen(false);
+      setListMenuPos(null);
+      setMoreMenuOpen(false);
+      setMoreMenuPos(null);
+    };
+    document.addEventListener('mousedown', onClick);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => {
+      document.removeEventListener('mousedown', onClick);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [menuOpen, listMenuOpen, moreMenuOpen]);
 
   const scheduleSave = useCallback(
     (newContent: string) => {
@@ -75,18 +205,21 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
     [onConfigChange, title],
   );
 
+  
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, []);
 
+  
   useEffect(() => {
     if (searchOpen && searchInputRef.current) {
       searchInputRef.current.focus();
     }
   }, [searchOpen]);
 
+  
   useEffect(() => {
     if (editingRef.current || linkMenu || searchOpen) return;
     const editor = editorRef.current;
@@ -103,6 +236,7 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
     }
   }, [content, linkMenu, title, onConfigChange, searchOpen]);
 
+  
   useEffect(() => {
     const overlay = highlightOverlayRef.current;
     const editor = editorRef.current;
@@ -389,35 +523,15 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
     [scheduleSave, isCaretAtBlockStart],
   );
 
+  
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, []);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, [menuOpen]);
-
-  const listMenuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!listMenuOpen) return;
-    const onClick = (e: MouseEvent) => {
-      if (listMenuRef.current && !listMenuRef.current.contains(e.target as Node)) {
-        setListMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, [listMenuOpen]);
+  
+  
 
   const applyList = useCallback(
     (type: 'ul' | 'dash' | 'ol') => {
@@ -494,6 +608,7 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
     [scheduleSave],
   );
 
+  
   useEffect(() => {
     const updateFormats = () => {
       if (!editingRef.current) return;
@@ -514,6 +629,7 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
     return () => document.removeEventListener('selectionchange', updateFormats);
   }, []);
 
+  
   useEffect(() => {
     const updateActiveHeading = () => {
       if (!editingRef.current) return;
@@ -573,6 +689,7 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
     scheduleSave(editor.innerHTML);
   }, [linkUrl, scheduleSave]);
 
+  
   useEffect(() => {
     if (!linkMenu) return;
     const onClick = (e: MouseEvent) => {
@@ -586,67 +703,72 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
   }, [linkMenu, applyLink]);
 
   return (
-    <div className="relative flex h-full flex-col gap-1">
-      <div className="flex shrink-0 items-center justify-start">
-          <div ref={menuRef} className="relative">
+    <div className="relative flex h-full flex-col gap-1 w-full max-w-full min-w-0">
+      <div ref={toolbarRef} className="relative flex shrink-0 items-center justify-start flex-nowrap">
+        {/* Encabezados */}
+        <div className="relative shrink-0">
+          <button
+            ref={headingBtnRef}
+            type="button"
+            onClick={toggleHeadingMenu}
+            className={`flex items-center gap-1 rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-gray-200 cursor-pointer ${
+              menuOpen ? 'bg-gray-700 text-gray-200' : ''
+            }`}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            aria-label="Heading options"
+          >
+            <FaHeading size={14} />
+            <FiChevronDown size={12} />
+          </button>
+        </div>
+
+        {/* Formatos inline (Bold, Italic, Underline, Link) */}
+        <div className="ml-1 flex shrink-0 items-center gap-0.5 border-l border-gray-700 pl-1">
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => execFormat('bold')}
+            className={`rounded p-1 hover:bg-gray-700 ${
+              formats.bold ? 'bg-gray-700 text-gray-100' : 'text-gray-400 hover:text-gray-200'
+            }`}
+            aria-label="Bold"
+            aria-pressed={formats.bold}
+          >
+            <FiBold size={14} />
+          </button>
+
+          {toolbarWidth >= 170 && (
             <button
               type="button"
-              onClick={() => setMenuOpen((v) => !v)}
-              className={`flex items-center gap-1 rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-gray-200 ${
-                menuOpen ? 'bg-gray-700 text-gray-200' : ''
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => execFormat('italic')}
+              className={`rounded p-1 hover:bg-gray-700 ${
+                formats.italic ? 'bg-gray-700 text-gray-100' : 'text-gray-400 hover:text-gray-200'
               }`}
-              aria-haspopup="menu"
-              aria-expanded={menuOpen}
-              aria-label="Heading options"
+              aria-label="Italic"
+              aria-pressed={formats.italic}
             >
-              <FaHeading size={14} />
-              <FiChevronDown size={12} />
+              <FiItalic size={14} />
             </button>
-            {menuOpen && (
-              <div
-                role="menu"
-                className="absolute left-0 top-full z-10 mt-1 w-36 overflow-hidden rounded-lg border border-gray-600 bg-gray-800 shadow-xl"
-              >
-                {HEADINGS.map((h) => (
-                  <button
-                    key={h.tag}
-                    type="button"
-                    role="menuitem"
-                    onClick={() => applyHeading(h.tag)}
-                    className={`block w-full px-3 py-1.5 text-left hover:bg-gray-700 ${
-                      activeHeading === h.tag ? 'bg-gray-700 text-white' : 'text-gray-200'
-                    } ${
-                      h.tag === 'h1' ? 'text-2xl' : h.tag === 'h2' ? 'text-xl' : h.tag === 'h3' ? 'text-lg' : 'text-sm'
-                    }`}
-                  >
-                    {h.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="ml-1 flex items-center gap-0.5 border-l border-gray-700 pl-1">
-            {(
-              [
-                { command: 'bold', active: formats.bold, icon: <FiBold size={14} />, label: 'Bold' },
-                { command: 'italic', active: formats.italic, icon: <FiItalic size={14} />, label: 'Italic' },
-                { command: 'underline', active: formats.underline, icon: <FiUnderline size={14} />, label: 'Underline' },
-              ] as const
-            ).map(({ command, active, icon, label }) => (
-              <button
-                key={command}
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => execFormat(command)}
-                className={`rounded p-1 hover:bg-gray-700 ${
-                  active ? 'bg-gray-700 text-gray-100' : 'text-gray-400 hover:text-gray-200'
-                }`}
-                aria-label={label}
-                aria-pressed={active}
-              >
-                {icon}
-              </button>
-            ))}
+          )}
+
+          {toolbarWidth >= 195 && (
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => execFormat('underline')}
+              className={`rounded p-1 hover:bg-gray-700 ${
+                formats.underline ? 'bg-gray-700 text-gray-100' : 'text-gray-400 hover:text-gray-200'
+              }`}
+              aria-label="Underline"
+              aria-pressed={formats.underline}
+            >
+              <FiUnderline size={14} />
+            </button>
+          )}
+
+          {toolbarWidth >= 252 && (
             <button
               type="button"
               onMouseDown={(e) => e.preventDefault()}
@@ -656,12 +778,18 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
             >
               <FiLink size={14} />
             </button>
-            <div className="ml-1 flex items-center gap-0.5 border-l border-gray-700 pl-1">
-            <div ref={listMenuRef} className="relative">
+          )}
+        </div>
+
+        {/* Listas */}
+        {toolbarWidth >= 145 && (
+          <div className="ml-1 flex shrink-0 items-center gap-0.5 border-l border-gray-700 pl-1">
+            <div className="relative">
               <button
+                ref={listBtnRef}
                 type="button"
-                onClick={() => setListMenuOpen((v) => !v)}
-                className={`flex items-center gap-1 rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-gray-200 ${
+                onClick={toggleListMenu}
+                className={`flex items-center gap-1 rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-gray-200 cursor-pointer ${
                   listMenuOpen ? 'bg-gray-700 text-gray-200' : ''
                 }`}
                 aria-haspopup="menu"
@@ -671,28 +799,13 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
                 <FiList size={14} />
                 <FiChevronDown size={12} />
               </button>
-              {listMenuOpen && (
-                <div
-                  role="menu"
-                  className="absolute left-0 top-full z-10 mt-1 w-44 overflow-hidden rounded-lg border border-gray-600 bg-gray-800 shadow-xl"
-                >
-                  {LIST_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.type}
-                      type="button"
-                      role="menuitem"
-                      onClick={() => applyList(opt.type)}
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-gray-200 hover:bg-gray-700"
-                    >
-                      <span className="w-4 text-left text-gray-400">{opt.preview}</span>
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
           </div>
-          <div className="ml-1 flex items-center gap-0.5 border-l border-gray-700 pl-1">
+        )}
+
+        {/* Alineación */}
+        {toolbarWidth >= 252 && (
+          <div className="ml-1 flex shrink-0 items-center gap-0.5 border-l border-gray-700 pl-1">
             <button
               type="button"
               onMouseDown={(e) => e.preventDefault()}
@@ -712,7 +825,11 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
               )}
             </button>
           </div>
-          <div className="ml-1 flex items-center gap-0.5 border-l border-gray-700 pl-1">
+        )}
+
+        {/* Buscador en barra cuando hay suficiente espacio */}
+        {toolbarWidth >= 225 && (
+          <div className="ml-1 flex shrink-0 items-center border-l border-gray-700 pl-1">
             <button
               type="button"
               onMouseDown={(e) => e.preventDefault()}
@@ -729,8 +846,28 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
               <FiSearch size={14} />
             </button>
           </div>
-        </div>
+        )}
+
+        {/* Menú 'Más opciones' cuando la barra no puede mostrar todo */}
+        {hasOverflow && (
+          <div className="relative ml-1 flex shrink-0 items-center border-l border-gray-700 pl-1">
+            <button
+              ref={moreBtnRef}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={toggleMoreMenu}
+              className={`rounded p-1 hover:bg-gray-700 cursor-pointer ${
+                moreMenuOpen ? 'bg-gray-700 text-gray-200' : 'text-gray-400 hover:text-gray-200'
+              }`}
+              aria-label="Más opciones"
+              title="Más opciones"
+            >
+              <FiMoreHorizontal size={14} />
+            </button>
+          </div>
+        )}
       </div>
+
       {searchOpen && (
         <div className="flex shrink-0 items-center gap-1 rounded border border-gray-600 bg-gray-800 px-2 py-1">
           <FiSearch size={12} className="shrink-0 text-gray-400" />
@@ -747,12 +884,12 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
               }
             }}
             placeholder="Search..."
-            className="flex-1 rounded bg-transparent text-xs text-gray-200 focus:outline-none focus-visible:bg-white/5 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-500/40 placeholder-gray-500"
+            className="min-w-0 flex-1 rounded bg-transparent text-xs text-gray-200 focus:outline-none focus-visible:bg-white/5 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-500/40 placeholder-gray-500"
             aria-label="Search in note"
           />
           {searchQuery && (
-            <span className="shrink-0 text-xs text-gray-400">
-              {searchCount > 0 ? `${searchCount} found` : 'No matches'}
+            <span className="shrink-0 text-[11px] text-gray-400 whitespace-nowrap">
+              {searchCount > 0 ? (toolbarWidth < 220 ? `${searchCount}` : `${searchCount} found`) : (toolbarWidth < 220 ? '0' : 'No matches')}
             </span>
           )}
           <button
@@ -768,17 +905,12 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
           </button>
         </div>
       )}
-      {/*
-         * Sin borde ni fondo propios: el marco del widget ya aporta los dos
-         * (`border` + `bg-gray-800/90`). Tenerlos tambien adentro dibujaba un
-         * cuadro dentro de otro cuadro, del mismo gris, que no se notaba hasta
-         * que ibas a escribir.
-         */}
-      <div ref={editorContainerRef} className="relative flex-1 min-h-[140px] max-h-[380px] overflow-auto">
+
+      <div ref={editorContainerRef} className="relative flex-1 min-h-[140px] max-h-[380px] w-full max-w-full min-w-0 overflow-y-auto overflow-x-hidden">
         {searchOpen && searchQuery.trim() && (
           <div
             ref={highlightOverlayRef}
-            className="pointer-events-none absolute inset-0 p-2 text-sm leading-[1.4] text-transparent whitespace-pre-wrap break-words [font-family:inherit] [&_mark]:visible [&_mark]:bg-p2/30 [&_mark]:text-white [&_mark]:rounded"
+            className="pointer-events-none absolute inset-0 p-2 text-sm leading-[1.4] text-transparent whitespace-pre-wrap break-words [overflow-wrap:anywhere] [word-break:break-word] w-full max-w-full [font-family:inherit] [&_mark]:visible [&_mark]:bg-p2/30 [&_mark]:text-white [&_mark]:rounded"
             aria-hidden="true"
           />
         )}
@@ -804,7 +936,7 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
           }}
           spellCheck={false}
           data-placeholder="Write your notes here..."
-          className="relative z-[1] min-h-[140px] p-2 text-sm leading-[1.4] text-gray-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-500/40 [font-family:inherit] [&_h1]:my-1 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-gray-100 [&_h2]:my-1 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-gray-100 [&_h3]:my-0.5 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-gray-100 [&_a]:text-gray-100 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul.dash-list]:list-none [&_ul.dash-list_li]:relative [&_ul.dash-list_li]:pl-4 [&_ul.dash-list_li:before]:absolute [&_ul.dash-list_li:before]:left-0 [&_ul.dash-list_li:before]:content-['-'] [&:empty:before]:pointer-events-none [&:empty:before]:absolute [&:empty:before]:content-[attr(data-placeholder)] [&:empty:before]:text-gray-500"
+          className="relative z-[1] min-h-[140px] w-full max-w-full p-2 text-sm leading-[1.4] text-gray-200 whitespace-pre-wrap break-words [overflow-wrap:anywhere] [word-break:break-word] focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-500/40 [font-family:inherit] [&_h1]:my-1 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-gray-100 [&_h2]:my-1 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-gray-100 [&_h3]:my-0.5 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-gray-100 [&_a]:text-gray-100 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul.dash-list]:list-none [&_ul.dash-list_li]:relative [&_ul.dash-list_li]:pl-4 [&_ul.dash-list_li:before]:absolute [&_ul.dash-list_li:before]:left-0 [&_ul.dash-list_li:before]:content-['-'] [&:empty:before]:pointer-events-none [&:empty:before]:absolute [&:empty:before]:content-[attr(data-placeholder)] [&:empty:before]:text-gray-500"
           aria-label="Note content"
         />
       </div>
@@ -833,6 +965,226 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
             aria-label="Link URL"
           />
         </div>
+      )}
+
+      {/* Portales de menús desplegables fuera del widget para no ser cortados por overflow */}
+      {menuOpen && headingMenuPos && createPortal(
+        <div
+          ref={headingDropdownRef}
+          role="menu"
+          style={{ top: headingMenuPos.top, left: headingMenuPos.left }}
+          className="fixed z-[var(--z-menu,2000)] w-36 overflow-hidden rounded-lg border border-gray-600 bg-gray-800 shadow-2xl"
+        >
+          {HEADINGS.map((h) => (
+            <button
+              key={h.tag}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                applyHeading(h.tag);
+                setMenuOpen(false);
+                setHeadingMenuPos(null);
+              }}
+              className={`block w-full px-3 py-1.5 text-left hover:bg-gray-700 cursor-pointer ${
+                activeHeading === h.tag ? 'bg-gray-700 text-white' : 'text-gray-200'
+              } ${
+                h.tag === 'h1' ? 'text-2xl' : h.tag === 'h2' ? 'text-xl' : h.tag === 'h3' ? 'text-lg' : 'text-sm'
+              }`}
+            >
+              {h.label}
+            </button>
+          ))}
+        </div>,
+        document.body,
+      )}
+
+      {listMenuOpen && listMenuPos && createPortal(
+        <div
+          ref={listDropdownRef}
+          role="menu"
+          style={{ top: listMenuPos.top, left: listMenuPos.left }}
+          className="fixed z-[var(--z-menu,2000)] w-44 overflow-hidden rounded-lg border border-gray-600 bg-gray-800 shadow-2xl"
+        >
+          {LIST_OPTIONS.map((opt) => (
+            <button
+              key={opt.type}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                applyList(opt.type);
+                setListMenuOpen(false);
+                setListMenuPos(null);
+              }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-gray-200 hover:bg-gray-700 cursor-pointer"
+            >
+              <span className="w-4 text-left text-gray-400">{opt.preview}</span>
+              {opt.label}
+            </button>
+          ))}
+        </div>,
+        document.body,
+      )}
+
+      {hasOverflow && moreMenuOpen && moreMenuPos && createPortal(
+        <div
+          ref={moreDropdownRef}
+          role="menu"
+          style={{ top: moreMenuPos.top, left: moreMenuPos.left }}
+          className="fixed z-[var(--z-menu,2000)] min-w-[170px] overflow-hidden rounded-lg border border-gray-600 bg-gray-800 p-1.5 shadow-2xl text-xs"
+        >
+          {/* Formatos inline que no cupieron */}
+          {(toolbarWidth < 170 || toolbarWidth < 195 || toolbarWidth < 252) && (
+            <div className="flex items-center gap-1 pb-1 mb-1 border-b border-gray-700/60">
+              {toolbarWidth < 170 && (
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    execFormat('italic');
+                    setMoreMenuOpen(false);
+                    setMoreMenuPos(null);
+                  }}
+                  className={`flex-1 flex items-center justify-center gap-1 rounded py-1 px-1.5 hover:bg-gray-700 cursor-pointer ${
+                    formats.italic ? 'bg-gray-700 text-gray-100' : 'text-gray-400 hover:text-gray-200'
+                  }`}
+                  title="Cursiva"
+                >
+                  <FiItalic size={13} />
+                  <span>Cursiva</span>
+                </button>
+              )}
+              {toolbarWidth < 195 && (
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    execFormat('underline');
+                    setMoreMenuOpen(false);
+                    setMoreMenuPos(null);
+                  }}
+                  className={`flex-1 flex items-center justify-center gap-1 rounded py-1 px-1.5 hover:bg-gray-700 cursor-pointer ${
+                    formats.underline ? 'bg-gray-700 text-gray-100' : 'text-gray-400 hover:text-gray-200'
+                  }`}
+                  title="Subrayado"
+                >
+                  <FiUnderline size={13} />
+                  <span>Subrayado</span>
+                </button>
+              )}
+              {toolbarWidth < 252 && (
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setMoreMenuOpen(false);
+                    setMoreMenuPos(null);
+                    openLinkMenu();
+                  }}
+                  className="flex-1 flex items-center justify-center gap-1 rounded py-1 px-1.5 text-gray-400 hover:bg-gray-700 hover:text-gray-200 cursor-pointer"
+                  title="Insertar enlace"
+                >
+                  <FiLink size={13} />
+                  <span>Enlace</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Alineación si no cupo */}
+          {toolbarWidth < 252 && (
+            <div className="flex items-center justify-between px-2 py-1 text-gray-300">
+              <span className="text-[11px] text-gray-400">Alineación</span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setAlign(0);
+                    setMoreMenuOpen(false);
+                    setMoreMenuPos(null);
+                  }}
+                  className={`p-1 rounded cursor-pointer ${align === 0 ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'}`}
+                  title="Izquierda"
+                >
+                  <FiAlignLeft size={13} />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setAlign(1);
+                    setMoreMenuOpen(false);
+                    setMoreMenuPos(null);
+                  }}
+                  className={`p-1 rounded cursor-pointer ${align === 1 ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'}`}
+                  title="Centro"
+                >
+                  <FiAlignCenter size={13} />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setAlign(2);
+                    setMoreMenuOpen(false);
+                    setMoreMenuPos(null);
+                  }}
+                  className={`p-1 rounded cursor-pointer ${align === 2 ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'}`}
+                  title="Derecha"
+                >
+                  <FiAlignRight size={13} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Listas si no cupieron */}
+          {toolbarWidth < 145 && (
+            <div className="pt-1 mt-1 border-t border-gray-700/60">
+              <div className="px-2 py-0.5 text-[11px] text-gray-400">Listas</div>
+              {LIST_OPTIONS.map((opt) => (
+                <button
+                  key={opt.type}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    applyList(opt.type);
+                    setMoreMenuOpen(false);
+                    setMoreMenuPos(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-2 py-1 text-left text-xs text-gray-200 hover:bg-gray-700 rounded cursor-pointer"
+                >
+                  <span className="w-4 text-left text-gray-400">{opt.preview}</span>
+                  <span>{opt.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Buscador dentro del menú si no cupo en la barra */}
+          {toolbarWidth < 225 && (
+            <div className="pt-1 mt-1 border-t border-gray-700/60">
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setMoreMenuOpen(false);
+                  setMoreMenuPos(null);
+                  setSearchOpen((v) => !v);
+                  if (searchOpen) setSearchQuery('');
+                }}
+                className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs rounded hover:bg-gray-700 cursor-pointer ${
+                  searchOpen ? 'bg-gray-700 text-gray-100 font-medium' : 'text-gray-200'
+                }`}
+                aria-label="Buscar en nota"
+              >
+                <FiSearch size={13} className="text-gray-400" />
+                <span>Buscar en nota</span>
+              </button>
+            </div>
+          )}
+        </div>,
+        document.body,
       )}
     </div>
   );
