@@ -23,6 +23,32 @@ export interface InsightsHeaderProps {
 
 type TimeRangeKey = '30d' | '90d' | 'year';
 
+export function getHabitLevel(count: number, target: number): 0 | 1 | 2 | 3 | 4 {
+  if (count <= 0) return 0;
+  if (count >= target) return 4;
+  if (target <= 1) return 4;
+
+  if (target === 2) {
+    return 2;
+  }
+
+  if (target === 3) {
+    return count === 1 ? 2 : 3;
+  }
+
+  if (target === 4) {
+    if (count === 1) return 1;
+    if (count === 2) return 2;
+    return 3;
+  }
+
+  // target >= 5: rangos de completación
+  const s = Math.max(1, Math.floor(target / 4));
+  if (count <= s) return 1;
+  if (count <= s * 2) return 2;
+  return 3;
+}
+
 const PAD = (n: number) => String(n).padStart(2, '0');
 
 function formatYMD(d: Date): string {
@@ -70,6 +96,13 @@ export function InsightsHeader({
   const [range, setRange] = useState<TimeRangeKey>('30d');
   const [loading, setLoading] = useState<boolean>(true);
   const [data, setData] = useState<StatsOverviewResponseDto | null>(null);
+
+  const [selectedHabitId, setSelectedHabitId] = useState<string>('all');
+  const habits = data?.habits ?? [];
+  const selectedHabit = useMemo(
+    () => habits.find((h) => h.id === selectedHabitId) || null,
+    [habits, selectedHabitId],
+  );
 
   const [hoveredCell, setHoveredCell] = useState<{
     text: string;
@@ -126,15 +159,19 @@ export function InsightsHeader({
     return tagDistribution.reduce((acc, curr) => acc + curr.totalMinutes, 0);
   }, [tagDistribution]);
 
-  // Cuadrícula para el Heatmap de Hábitos
+  // Cuadrícula para el Heatmap de Hábitos (siempre cubre todo el año actual)
   const { weeks, monthLabels } = useMemo(() => {
-    if (!habitHeatmap.length) return { weeks: [], monthLabels: [] };
+    const today = new Date();
+    const todayStr = formatYMD(today);
+    const currentYear = today.getFullYear();
+    const yearStartStr = `${currentYear}-01-01`;
+    const yearEndStr = `${currentYear}-12-31`;
 
     const cellMap = new Map<string, HabitHeatmapCellDto>();
     habitHeatmap.forEach((c) => cellMap.set(c.date, c));
 
-    const startDate = new Date(`${from}T00:00:00`);
-    const endDate = new Date(`${to}T00:00:00`);
+    const startDate = new Date(`${yearStartStr}T00:00:00`);
+    const endDate = new Date(`${yearEndStr}T00:00:00`);
 
     const startDayOfWeek = (startDate.getDay() + 6) % 7;
     const gridStart = new Date(startDate);
@@ -151,20 +188,43 @@ export function InsightsHeader({
       level: 0 | 1 | 2 | 3 | 4;
       count: number;
       inRange: boolean;
+      isToday: boolean;
       month: number;
     }[] = [];
 
     const cursor = new Date(gridStart);
     while (cursor <= gridEnd) {
       const dateStr = formatYMD(cursor);
-      const cell = cellMap.get(dateStr);
-      const inRange = dateStr >= from && dateStr <= to;
+      const inRange = dateStr >= yearStartStr && dateStr <= yearEndStr;
+      const isToday = dateStr === todayStr;
+
+      let count = 0;
+      let level: 0 | 1 | 2 | 3 | 4 = 0;
+
+      if (selectedHabit) {
+        const target = selectedHabit.targetValue || 1;
+        if (selectedHabit.mode === 'quantitative') {
+          count = selectedHabit.completions?.[dateStr] ?? 0;
+        } else {
+          count =
+            selectedHabit.completedDates?.includes(dateStr) ||
+            (selectedHabit.completions?.[dateStr] ?? 0) > 0
+              ? 1
+              : 0;
+        }
+        level = getHabitLevel(count, target);
+      } else {
+        const cell = cellMap.get(dateStr);
+        count = cell ? cell.count : 0;
+        level = cell ? cell.level : 0;
+      }
 
       allDays.push({
         date: dateStr,
-        level: cell ? cell.level : 0,
-        count: cell ? cell.count : 0,
+        level,
+        count,
         inRange,
+        isToday,
         month: cursor.getMonth(),
       });
       cursor.setDate(cursor.getDate() + 1);
@@ -190,7 +250,64 @@ export function InsightsHeader({
     });
 
     return { weeks: weekCols, monthLabels: labels };
-  }, [from, to, habitHeatmap]);
+  }, [habitHeatmap, selectedHabit]);
+
+  const legendTitles = useMemo(() => {
+    if (!selectedHabit) {
+      return {
+        l0: 'Nivel 0: Sin actividad',
+        l1: 'Nivel 1: 1 hábito',
+        l2: 'Nivel 2: 2 hábitos',
+        l3: 'Nivel 3: 3 hábitos',
+        l4: 'Nivel 4: 4+ hábitos (Máxima consistencia)',
+      };
+    }
+    const t = selectedHabit.targetValue || 1;
+    if (t === 1) {
+      return {
+        l0: '0 completados',
+        l1: '—',
+        l2: '—',
+        l3: '—',
+        l4: '1 completado (Meta alcanzada)',
+      };
+    }
+    if (t === 2) {
+      return {
+        l0: '0 completados',
+        l1: '—',
+        l2: '1 completado',
+        l3: '—',
+        l4: '2 completados (Meta alcanzada)',
+      };
+    }
+    if (t === 3) {
+      return {
+        l0: '0 completados',
+        l1: '—',
+        l2: '1 completado',
+        l3: '2 completados',
+        l4: '3 completados (Meta alcanzada)',
+      };
+    }
+    if (t === 4) {
+      return {
+        l0: '0 completados',
+        l1: '1 completado',
+        l2: '2 completados',
+        l3: '3 completados',
+        l4: '4 completados (Meta alcanzada)',
+      };
+    }
+    const s = Math.max(1, Math.floor(t / 4));
+    return {
+      l0: '0 completados',
+      l1: `1-${s} completados`,
+      l2: `${s + 1}-${s * 2} completados`,
+      l3: `${s * 2 + 1}-${t - 1} completados`,
+      l4: `${t}+ completados (Meta alcanzada)`,
+    };
+  }, [selectedHabit]);
 
   // Escala para el gráfico de barras SVG
   const chartMetrics = useMemo(() => {
@@ -504,17 +621,31 @@ export function InsightsHeader({
 
             {/* Matriz / Heatmap de Hábitos (7 columnas) */}
             <div className="lg:col-span-7 rounded-lg border border-[#262930] bg-[#16181D] p-4 flex flex-col justify-between">
-              <div className="flex items-center justify-between mb-3">
-                <div>
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <div className="flex flex-wrap items-center gap-2.5">
                   <div className="flex items-center gap-2">
                     <h3 className="text-xs font-semibold text-white">Matriz de Hábitos</h3>
                     <span className="rounded bg-p2/15 text-p2 px-1.5 py-0.2 text-[9px] font-mono">
                       Consistencia
                     </span>
                   </div>
-                  <p className="text-[10px] text-[#868e9a]">
-                    Hábitos completados con rampa de color ámbar
-                  </p>
+
+                  {/* Selector para filtrar por hábito */}
+                  {habits.length > 0 && (
+                    <select
+                      value={selectedHabitId}
+                      onChange={(e) => setSelectedHabitId(e.target.value)}
+                      className="rounded border border-[#262930] bg-[#0F1013] px-2 py-0.5 text-[11px] font-medium text-white/90 hover:border-white/20 focus:border-p2/60 focus:outline-none transition-colors cursor-pointer"
+                      title="Filtrar por hábito específico"
+                    >
+                      <option value="all">Todos los hábitos</option>
+                      {habits.map((h) => (
+                        <option key={h.id} value={h.id}>
+                          {h.name} ({h.targetValue > 1 ? `${h.targetValue}/día` : '1/día'})
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 {/* Leyenda */}
@@ -522,23 +653,23 @@ export function InsightsHeader({
                   <span>-</span>
                   <div className="flex items-center gap-1">
                     <div
-                      title="Nivel 0: Sin actividad"
+                      title={legendTitles.l0}
                       className="h-2.5 w-2.5 rounded-[2px] bg-gray-800/60 border border-gray-700/40"
                     />
                     <div
-                      title="Nivel 1"
+                      title={legendTitles.l1}
                       className="h-2.5 w-2.5 rounded-[2px] bg-amber-500/25 border border-amber-500/30"
                     />
                     <div
-                      title="Nivel 2"
+                      title={legendTitles.l2}
                       className="h-2.5 w-2.5 rounded-[2px] bg-amber-500/50 border border-amber-500/50"
                     />
                     <div
-                      title="Nivel 3"
+                      title={legendTitles.l3}
                       className="h-2.5 w-2.5 rounded-[2px] bg-amber-500/75 border border-amber-500/70"
                     />
                     <div
-                      title="Nivel 4: Máxima consistencia"
+                      title={legendTitles.l4}
                       className="h-2.5 w-2.5 rounded-[2px] bg-[#d9a441] border border-[#d9a441] shadow-[0_0_6px_rgba(217,164,65,0.4)]"
                     />
                   </div>
@@ -550,11 +681,11 @@ export function InsightsHeader({
               <div className="w-full overflow-x-auto pb-1">
                 <div className="min-w-fit inline-block">
                   {/* Meses */}
-                  <div className="flex ml-5 h-3.5 mb-1 text-[9px] font-mono text-[#868e9a] relative">
+                  <div className="flex ml-[18px] h-3.5 mb-1 text-[9px] font-mono text-[#868e9a] relative">
                     {monthLabels.map((lbl, idx) => (
                       <span
                         key={`${lbl.name}-${idx}`}
-                        style={{ left: `${lbl.colIndex * 13}px` }}
+                        style={{ left: `${lbl.colIndex * 14}px` }}
                         className="absolute"
                       >
                         {lbl.name}
@@ -597,14 +728,29 @@ export function InsightsHeader({
                               levelClass = 'opacity-0 pointer-events-none';
                             }
 
-                            const tooltipText = `${day.date}: ${day.count} ${
-                              day.count === 1 ? 'hábito cumplido' : 'hábitos cumplidos'
-                            }`;
+                            const todayOutline =
+                              day.isToday && day.inRange
+                                ? 'outline outline-1 outline-[var(--color-p2)] outline-offset-1 z-10 shadow-[0_0_4px_rgba(217,164,65,0.4)]'
+                                : '';
+
+                            const tooltipText = selectedHabit
+                              ? `${day.date}${day.isToday ? ' (Hoy)' : ''}: ${day.count}/${
+                                  selectedHabit.targetValue || 1
+                                }${selectedHabit.unit ? ` ${selectedHabit.unit}` : ''}${
+                                  day.count >= (selectedHabit.targetValue || 1)
+                                    ? ' (Completado)'
+                                    : day.count > 0
+                                      ? ' (En progreso)'
+                                      : ' (Sin actividad)'
+                                }`
+                              : `${day.date}${day.isToday ? ' (Hoy)' : ''}: ${day.count} ${
+                                  day.count === 1 ? 'hábito cumplido' : 'hábitos cumplidos'
+                                }`;
 
                             return (
                               <div
                                 key={day.date || `pad-${dIdx}`}
-                                className={`h-2.5 w-2.5 rounded-[2px] cursor-pointer transition-transform duration-100 hover:scale-125 ${levelClass}`}
+                                className={`h-2.5 w-2.5 rounded-[2px] cursor-pointer transition-transform duration-100 hover:scale-125 ${levelClass} ${todayOutline}`}
                                 onMouseEnter={(e) => {
                                   if (!day.inRange) return;
                                   const rect = e.currentTarget.getBoundingClientRect();

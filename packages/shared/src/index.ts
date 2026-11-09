@@ -805,11 +805,22 @@ export interface TagTimeDistributionDto {
   percentage: number;
 }
 
+export interface HabitStatDto {
+  id: string;
+  name: string;
+  mode: 'binary' | 'quantitative';
+  targetValue: number;
+  unit?: string;
+  completions: Record<string, number>;
+  completedDates: string[];
+}
+
 export interface StatsOverviewResponseDto {
   summary: StatsSummaryDto;
   dailyFocus: DailyFocusDto[];
   habitHeatmap: HabitHeatmapCellDto[];
   tagDistribution: TagTimeDistributionDto[];
+  habits?: HabitStatDto[];
 }
 
 /* -------------------------------------------------------------------------- */

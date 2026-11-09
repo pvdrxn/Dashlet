@@ -6,6 +6,7 @@ import {
   DailyFocusDto,
   HabitHeatmapCellDto,
   TagTimeDistributionDto,
+  HabitStatDto,
 } from '@widget-master/shared';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -150,6 +151,7 @@ export class StatsService {
     let activeHabitsCount = 0;
     const completionsPerDate = new Map<string, number>();
     const habitStreaks: number[] = [];
+    const habitsList: HabitStatDto[] = [];
 
     for (const w of widgets) {
       const config = safeJson(w.config);
@@ -228,29 +230,58 @@ export class StatsService {
           for (const h of config.habits) {
             if (!h || typeof h !== 'object') continue;
             const habit = h as Record<string, unknown>;
+            const habitId = typeof habit.id === 'string' ? habit.id : String(Math.random());
+            const habitName =
+              typeof habit.name === 'string' && habit.name.trim() ? habit.name.trim() : 'Hábito';
+            const mode = habit.mode === 'quantitative' ? 'quantitative' : 'binary';
+            const targetValue =
+              typeof habit.targetValue === 'number' && habit.targetValue > 0
+                ? habit.targetValue
+                : 1;
+            const unit = typeof habit.unit === 'string' ? habit.unit : undefined;
+
             activeHabitsCount++;
 
             const completedSet = new Set<string>();
+            const completedDates: string[] = [];
             if (Array.isArray(habit.completedDates)) {
               for (const d of habit.completedDates) {
                 if (typeof d === 'string' && DATE_RE.test(d)) {
                   completedSet.add(d);
+                  completedDates.push(d);
                 }
               }
             }
 
+            const completions: Record<string, number> = {};
             if (
               habit.mode === 'quantitative' &&
               habit.completions &&
               typeof habit.completions === 'object'
             ) {
-              const target = typeof habit.targetValue === 'number' ? habit.targetValue : 1;
               for (const [dStr, val] of Object.entries(habit.completions as Record<string, unknown>)) {
-                if (DATE_RE.test(dStr) && typeof val === 'number' && val >= target) {
-                  completedSet.add(dStr);
+                if (DATE_RE.test(dStr) && typeof val === 'number') {
+                  completions[dStr] = val;
+                  if (val >= targetValue) {
+                    completedSet.add(dStr);
+                  }
                 }
               }
+            } else {
+              for (const d of completedSet) {
+                completions[d] = 1;
+              }
             }
+
+            habitsList.push({
+              id: habitId,
+              name: habitName,
+              mode,
+              targetValue,
+              unit,
+              completions,
+              completedDates,
+            });
 
             for (const dateStr of completedSet) {
               completionsPerDate.set(dateStr, (completionsPerDate.get(dateStr) || 0) + 1);
@@ -295,7 +326,15 @@ export class StatsService {
       return { date, minutes: mins };
     });
 
-    const habitHeatmap: HabitHeatmapCellDto[] = allDates.map((date) => {
+    // La matriz de hábitos siempre cubre como mínimo todo el año actual
+    const currentYear = new Date().getFullYear();
+    const yearStart = `${currentYear}-01-01`;
+    const yearEnd = `${currentYear}-12-31`;
+    const heatmapFrom = yearStart < from ? yearStart : from;
+    const heatmapTo = yearEnd > to ? yearEnd : to;
+    const heatmapDates = generateDateList(heatmapFrom, heatmapTo);
+
+    const habitHeatmap: HabitHeatmapCellDto[] = heatmapDates.map((date) => {
       const count = completionsPerDate.get(date) || 0;
       let level: 0 | 1 | 2 | 3 | 4 = 0;
       if (count === 1) level = 1;
@@ -324,6 +363,7 @@ export class StatsService {
       dailyFocus,
       habitHeatmap,
       tagDistribution,
+      habits: habitsList,
     };
   }
 }

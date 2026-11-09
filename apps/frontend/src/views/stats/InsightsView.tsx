@@ -11,6 +11,7 @@ import {
 } from 'react-icons/fi';
 import { LuFlame } from 'react-icons/lu';
 import { fetchStatsOverview } from '../../api/stats';
+import { getHabitLevel } from '../dashboard/InsightsHeader';
 import type {
   StatsOverviewResponseDto,
   HabitHeatmapCellDto,
@@ -106,6 +107,13 @@ export function InsightsView({ onClose }: InsightsViewProps) {
   const dailyFocus = data?.dailyFocus ?? [];
   const habitHeatmap = data?.habitHeatmap ?? [];
   const tagDistribution = data?.tagDistribution ?? [];
+  const habits = data?.habits ?? [];
+
+  const [selectedHabitId, setSelectedHabitId] = useState<string>('all');
+  const selectedHabit = useMemo(
+    () => habits.find((h) => h.id === selectedHabitId) || null,
+    [habits, selectedHabitId],
+  );
 
   const totalCalendarMinutes = useMemo(() => {
     return tagDistribution.reduce((acc, curr) => acc + curr.totalMinutes, 0);
@@ -117,15 +125,19 @@ export function InsightsView({ onClose }: InsightsViewProps) {
     return Math.round(total / dailyFocus.length);
   }, [dailyFocus]);
 
-  // Cuadrícula semanal para el Heatmap de Hábitos
+  // Cuadrícula semanal para el Heatmap de Hábitos (siempre cubre todo el año actual)
   const { weeks, monthLabels } = useMemo(() => {
-    if (!habitHeatmap.length) return { weeks: [], monthLabels: [] };
+    const today = new Date();
+    const todayStr = formatYMD(today);
+    const currentYear = today.getFullYear();
+    const yearStartStr = `${currentYear}-01-01`;
+    const yearEndStr = `${currentYear}-12-31`;
 
     const cellMap = new Map<string, HabitHeatmapCellDto>();
     habitHeatmap.forEach((c) => cellMap.set(c.date, c));
 
-    const startDate = new Date(`${from}T00:00:00`);
-    const endDate = new Date(`${to}T00:00:00`);
+    const startDate = new Date(`${yearStartStr}T00:00:00`);
+    const endDate = new Date(`${yearEndStr}T00:00:00`);
 
     // Alinear al lunes anterior (0=Lunes, 6=Domingo)
     const startDayOfWeek = (startDate.getDay() + 6) % 7;
@@ -144,20 +156,43 @@ export function InsightsView({ onClose }: InsightsViewProps) {
       level: 0 | 1 | 2 | 3 | 4;
       count: number;
       inRange: boolean;
+      isToday: boolean;
       month: number;
     }[] = [];
 
     const cursor = new Date(gridStart);
     while (cursor <= gridEnd) {
       const dateStr = formatYMD(cursor);
-      const cell = cellMap.get(dateStr);
-      const inRange = dateStr >= from && dateStr <= to;
+      const inRange = dateStr >= yearStartStr && dateStr <= yearEndStr;
+      const isToday = dateStr === todayStr;
+
+      let count = 0;
+      let level: 0 | 1 | 2 | 3 | 4 = 0;
+
+      if (selectedHabit) {
+        const target = selectedHabit.targetValue || 1;
+        if (selectedHabit.mode === 'quantitative') {
+          count = selectedHabit.completions?.[dateStr] ?? 0;
+        } else {
+          count =
+            selectedHabit.completedDates?.includes(dateStr) ||
+            (selectedHabit.completions?.[dateStr] ?? 0) > 0
+              ? 1
+              : 0;
+        }
+        level = getHabitLevel(count, target);
+      } else {
+        const cell = cellMap.get(dateStr);
+        count = cell ? cell.count : 0;
+        level = cell ? cell.level : 0;
+      }
 
       allDays.push({
         date: dateStr,
-        level: cell ? cell.level : 0,
-        count: cell ? cell.count : 0,
+        level,
+        count,
         inRange,
+        isToday,
         month: cursor.getMonth(),
       });
       cursor.setDate(cursor.getDate() + 1);
@@ -185,7 +220,64 @@ export function InsightsView({ onClose }: InsightsViewProps) {
     });
 
     return { weeks: weekCols, monthLabels: labels };
-  }, [from, to, habitHeatmap]);
+  }, [habitHeatmap, selectedHabit]);
+
+  const legendTitles = useMemo(() => {
+    if (!selectedHabit) {
+      return {
+        l0: 'Nivel 0: Sin actividad',
+        l1: 'Nivel 1: 1 hábito',
+        l2: 'Nivel 2: 2 hábitos',
+        l3: 'Nivel 3: 3 hábitos',
+        l4: 'Nivel 4: 4+ hábitos (Máxima consistencia)',
+      };
+    }
+    const t = selectedHabit.targetValue || 1;
+    if (t === 1) {
+      return {
+        l0: '0 completados',
+        l1: '—',
+        l2: '—',
+        l3: '—',
+        l4: '1 completado (Meta alcanzada)',
+      };
+    }
+    if (t === 2) {
+      return {
+        l0: '0 completados',
+        l1: '—',
+        l2: '1 completado',
+        l3: '—',
+        l4: '2 completados (Meta alcanzada)',
+      };
+    }
+    if (t === 3) {
+      return {
+        l0: '0 completados',
+        l1: '—',
+        l2: '1 completado',
+        l3: '2 completados',
+        l4: '3 completados (Meta alcanzada)',
+      };
+    }
+    if (t === 4) {
+      return {
+        l0: '0 completados',
+        l1: '1 completado',
+        l2: '2 completados',
+        l3: '3 completados',
+        l4: '4 completados (Meta alcanzada)',
+      };
+    }
+    const s = Math.max(1, Math.floor(t / 4));
+    return {
+      l0: '0 completados',
+      l1: `1-${s} completados`,
+      l2: `${s + 1}-${s * 2} completados`,
+      l3: `${s * 2 + 1}-${t - 1} completados`,
+      l4: `${t}+ completados (Meta alcanzada)`,
+    };
+  }, [selectedHabit]);
 
   // Cálculo de dimensiones y escala para el gráfico de barras SVG
   const chartMetrics = useMemo(() => {
@@ -545,18 +637,37 @@ export function InsightsView({ onClose }: InsightsViewProps) {
           className="rounded-lg border border-[#262930] bg-[#16181D] p-5 shadow-sm"
         >
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-semibold tracking-wide text-white">
-                  Matriz de Hábitos
-                </h2>
-                <span className="rounded bg-p2/15 text-p2 px-1.5 py-0.5 text-[10px] font-mono font-medium">
-                  Consistencia
-                </span>
+            <div className="flex flex-wrap items-center gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-semibold tracking-wide text-white">
+                    Matriz de Hábitos
+                  </h2>
+                  <span className="rounded bg-p2/15 text-p2 px-1.5 py-0.5 text-[10px] font-mono font-medium">
+                    Consistencia
+                  </span>
+                </div>
+                <p className="text-xs text-[#868e9a] mt-0.5">
+                  Hábitos completados por día en una escala tonal ámbar
+                </p>
               </div>
-              <p className="text-xs text-[#868e9a] mt-0.5">
-                Hábitos completados por día en una escala tonal ámbar
-              </p>
+
+              {/* Selector para filtrar por hábito */}
+              {habits.length > 0 && (
+                <select
+                  value={selectedHabitId}
+                  onChange={(e) => setSelectedHabitId(e.target.value)}
+                  className="rounded border border-[#262930] bg-[#0F1013] px-2.5 py-1 text-xs font-medium text-white/90 hover:border-white/20 focus:border-p2/60 focus:outline-none transition-colors cursor-pointer"
+                  title="Filtrar por hábito específico"
+                >
+                  <option value="all">Todos los hábitos</option>
+                  {habits.map((h) => (
+                    <option key={h.id} value={h.id}>
+                      {h.name} ({h.targetValue > 1 ? `${h.targetValue}/día` : '1/día'})
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             {/* Escala de Color Ámbar Semántico (Niveles 0 a 4) */}
@@ -565,27 +676,27 @@ export function InsightsView({ onClose }: InsightsViewProps) {
               <div className="flex items-center gap-1">
                 {/* Nivel 0 */}
                 <div
-                  title="Nivel 0: Sin actividad"
+                  title={legendTitles.l0}
                   className="h-3 w-3 rounded-[2px] bg-gray-800/60 border border-[#262930]"
                 />
                 {/* Nivel 1 */}
                 <div
-                  title="Nivel 1: 1 hábito"
+                  title={legendTitles.l1}
                   className="h-3 w-3 rounded-[2px] bg-[var(--color-p2)]/25 border border-amber-500/30"
                 />
                 {/* Nivel 2 */}
                 <div
-                  title="Nivel 2: 2 hábitos"
+                  title={legendTitles.l2}
                   className="h-3 w-3 rounded-[2px] bg-[var(--color-p2)]/50 border border-amber-500/50"
                 />
                 {/* Nivel 3 */}
                 <div
-                  title="Nivel 3: 3 hábitos"
+                  title={legendTitles.l3}
                   className="h-3 w-3 rounded-[2px] bg-[var(--color-p2)]/75 border border-amber-500/70"
                 />
                 {/* Nivel 4 */}
                 <div
-                  title="Nivel 4: 4+ hábitos (Máxima consistencia)"
+                  title={legendTitles.l4}
                   className="h-3 w-3 rounded-[2px] bg-[#d9a441] border border-[#d9a441] shadow-[0_0_6px_rgba(217,164,65,0.4)]"
                 />
               </div>
@@ -601,7 +712,7 @@ export function InsightsView({ onClose }: InsightsViewProps) {
                 {monthLabels.map((lbl, idx) => (
                   <span
                     key={`${lbl.name}-${idx}`}
-                    style={{ left: `${lbl.colIndex * 15}px` }}
+                    style={{ left: `${lbl.colIndex * 16}px` }}
                     className="absolute"
                   >
                     {lbl.name}
@@ -647,9 +758,24 @@ export function InsightsView({ onClose }: InsightsViewProps) {
                           levelClass = 'opacity-0 pointer-events-none';
                         }
 
-                        const tooltipText = `${day.date}: ${day.count} ${
-                          day.count === 1 ? 'hábito completado' : 'hábitos completados'
-                        }`;
+                        const todayOutline =
+                          day.isToday && day.inRange
+                            ? 'outline outline-1 outline-[var(--color-p2)] outline-offset-1 z-10 shadow-[0_0_4px_rgba(217,164,65,0.4)]'
+                            : '';
+
+                        const tooltipText = selectedHabit
+                          ? `${day.date}${day.isToday ? ' (Hoy)' : ''}: ${day.count}/${
+                              selectedHabit.targetValue || 1
+                            }${selectedHabit.unit ? ` ${selectedHabit.unit}` : ''}${
+                              day.count >= (selectedHabit.targetValue || 1)
+                                ? ' (Completado)'
+                                : day.count > 0
+                                  ? ' (En progreso)'
+                                  : ' (Sin actividad)'
+                            }`
+                          : `${day.date}${day.isToday ? ' (Hoy)' : ''}: ${day.count} ${
+                              day.count === 1 ? 'hábito completado' : 'hábitos completados'
+                            }`;
 
                         return (
                           <div
@@ -666,7 +792,7 @@ export function InsightsView({ onClose }: InsightsViewProps) {
                               });
                             }}
                             onMouseLeave={() => setHoveredDay(null)}
-                            className={`h-3 w-3 rounded-[2px] transition-transform duration-100 hover:scale-125 cursor-pointer ${levelClass}`}
+                            className={`h-3 w-3 rounded-[2px] transition-transform duration-100 hover:scale-125 cursor-pointer ${levelClass} ${todayOutline}`}
                           />
                         );
                       })}
