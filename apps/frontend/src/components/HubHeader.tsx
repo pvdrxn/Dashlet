@@ -6,6 +6,7 @@ import {
   FiTrash2,
   FiSettings,
   FiLayers,
+  FiBarChart2,
 } from 'react-icons/fi';
 import {
   VscChromeMinimize,
@@ -90,6 +91,7 @@ export const HubHeader = memo(function HubHeader({
     { id: 'dashboard' as const, label: t('sidebar.dashboard.label', 'Dashboard'), icon: FiGrid },
     { id: 'calendar' as const, label: t('sidebar.calendar.label', 'Calendario'), icon: FiCalendar },
     { id: 'table' as const, label: t('sidebar.table.label', 'Tablas'), icon: FiTable },
+    { id: 'stats' as const, label: t('sidebar.stats.label', 'Estadísticas'), icon: FiBarChart2 },
   ];
 
   return (

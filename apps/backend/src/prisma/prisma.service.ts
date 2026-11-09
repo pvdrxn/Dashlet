@@ -51,6 +51,12 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         data: { userId: LOCAL_USER_ID },
       });
 
+      // 3.1. Migrate widgets
+      await this.widget.updateMany({
+        where: { userId: { not: LOCAL_USER_ID } },
+        data: { userId: LOCAL_USER_ID },
+      });
+
       // 4. Migrate tags safely (handle @@unique([userId, nameLower]))
       const foreignTags = await this.tag.findMany({
         where: { userId: { not: LOCAL_USER_ID } },

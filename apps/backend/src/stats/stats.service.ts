@@ -81,6 +81,7 @@ export class StatsService {
     userId: string,
     fromRaw?: string,
     toRaw?: string,
+    tabId?: string,
   ): Promise<StatsOverviewResponseDto> {
     const { from, to } = resolveDateRange(fromRaw, toRaw);
 
@@ -137,13 +138,40 @@ export class StatsService {
       }))
       .sort((a, b) => b.totalMinutes - a.totalMinutes);
 
-    // 2. Widgets activos del usuario
+    // 2. Widgets activos del usuario (opcionalmente filtrados por pestaña)
     const widgets = await this.prisma.widget.findMany({
       where: {
         userId,
         deletedAt: null,
+        ...(tabId ? { tabId } : {}),
       },
     });
+
+    if (tabId && widgets.length === 0) {
+      const allDates = generateDateList(from, to);
+      const currentYear = new Date().getFullYear();
+      const yearStart = `${currentYear}-01-01`;
+      const yearEnd = `${currentYear}-12-31`;
+      const heatmapFrom = yearStart < from ? yearStart : from;
+      const heatmapTo = yearEnd > to ? yearEnd : to;
+      const heatmapDates = generateDateList(heatmapFrom, heatmapTo);
+
+      return {
+        tabId,
+        summary: {
+          totalFocusMinutes: 0,
+          tasksCompleted: 0,
+          tasksPending: 0,
+          completionRate: 0,
+          activeHabitsCount: 0,
+          longestStreak: 0,
+        },
+        dailyFocus: allDates.map((date) => ({ date, minutes: 0 })),
+        habitHeatmap: heatmapDates.map((date) => ({ date, count: 0, level: 0 })),
+        tagDistribution: [],
+        habits: [],
+      };
+    }
 
     let tasksCompleted = 0;
     let tasksPending = 0;
@@ -318,10 +346,13 @@ export class StatsService {
 
     // 3. Consolidar series temporales
     const allDates = generateDateList(from, to);
+    const isGlobal = !tabId;
 
     let totalFocusMinutes = 0;
     const dailyFocus: DailyFocusDto[] = allDates.map((date) => {
-      const mins = (pomodoroMinutesByDate.get(date) || 0) + (calendarMinutesByDate.get(date) || 0);
+      const pomodoroMins = pomodoroMinutesByDate.get(date) || 0;
+      const calendarMins = isGlobal ? (calendarMinutesByDate.get(date) || 0) : 0;
+      const mins = pomodoroMins + calendarMins;
       totalFocusMinutes += mins;
       return { date, minutes: mins };
     });
@@ -359,10 +390,11 @@ export class StatsService {
     };
 
     return {
+      tabId,
       summary,
       dailyFocus,
       habitHeatmap,
-      tagDistribution,
+      tagDistribution: isGlobal ? tagDistribution : [],
       habits: habitsList,
     };
   }

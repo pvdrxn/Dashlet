@@ -816,6 +816,7 @@ export interface HabitStatDto {
 }
 
 export interface StatsOverviewResponseDto {
+  tabId?: string;
   summary: StatsSummaryDto;
   dailyFocus: DailyFocusDto[];
   habitHeatmap: HabitHeatmapCellDto[];

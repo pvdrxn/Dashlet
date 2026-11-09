@@ -9,7 +9,6 @@ import {
 import { LuListChecks } from 'react-icons/lu';
 import { TabBar } from '../../components/TabBar';
 import { TaskPickerModal } from '../../components/TaskPickerModal';
-import { InsightsHeader } from './InsightsHeader';
 import { LocalNotesModule } from '../../components/notes/LocalNotesModule';
 import { TodoListWidget } from '../../widgets/todo-list/TodoListWidget';
 import { PomodoroWidget } from '../../widgets/pomodoro/PomodoroWidget';
@@ -268,13 +267,8 @@ export function DashboardView({ onOpenCalendar }: DashboardViewProps) {
         </div>
       </header>
 
-      {/* 2. Contenedor unificado de scroll para toda la página */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        {/* Sección Superior: Panel Colapsable de Métricas & Heatmap */}
-        <InsightsHeader />
-
-        {/* Sección Inferior: Cuadrícula Modular de 5 Herramientas */}
-        <main className="p-6">
+      {/* 2. Cuadrícula Modular de 5 Herramientas */}
+      <main className="flex-1 min-h-0 overflow-y-auto p-6">
           {loadingWidgets || !tabsLoaded ? (
             <div className="flex h-64 w-full items-center justify-center">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-p2/20 border-t-p2" />
@@ -407,7 +401,6 @@ export function DashboardView({ onOpenCalendar }: DashboardViewProps) {
           </div>
         )}
       </main>
-    </div>
 
       {/* Modal selector de tareas para Pomodoro */}
       {taskPickerOpen && (

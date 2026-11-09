@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import {
   FiClock,
   FiCheckCircle,
-  FiCalendar,
   FiBarChart2,
   FiRefreshCw,
   FiX,
@@ -11,10 +10,11 @@ import {
 } from 'react-icons/fi';
 import { LuFlame } from 'react-icons/lu';
 import { fetchStatsOverview } from '../../api/stats';
-import { getHabitLevel } from '../dashboard/InsightsHeader';
+import * as tabsApi from '../../api/tabs';
 import type {
   StatsOverviewResponseDto,
   HabitHeatmapCellDto,
+  TabDto,
 } from '@widget-master/shared';
 
 export interface InsightsViewProps {
@@ -22,6 +22,32 @@ export interface InsightsViewProps {
 }
 
 type TimeRangeKey = '30d' | '90d' | 'year';
+
+export function getHabitLevel(count: number, target: number): 0 | 1 | 2 | 3 | 4 {
+  if (count <= 0) return 0;
+  if (count >= target) return 4;
+  if (target <= 1) return 4;
+
+  if (target === 2) {
+    return 2;
+  }
+
+  if (target === 3) {
+    return count === 1 ? 2 : 3;
+  }
+
+  if (target === 4) {
+    if (count === 1) return 1;
+    if (count === 2) return 2;
+    return 3;
+  }
+
+  // target >= 5: rangos de completación
+  const s = Math.max(1, Math.floor(target / 4));
+  if (count <= s) return 1;
+  if (count <= s * 2) return 2;
+  return 3;
+}
 
 const PAD = (n: number) => String(n).padStart(2, '0');
 
@@ -62,6 +88,29 @@ export function InsightsView({ onClose }: InsightsViewProps) {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<StatsOverviewResponseDto | null>(null);
 
+  // Estados para filtro por pestaña (contexto)
+  const [tabs, setTabs] = useState<TabDto[]>([]);
+  const [selectedTabId, setSelectedTabId] = useState<string | null>(null);
+
+  // Cargar pestañas del usuario al montar
+  useEffect(() => {
+    let cancelled = false;
+    async function loadTabs() {
+      try {
+        const list = await tabsApi.fetchTabs();
+        if (!cancelled) {
+          setTabs(list);
+        }
+      } catch (err) {
+        console.error('Error al cargar pestañas para estadísticas:', err);
+      }
+    }
+    void loadTabs();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Tooltip flotante para el gráfico o heatmap
   const [hoveredDay, setHoveredDay] = useState<{
     date: string;
@@ -90,14 +139,14 @@ export function InsightsView({ onClose }: InsightsViewProps) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchStatsOverview(from, to);
+      const res = await fetchStatsOverview(from, to, selectedTabId ?? undefined);
       setData(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar estadísticas');
     } finally {
       setLoading(false);
     }
-  }, [from, to]);
+  }, [from, to, selectedTabId]);
 
   useEffect(() => {
     void loadStats();
@@ -106,7 +155,6 @@ export function InsightsView({ onClose }: InsightsViewProps) {
   const summary = data?.summary;
   const dailyFocus = data?.dailyFocus ?? [];
   const habitHeatmap = data?.habitHeatmap ?? [];
-  const tagDistribution = data?.tagDistribution ?? [];
   const habits = data?.habits ?? [];
 
   const [selectedHabitId, setSelectedHabitId] = useState<string>('all');
@@ -114,10 +162,6 @@ export function InsightsView({ onClose }: InsightsViewProps) {
     () => habits.find((h) => h.id === selectedHabitId) || null,
     [habits, selectedHabitId],
   );
-
-  const totalCalendarMinutes = useMemo(() => {
-    return tagDistribution.reduce((acc, curr) => acc + curr.totalMinutes, 0);
-  }, [tagDistribution]);
 
   const averageDailyMinutes = useMemo(() => {
     if (!dailyFocus.length) return 0;
@@ -300,7 +344,7 @@ export function InsightsView({ onClose }: InsightsViewProps) {
   return (
     <div className="flex h-full w-full flex-col overflow-y-auto bg-[#0F1013] text-[#F1F3F5] select-none font-sans">
       {/* Header técnico de la vista */}
-      <header className="relative flex h-14 shrink-0 items-center justify-between border-b border-[#262930] bg-[#16181D]/90 px-6 backdrop-blur-xl">
+      <header className="relative flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[#262930] bg-[#16181D]/90 px-6 py-2.5 backdrop-blur-xl">
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-p2/40 bg-p2/15 text-p2 shadow-[0_0_12px_rgba(217,164,65,0.25)]">
             <FiBarChart2 size={16} />
@@ -311,7 +355,9 @@ export function InsightsView({ onClose }: InsightsViewProps) {
                 {t('sidebar.stats.label', 'Estadísticas')}
               </h1>
               <span className="rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wider text-white/50">
-                Insights
+                {selectedTabId
+                  ? (tabs.find((t) => t.id === selectedTabId)?.name ?? 'Panel')
+                  : 'Global'}
               </span>
             </div>
             <p className="text-[11px] text-[#868e9a]">
@@ -323,8 +369,45 @@ export function InsightsView({ onClose }: InsightsViewProps) {
           </div>
         </div>
 
-        {/* Controles: Selector de Rango & Botón Volver */}
-        <div className="flex items-center gap-3">
+        {/* Controles: Selector de Contexto / Pestaña, Selector de Rango & Botón Volver */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Selector de Contexto por Pestaña */}
+          {tabs.length > 0 && (
+            <div className="flex items-center rounded-md border border-[#262930] bg-[#121418] p-0.5 shadow-inner max-w-xs sm:max-w-sm overflow-x-auto">
+              <button
+                type="button"
+                onClick={() => setSelectedTabId(null)}
+                title="Métricas globales de todos los paneles"
+                className={`rounded px-2.5 py-1 text-xs font-medium transition-all duration-150 cursor-pointer whitespace-nowrap ${
+                  selectedTabId === null
+                    ? 'bg-p2/20 text-p2 font-semibold shadow-sm ring-1 ring-p2/40'
+                    : 'text-white/60 hover:text-white hover:bg-white/[0.04]'
+                }`}
+              >
+                Todos los paneles
+              </button>
+              {tabs.map((tab) => {
+                const active = selectedTabId === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setSelectedTabId(tab.id)}
+                    title={`Filtrar por panel: ${tab.name}`}
+                    className={`rounded px-2.5 py-1 text-xs font-medium transition-all duration-150 cursor-pointer whitespace-nowrap ${
+                      active
+                        ? 'bg-p2/20 text-p2 font-semibold shadow-sm ring-1 ring-p2/40'
+                        : 'text-white/60 hover:text-white hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    {tab.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Selector de Rango Temporal */}
           <div className="flex items-center rounded-md border border-[#262930] bg-[#121418] p-0.5 shadow-inner">
             {(
               [
@@ -385,7 +468,7 @@ export function InsightsView({ onClose }: InsightsViewProps) {
 
         {/* 1. FILA DE SCORECARDS (KPIs TÉCNICOS) */}
         <section aria-label="Métricas clave">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {/* KPI 1: Horas de Foco */}
             <div className="relative flex flex-col justify-between rounded-lg border border-[#262930] bg-[#16181D] p-5 shadow-sm transition-all hover:border-white/20">
               <div className="flex items-center justify-between text-xs text-white/50 mb-3">
@@ -401,7 +484,9 @@ export function InsightsView({ onClose }: InsightsViewProps) {
                   {summary ? formatHoursMinutes(summary.totalFocusMinutes) : '—'}
                 </div>
                 <p className="mt-1 text-[11px] text-[#868e9a]">
-                  Pomodoro y bloques de calendario
+                  {selectedTabId
+                    ? 'Sesiones de Pomodoro en este panel'
+                    : 'Sesiones de Pomodoro acumuladas'}
                 </p>
               </div>
             </div>
@@ -459,26 +544,6 @@ export function InsightsView({ onClose }: InsightsViewProps) {
                 </p>
               </div>
             </div>
-
-            {/* KPI 4: Calendario Planificado */}
-            <div className="relative flex flex-col justify-between rounded-lg border border-[#262930] bg-[#16181D] p-5 shadow-sm transition-all hover:border-white/20">
-              <div className="flex items-center justify-between text-xs text-white/50 mb-3">
-                <span className="font-mono text-[11px] uppercase tracking-wider">
-                  Tiempo en Agenda
-                </span>
-                <div className="flex h-7 w-7 items-center justify-center rounded bg-blue-500/15 text-blue-400 border border-blue-500/30">
-                  <FiCalendar size={14} />
-                </div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold tracking-tight text-white">
-                  {formatHoursMinutes(totalCalendarMinutes)}
-                </div>
-                <p className="mt-1 text-[11px] text-[#868e9a]">
-                  {tagDistribution.length} categorías registradas
-                </p>
-              </div>
-            </div>
           </div>
         </section>
 
@@ -493,7 +558,9 @@ export function InsightsView({ onClose }: InsightsViewProps) {
                 Foco Diario
               </h2>
               <p className="text-xs text-[#868e9a] mt-0.5">
-                Minutos acumulados en sesiones de Pomodoro y bloques con hora
+                {selectedTabId
+                  ? 'Minutos acumulados en sesiones de Pomodoro de este panel'
+                  : 'Minutos acumulados en sesiones de Pomodoro y bloques con hora'}
               </p>
             </div>
             <div className="flex items-center gap-4 text-xs font-mono text-[#868e9a]">
@@ -802,64 +869,6 @@ export function InsightsView({ onClose }: InsightsViewProps) {
               </div>
             </div>
           </div>
-        </section>
-
-        {/* 4. DESGLOSE DE TIEMPO POR CATEGORÍA DE CALENDARIO */}
-        <section
-          aria-label="Desglose por categorías"
-          className="rounded-lg border border-[#262930] bg-[#16181D] p-5 shadow-sm"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-sm font-semibold tracking-wide text-white">
-                Distribución por Categorías
-              </h2>
-              <p className="text-xs text-[#868e9a] mt-0.5">
-                Proporción de tiempo invertido según las etiquetas del calendario
-              </p>
-            </div>
-            <span className="text-xs font-mono text-white/50">
-              {tagDistribution.length} categorías
-            </span>
-          </div>
-
-          {tagDistribution.length > 0 ? (
-            <div className="space-y-3.5">
-              {tagDistribution.map((tag) => (
-                <div key={tag.tagId} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="h-2.5 w-2.5 rounded-full"
-                        style={{ backgroundColor: tag.color || '#868e9a' }}
-                      />
-                      <span className="font-medium text-white">{tag.tagName}</span>
-                    </div>
-                    <div className="flex items-center gap-3 font-mono text-[11px] text-[#868e9a]">
-                      <span>{formatHoursMinutes(tag.totalMinutes)}</span>
-                      <span className="text-white/80 font-semibold w-8 text-right">
-                        {tag.percentage}%
-                      </span>
-                    </div>
-                  </div>
-                  {/* Barra de progreso con color semántico */}
-                  <div className="h-1.5 w-full rounded-full bg-white/[0.05] overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{
-                        width: `${tag.percentage}%`,
-                        backgroundColor: tag.color || '#868e9a',
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="py-8 text-center text-xs text-[#868e9a]">
-              Sin bloques ni eventos de calendario registrados en este período.
-            </div>
-          )}
         </section>
       </main>
 

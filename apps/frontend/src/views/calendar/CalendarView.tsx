@@ -25,6 +25,15 @@ import {
   weekdayInitials,
 } from './date-utils';
 
+function formatHoursMinutes(totalMinutes: number): string {
+  if (!totalMinutes || totalMinutes <= 0) return '0h 0m';
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+  if (hours === 0) return `${mins}m`;
+  if (mins === 0) return `${hours}h`;
+  return `${hours}h ${mins}m`;
+}
+
 /*
  * Vista de calendario.
  *
@@ -291,6 +300,41 @@ export function CalendarView({ leading, onClose }: CalendarViewProps) {
     [visibleEvents, selectedDate],
   );
 
+  const { totalAgendaMinutes, categoryDistribution } = useMemo(() => {
+    let total = 0;
+    const tagMap = new Map<string, { tagName: string; color: string; totalMinutes: number }>();
+
+    for (const event of dayEvents) {
+      const duration = event.durationMin > 0 ? event.durationMin : DEFAULT_DURATION_MIN;
+      total += duration;
+
+      const tagId = event.tagId || 'untagged';
+      const tagObj = event.tagId ? tagById.get(event.tagId) : null;
+      const tagName =
+        tagObj?.name || (event.tagId ? 'Etiqueta' : t('calendar.untagged', 'Sin etiqueta'));
+      const colorHex = tagObj?.color ? tagColorHex(tagObj.color) || tagObj.color : '#868e9a';
+
+      const existing = tagMap.get(tagId);
+      if (existing) {
+        existing.totalMinutes += duration;
+      } else {
+        tagMap.set(tagId, { tagName, color: colorHex, totalMinutes: duration });
+      }
+    }
+
+    const distribution = Array.from(tagMap.entries())
+      .map(([tagId, info]) => ({
+        tagId,
+        tagName: info.tagName,
+        color: info.color,
+        totalMinutes: info.totalMinutes,
+        percentage: total > 0 ? Math.round((info.totalMinutes / total) * 100) : 0,
+      }))
+      .sort((a, b) => b.totalMinutes - a.totalMinutes);
+
+    return { totalAgendaMinutes: total, categoryDistribution: distribution };
+  }, [dayEvents, tagById, t]);
+
   const hours = useMemo(() => hourBlocks(), []);
 
   /* ---------------------------------------------------------------------- */
@@ -532,6 +576,95 @@ export function CalendarView({ leading, onClose }: CalendarViewProps) {
           </button>
         )}
       </header>
+
+      {/* Analítica de Agenda: Tiempo en agenda y Distribución por categorías (Lado a lado con ancho dinámico) */}
+      <div className="shrink-0 px-3 pt-3">
+        <div className="flex flex-col sm:flex-row items-stretch gap-3">
+          {/* Tarjeta 1: Tiempo en Agenda */}
+          <div className="w-full sm:w-60 md:w-64 shrink-0 rounded-xl border border-white/[0.08] bg-[#16181D]/80 p-3.5 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center justify-between text-xs text-white/50 mb-1.5">
+              <span className="font-mono text-[10px] uppercase tracking-wider">
+                {t('calendar.agendaTime', 'Tiempo en Agenda')}
+              </span>
+              <div className="flex h-6 w-6 items-center justify-center rounded bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                <FiCalendar size={13} />
+              </div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold tracking-tight text-white font-mono">
+                {formatHoursMinutes(totalAgendaMinutes)}
+              </div>
+              <p className="mt-1 text-[11px] text-[#868e9a] flex items-center gap-1.5 truncate">
+                <span className="text-white/80 font-medium">
+                  {formatDayLabel(selectedDate)}
+                </span>
+                <span>·</span>
+                <span>
+                  {dayEvents.length}{' '}
+                  {dayEvents.length === 1
+                    ? t('calendar.scheduledEvent', 'evento programado')
+                    : t('calendar.scheduledEvents', 'eventos programados')}
+                </span>
+              </p>
+            </div>
+          </div>
+
+          {/* Tarjeta 2: Distribución por Categorías (Ancho dinámico adaptable) */}
+          <div className="min-w-0 flex-1 rounded-xl border border-white/[0.08] bg-[#16181D]/80 p-3.5 shadow-sm flex flex-col justify-between overflow-hidden">
+            <div className="flex items-center justify-between text-xs text-white/50 mb-2">
+              <span className="font-mono text-[10px] uppercase tracking-wider">
+                {t('calendar.categoryDistribution', 'Distribución por Categorías')}
+              </span>
+              <span className="font-mono text-[10px] text-white/40">
+                {categoryDistribution.length}{' '}
+                {categoryDistribution.length === 1
+                  ? t('calendar.category', 'categoría')
+                  : t('calendar.categories', 'categorías')}
+              </span>
+            </div>
+
+            {categoryDistribution.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-2 overflow-y-auto max-h-[58px] pr-1 select-none">
+                {categoryDistribution.map((tag) => (
+                  <div key={tag.tagId} className="flex flex-col justify-center min-w-0">
+                    <div className="flex items-center justify-between text-xs gap-1.5">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span
+                          className="h-2 w-2 shrink-0 rounded-full"
+                          style={{ backgroundColor: tag.color }}
+                        />
+                        <span
+                          className="text-[11px] font-medium text-white truncate"
+                          title={tag.tagName}
+                        >
+                          {tag.tagName}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0 font-mono text-[10px] text-[#868e9a]">
+                        <span>{formatHoursMinutes(tag.totalMinutes)}</span>
+                        <span className="text-white/80 font-semibold">{tag.percentage}%</span>
+                      </div>
+                    </div>
+                    <div className="mt-1 h-1 w-full rounded-full bg-white/[0.06] overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-300"
+                        style={{
+                          width: `${tag.percentage}%`,
+                          backgroundColor: tag.color,
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex h-[52px] items-center justify-center text-xs text-[#868e9a]">
+                {t('calendar.noEventsForDay', 'Sin bloques ni eventos programados para este día.')}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Doble columna compacta: izquierda mini-mes + tags, derecha agenda diaria */}
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3 lg:flex-row">

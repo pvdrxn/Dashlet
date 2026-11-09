@@ -11,7 +11,8 @@ export class StatsController {
   async getOverview(
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('tabId') tabId?: string,
   ): Promise<StatsOverviewResponseDto> {
-    return this.statsService.getOverview(LOCAL_USER_ID, from, to);
+    return this.statsService.getOverview(LOCAL_USER_ID, from, to, tabId);
   }
 }
