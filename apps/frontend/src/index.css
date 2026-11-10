@@ -120,107 +120,27 @@
    */
 
   /*
-   * PALETA
-   *
-   * Regla unica: el color comunica ESTADO, nunca adorno. Todo lo demas (fondo,
-   * superficies, bordes, texto, seleccion, foco) vive en la rampa de grises.
-   * Asi el ojo va directo a lo que importa y la app tiene un solo acento.
-   *
-   * Antes coexistian cuatro sistemas: gray-* y blue-* reescritos a mano, mas
-   * cyan-*, red-* y green-* originales de Tailwind. Cyan y blue se usaban
-   * como si fueran el mismo color, y cada uno hacia un trabajo distinto.
+   * PALETA (Midnight Navy 60% / Powder Blue 30% / Sunflower Yellow 10%)
    */
+  --color-bg-canvas: #0D111A;
+  --color-bg-surface: #141A26;
+  --color-bg-elevated: #1C2436;
+  --color-border-subtle: #232B3B;
+  --color-border-muted: #313D53;
+  --color-text-primary: #DCE4EC;
+  --color-text-secondary: #8B9BB0;
+  --color-control-bg: #182030;
+  --color-accent: #FFC20D;
+  --color-accent-hover: #E6AD05;
+  --color-accent-subtle: rgba(255, 194, 13, 0.12);
+  --color-accent-text: #0D111A;
 
-  /*
-   * Prioridad: una sola rampa perceptual. El brillo y el croma suben con la
-   * urgencia en vez de cambiar de tono, asi que "mucho de lo mismo" se lee
-   * distinto de "poco de lo mismo".
-   *
-   *   p1  acero    bajo / inactivo / descanso
-   *   p2  ambar    medio / corriendo / relevante
-   *   p3  naranja  alto / urgente
-   */
-  --color-p1: #868e9a;
+  --color-p1: #8B9BB0;
   --color-p2: var(--dashlet-p2);
   --color-p3: #e2703f;
-
-  /*
-   * p2 OSCURA: el mismo ambar, un paso mas abajo de claridad.
-   *
-   * El tono no se mueve --39 grados, el de `p2`-- y lo que cambia es la
-   * claridad. Lo importante es que al bajar la claridad de un color saturado el
-   * CROMA SUBE, no baja: este queda en 73% contra el 67% de `p2`, o sea que es un
-   * ambar mas puro, un bronce, y no una mezcla apagada.
-   *
-   * Eso es exactamente lo que estaba mal en el intento anterior, que bajo el
-   * brillo a la vez que el croma --#a5854a, S 38%--: un color calido sin
-   * saturacion sobre un fondo gris neutro no se lee como "terminado", se lee como
-   * barro, y ademas su 5.07:1 caia justo por encima de `gray-500`, que aca es el
-   * placeholder, y texto de placeholder es como la gente lee "desactivado".
-   *
-   * Medido contra las dos superficies reales (widget #191919, vista #121212):
-   *
-   *   p2         7.82:1   8.33:1   H 39  S 67%  L 55%
-   *   p2-oscura  5.26:1   5.60:1   H 40  S 73%  L 42%
-   *
-   * 5.26 esta dos puntos por encima de gray-400 y cuatro por encima del
-   * placeholder, asi que sigue siendo texto y no se confunde con un control
-   * apagado; y el salto de claridad contra `p2` --55 contra 42-- es del mismo
-   * orden que el que la tabla ya usa entre sus niveles de texto.
-   *
-   * La escala completa del mismo tono, por si hay que moverla: #c9922f 6.39:1,
-   * #c08a25 5.78:1, este #b7831d 5.26:1, #ad7b18 4.71:1 y #a37212 4.16:1, que ya
-   * queda bajo AA.
-   */
   --color-p2-oscura: var(--dashlet-p2-oscura);
-
-  /*
-   * Destructivo: solo hover de acciones que borran y estados de error.
-   * En reposo los botones van en gris, para que p3 sea lo unico que
-   * significa urgencia y el rojo no compita con el.
-   */
   --color-danger: #d4605f;
 
-  /*
-   * Rampa de grises, totalmente neutra: ningun canal supera a otro.
-   *
-   * Direccion: el fondo es negro mate (no puro), pero los bordes SUBEN en vez
-   * de bajar. Es contraintuitivo y es lo que sostiene la profundidad: al bajar
-   * las superficies, el mismo borde queda con mas superficie que destacar.
-   *
-   * Los numeros siguen el uso real del codigo, no el orden natural del gris:
-   *
-   *   950   #121212  fondo de la ventana, debajo de todo
-   *   900   #121212  canvas de la app (App.tsx), fila hundida en lista
-   *   800   #191919  superficie: widget, modal, panel
-   *   700   #383838  elevado: header, input, boton, hover
-   *   600   #4f4f4f  boton primario, borde marcado, thumb del scrollbar
-   *   500   #7a7a7a  texto terciario, placeholder
-   *
-   * Contraste medido contra la superficie real (#191919), antes y ahora:
-   *
-   *                          antes    ahora
-   *   widget vs canvas       1,07:1   1,07:1   <- igual a proposito
-   *   elevado vs widget      1,43:1   1,50:1   <- sube
-   *   borde(600) vs widget   2,19:1   2,15:1   <- casi igual
-   *   texto gray-400         6,77:1   6,72:1   <- casi igual
-   *   texto gray-500         3,99:1   4,10:1   <- sube
-   *   p2 (Pomodoro)          8,41:1   7,81:1   <- baja, es el costo
-   *
-   * El widget se separa del canvas por el BORDE y por la sombra, no por su
-   * propio relleno: por eso el borde sube mientras el relleno baja. Y como el
-   * fondo sigue siendo el tono mas bajo, el unico color de la app (p2/p3)
-   * queda como lo mas brillante del encuadre.
-   *
-   * El canvas NO es #000000: en OLED produce halation sobre el texto y deja a
-   * las sombras de WidgetFrame sin contra que leerse. #121212 se ve igual de
-   * negro y conserva ese margen.
-   *
-   * Ojo al sube-bajar cosas: 900 tiene que quedar MAS OSCURO que 800. Si el
-   * canvas sube por encima de la superficie, los widgets se leen como huecos
-   * oscuros y se invierte la elevacion. Por eso el negro mate sube la rampa
-   * entera y no solo el canvas.
-   */
   --color-gray-50: var(--dashlet-gray-50);
   --color-gray-100: var(--dashlet-gray-100);
   --color-gray-200: var(--dashlet-gray-200);
@@ -237,25 +157,38 @@
 
 :root,
 html.dark {
-  --dashlet-p2: #E5A84B;
-  --dashlet-p2-oscura: #b7831d;
-  --dashlet-gray-50: #f6f7f8;
-  --dashlet-gray-100: #edeef0;
-  --dashlet-gray-200: #dfe1e4;
-  --dashlet-gray-300: #c6c6c6;
-  --dashlet-gray-400: #a0a0a0;
-  --dashlet-gray-500: #7a7a7a;
-  --dashlet-gray-600: #4f4f4f;
-  --dashlet-gray-700: #262930;
-  --dashlet-gray-800: #16181D;
-  --dashlet-gray-900: #0F1013;
-  --dashlet-gray-950: #0F1013;
-  --dashlet-white: #F1F3F5;
+  --bg-canvas: #0D111A;
+  --bg-surface: #141A26;
+  --bg-elevated: #1C2436;
+  --border-subtle: #232B3B;
+  --border-muted: #313D53;
+  --text-primary: #DCE4EC;
+  --text-secondary: #8B9BB0;
+  --control-bg: #182030;
+  --color-accent: #FFC20D;
+  --color-accent-hover: #E6AD05;
+  --color-accent-subtle: rgba(255, 194, 13, 0.12);
+  --color-accent-text: #0D111A;
+
+  --dashlet-p2: #FFC20D;
+  --dashlet-p2-oscura: #E6AD05;
+  --dashlet-gray-50: #F8FAFC;
+  --dashlet-gray-100: #EEF2F6;
+  --dashlet-gray-200: #DCE4EC;
+  --dashlet-gray-300: #B4C2D1;
+  --dashlet-gray-400: #8B9BB0;
+  --dashlet-gray-500: #5C6E87;
+  --dashlet-gray-600: #313D53;
+  --dashlet-gray-700: #232B3B;
+  --dashlet-gray-800: #1C2436;
+  --dashlet-gray-900: #141A26;
+  --dashlet-gray-950: #0D111A;
+  --dashlet-white: #DCE4EC;
 }
 
 html.light {
-  --dashlet-p2: #b7831d;
-  --dashlet-p2-oscura: #8f620c;
+  --dashlet-p2: #FFC20D;
+  --dashlet-p2-oscura: #E6AD05;
   --dashlet-gray-50: #18181b;
   --dashlet-gray-100: #27272a;
   --dashlet-gray-200: #3f3f46;
@@ -294,7 +227,8 @@ html, body {
 body {
   margin: 0;
   font-family: var(--font-sans);
-  color: var(--color-gray-300);
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
 }
 
 /*
@@ -312,7 +246,7 @@ body {
 }
 
 .skeleton {
-  background-color: #212121;
+  background-color: #1C2436;
   background-image: linear-gradient(
     90deg,
     rgba(255, 255, 255, 0) 0%,

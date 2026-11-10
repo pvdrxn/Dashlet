@@ -1,6 +1,7 @@
-﻿import { memo, useCallback, useRef, useEffect, useState, useMemo, useSyncExternalStore } from 'react';
+import { memo, useCallback, useRef, useEffect, useState, useMemo, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { FiArrowLeft, FiPause, FiPlay, FiRotateCcw, FiSettings, FiCheck, FiX, FiCheckSquare, FiEdit } from 'react-icons/fi';
+import { WidgetInternalTabs } from '../../components/WidgetInternalTabs';
 import { widgetBus } from '../widget-bus';
 import { getLiveConfig, subscribeLiveConfig } from '../live-config';
 import {
@@ -25,8 +26,54 @@ const RING_RADIUS = 58;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 const RING_SIZE = 140;
 
+export interface PomodoroTabItem {
+  id: string;
+  name: string;
+  technique: Technique;
+  workMinutes: number;
+  restMinutes: number;
+  longRestMinutes: number;
+  alarmSound: string;
+  state: 'idle' | 'running' | 'paused' | 'break';
+  remainingSeconds: number;
+  elapsedSeconds: number;
+  elapsedMs: number;
+  cycleCount: number;
+  phase: 'work' | 'break';
+  linkedTaskId?: string;
+  linkedTaskName?: string;
+  [key: string]: unknown;
+}
+
 export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigChange, widgetId }: PomodoroWidgetProps) {
-  const c = normalizeConfig(config);
+  const rawTabs: PomodoroTabItem[] = useMemo(() => {
+    if (Array.isArray(config.tabs) && config.tabs.length > 0) {
+      return (config.tabs as Record<string, unknown>[]).map((t, i) => {
+        const norm = normalizeConfig(t);
+        return {
+          id: typeof t.id === 'string' ? t.id : `timer-${i + 1}`,
+          name: typeof t.name === 'string' && t.name.trim() ? t.name : `Timer ${i + 1}`,
+          ...norm,
+        };
+      });
+    }
+    const norm = normalizeConfig(config);
+    return [
+      {
+        id: 'timer-1',
+        name: typeof config.title === 'string' && config.title.trim() ? config.title : 'Sprint 25/5',
+        ...norm,
+      },
+    ];
+  }, [config.tabs, config]);
+
+  const activeTabId =
+    typeof config.activeTabId === 'string' && rawTabs.some((t) => t.id === config.activeTabId)
+      ? (config.activeTabId as string)
+      : rawTabs[0]?.id ?? 'timer-1';
+
+  const currentTab = rawTabs.find((t) => t.id === activeTabId) ?? rawTabs[0];
+  const c = normalizeConfig(currentTab);
   const { technique, workMinutes, restMinutes, longRestMinutes, alarmSound, state, remainingSeconds, elapsedMs, cycleCount, phase, linkedTaskId, linkedTaskName } = c;
   const isCountup = technique === 'countup';
 
@@ -40,16 +87,138 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
   const configRef = useRef(c);
   const onConfigChangeRef = useRef(onConfigChange);
 
+  const updateCurrentTimer = useCallback(
+    (patch: Record<string, unknown>) => {
+      const mergedCurrent = { ...currentTab, ...patch };
+      const normalizedCurrent = normalizeConfig(mergedCurrent);
+      const updatedTab: PomodoroTabItem = {
+        ...currentTab,
+        ...normalizedCurrent,
+      };
+      const nextTabs = rawTabs.map((t) => (t.id === activeTabId ? updatedTab : t));
+
+      onConfigChange({
+        ...config,
+        ...normalizedCurrent,
+        tabs: nextTabs,
+        activeTabId,
+        title: updatedTab.name,
+      });
+    },
+    [currentTab, rawTabs, activeTabId, config, onConfigChange],
+  );
+
+  const handleSelectTab = useCallback(
+    (id: string) => {
+      if (id === activeTabId) return;
+
+      const currentTabPaused: PomodoroTabItem = {
+        ...currentTab,
+        ...c,
+        state: c.state === 'running' ? 'paused' : c.state,
+      };
+
+      const nextTabs = rawTabs.map((t) =>
+        t.id === activeTabId ? currentTabPaused : t,
+      );
+      const targetTab = nextTabs.find((t) => t.id === id) ?? nextTabs[0];
+      const targetNormalized = normalizeConfig(targetTab);
+
+      setView('main');
+      setEditingField(null);
+
+      onConfigChange({
+        ...config,
+        ...targetNormalized,
+        tabs: nextTabs,
+        activeTabId: id,
+        title: targetTab.name,
+      });
+    },
+    [activeTabId, currentTab, c, rawTabs, config, onConfigChange],
+  );
+
+  const handleAddTab = useCallback(() => {
+    const newId = `timer-${Date.now()}`;
+    const count = rawTabs.length;
+    const isSecond = count === 1;
+    const newName = isSecond ? 'Lectura 50/10' : `Timer ${count + 1}`;
+    const newWork = isSecond ? 50 : 25;
+    const newRest = isSecond ? 10 : 5;
+
+    const currentTabSaved: PomodoroTabItem = {
+      ...currentTab,
+      ...c,
+      state: c.state === 'running' ? 'paused' : c.state,
+    };
+
+    const newTab: PomodoroTabItem = {
+      id: newId,
+      name: newName,
+      technique: 'pomodoro',
+      workMinutes: newWork,
+      restMinutes: newRest,
+      longRestMinutes: 15,
+      alarmSound: 'ding',
+      state: 'idle',
+      remainingSeconds: newWork * 60,
+      elapsedSeconds: 0,
+      elapsedMs: 0,
+      cycleCount: 0,
+      phase: 'work',
+    };
+
+    const nextTabs = [
+      ...rawTabs.map((t) => (t.id === activeTabId ? currentTabSaved : t)),
+      newTab,
+    ];
+
+    setView('main');
+    setEditingField(null);
+
+    onConfigChange({
+      ...config,
+      ...newTab,
+      tabs: nextTabs,
+      activeTabId: newId,
+      title: newName,
+    });
+  }, [rawTabs, currentTab, c, activeTabId, config, onConfigChange]);
+
+  const handleRenameTab = useCallback(
+    (id: string, newName: string) => {
+      const nextTabs = rawTabs.map((t) =>
+        t.id === id ? { ...t, name: newName } : t,
+      );
+      onConfigChange({
+        ...config,
+        tabs: nextTabs,
+        ...(id === activeTabId ? { title: newName } : {}),
+      });
+    },
+    [rawTabs, activeTabId, config, onConfigChange],
+  );
+
+  const handleDeleteTab = useCallback(
+    (id: string) => {
+      if (rawTabs.length <= 1) return;
+      const nextTabs = rawTabs.filter((t) => t.id !== id);
+      const nextActive = nextTabs.find((t) => t.id === activeTabId) ?? nextTabs[0];
+      const nextNorm = normalizeConfig(nextActive);
+
+      onConfigChange({
+        ...config,
+        ...nextNorm,
+        tabs: nextTabs,
+        activeTabId: nextActive.id,
+        title: nextActive.name,
+      });
+    },
+    [rawTabs, activeTabId, config, onConfigChange],
+  );
+
   /*
    * El store vivo, para la centesima del stopwatch.
-   *
-   * El tick corre a 100ms mientras corre un stopwatch, pero el config por props solo
-   * baja UNA vez por segundo --a proposito, la base no se escribe en cada tick--.
-   * Asi que sin esta suscripcion el digito de centesima daria un salto por segundo,
-   * que es indistinguible de no mostrarlo.
-   *
-   * `live-config` es el store generico: el widget lee de donde publica su propio
-   * reloj, sin entrar al modulo del reloj ni saber que existe.
    */
   const liveCfg = useSyncExternalStore(
     useCallback((cb: () => void) => (widgetId ? subscribeLiveConfig(cb) : () => {}), [widgetId]),
@@ -63,30 +232,6 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
   configRef.current = c;
   onConfigChangeRef.current = onConfigChange;
 
-  /*
-   * El reloj vive en `./timer`, no aca. Estos dos efectos son lo unico que lo
-   * conectan, y van SEPARADOS a proposito.
-   *
-   * Con uno solo, el cleanup corria en cada cambio de config --porque `config`
-   * esta en las dependencias-- o sea una vez por tick: `unregister` dejaba
-   * `entry.write` en null y `register` lo encontraba null al volver a entrar.
-   * Entonces `wasUnwatched` decia "cambio el config", que es lo mismo que "el
-   * widget esta retraido" solo cuando NO esta retraido.
-   *
-   * Y ahi vive la reconciliacion que cura el flash del despliegue: con el flag
-   * siempre prendido, cada tick escribia una segunda vez el tiempo recalculado
-   * contra el reloj de pared. Dos writers por segundo con valores que difieren en
-   * uno, y el contador saltaba o repetia segundos.
-   *
-   * Separados, el que limpia depende solo de `widgetId` --o sea, corre cuando el
-   * componente se monta o se desmonta de verdad-- y el que registra sigue
-   * escuchando cada cambio de config, que es lo que necesita para decidir si el
-   * reloj corre.
-   *
-   * Sacar el callback NO para el reloj: eso es lo que hace que el pomodoro siga
-   * corriendo con el widget retraido, donde el componente no esta montado. Para
-   * eso hace falta `disposePomodoroTimer`, que se llama al borrar el widget.
-   */
   useEffect(() => {
     if (!widgetId) return;
     return () => unregisterPomodoroTimer(widgetId);
@@ -94,8 +239,8 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
 
   useEffect(() => {
     if (!widgetId) return;
-    registerPomodoroTimer(widgetId, config, onConfigChange);
-  }, [widgetId, config, onConfigChange]);
+    registerPomodoroTimer(widgetId, config, updateCurrentTimer);
+  }, [widgetId, config, updateCurrentTimer]);
 
   useEffect(() => {
     if (!alarmOpen) return;
@@ -110,19 +255,10 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
   }, [alarmOpen]);
 
   useEffect(() => {
-    /*
-     * Destino OBLIGATORIO. Antes el guard era `si viene y no soy yo, fuera`, o sea
-     * que un `task:select` sin destino --como el que mandaba el selector de tareas
-     * -- entraba en todos los pomodoros y un solo click vinculaba la tarea a cada
-     * timer del dashboard. Los dos emisores mandan destino, asi que exigirlo no
-     * rompe ningun camino.
-     */
     const offSelect = widgetBus.on('task:select', (data) => {
-      console.log('[pomo]', widgetId, 'recibe select target=', data.targetWidgetId, 'acepta=', data.targetWidgetId === widgetId);
       if (data.targetWidgetId !== widgetId) return;
       const workMin = data.estimatedMinutes ?? configRef.current.workMinutes;
-      onConfigChangeRef.current({
-        ...configRef.current,
+      updateCurrentTimer({
         linkedTaskId: data.taskId,
         linkedTaskName: data.taskName,
         workMinutes: workMin,
@@ -134,58 +270,30 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
       });
     });
     return () => { offSelect(); };
-  }, [widgetId]);
+  }, [widgetId, updateCurrentTimer]);
 
-  useEffect(() => {
-    if (!widgetId) return;
-    widgetBus.emit('request-timer-index', { widgetId });
-    const offIdx = widgetBus.on('timer-index', (data) => {
-      if (data.widgetId !== widgetId) return;
-      onConfigChangeRef.current({
-        ...configRef.current,
-        timerIndex: data.timerIndex,
-        title: `Timer ${data.timerIndex}`,
-      });
-    });
-    return () => { offIdx(); };
-  }, [widgetId]);
-
-  /*
-   * El armado del config al arrancar vive en `startConfig`, en el modulo, y no
-   * aca. Lo consume tambien el play del readout retraido, y con dos copias
-   * divergen: el mismo boton arrancaria cosas distintas segun donde se apriete.
-   * Aca solo queda la parte que es de UI, que es avisar a la tarea vinculada.
-   */
   const start = useCallback(() => {
     const next = startConfig(c);
-    onConfigChange(next as unknown as Record<string, unknown>);
+    updateCurrentTimer(next as unknown as Record<string, unknown>);
     if (linkedTaskId) {
       widgetBus.emit('timer:start', { taskId: linkedTaskId, taskName: linkedTaskName ?? '', technique });
     }
-  }, [c, linkedTaskId, linkedTaskName, technique, onConfigChange]);
+  }, [c, linkedTaskId, linkedTaskName, technique, updateCurrentTimer]);
 
   const pause = useCallback(() => {
-    onConfigChange({ ...config, state: 'paused' });
+    updateCurrentTimer({ state: 'paused' });
     if (linkedTaskId) {
       widgetBus.emit('timer:pause', { taskId: linkedTaskId });
     }
-  }, [config, linkedTaskId, onConfigChange]);
+  }, [linkedTaskId, updateCurrentTimer]);
 
   const goSettings = useCallback(() => {
-    onConfigChange({ ...config, state: 'paused' });
+    updateCurrentTimer({ state: 'paused' });
     setView('settings');
-  }, [config, onConfigChange]);
+  }, [updateCurrentTimer]);
 
-  /*
-   * Dos funciones y no una. Compartian `goBackAndReset`, con lo cual volver de
-   * los ajustes aplastaba el reloj. Y el reinicio no reseteaba el stopwatch:
-   * `goBackAndReset` ponia `remainingSeconds` en cero pero jamas tocaba
-   * `elapsedSeconds`, que es lo UNICO que muestra la tecnica countup. Por eso el
-   * boton de reiniciar no parecia hacer nada en el cronometro.
-   */
   const reset = useCallback(() => {
-    onConfigChange({
-      ...config,
+    updateCurrentTimer({
       state: 'idle',
       phase: 'work',
       remainingSeconds: workMinutes * 60,
@@ -193,9 +301,8 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
       cycleCount: 0,
     });
     setEditingField(null);
-  }, [workMinutes, config, onConfigChange]);
+  }, [workMinutes, updateCurrentTimer]);
 
-  /** Volver de los ajustes. No toca el reloj: solo cambia de vista. */
   const goBack = useCallback(() => {
     setView('main');
     setEditingField(null);
@@ -209,12 +316,11 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
       return;
     }
     applyTechnique(tech);
-  }, [technique, state, config, onConfigChange]);
+  }, [technique, state]);
 
   const applyTechnique = useCallback((tech: Technique) => {
     const preset = TECHNIQUES[tech];
-    onConfigChange({
-      ...config,
+    updateCurrentTimer({
       technique: tech,
       workMinutes: preset.workMinutes,
       restMinutes: preset.restMinutes,
@@ -225,7 +331,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
       elapsedMs: 0,
       cycleCount: 0,
     });
-  }, [config, onConfigChange]);
+  }, [updateCurrentTimer]);
 
   const confirmTechniqueChange = useCallback(() => {
     if (pendingTechnique) {
@@ -237,13 +343,13 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
   const updateField = useCallback((field: string, value: number | string) => {
     const patch: Record<string, unknown> = { [field]: value };
     if (field === 'workMinutes' && state !== 'running') {
-      patch.remainingSeconds = value as number * 60;
+      patch.remainingSeconds = (value as number) * 60;
       patch.phase = 'work';
       patch.state = 'idle';
     }
-    onConfigChange({ ...config, ...patch });
+    updateCurrentTimer(patch);
     setEditingField(null);
-  }, [config, state, onConfigChange]);
+  }, [state, updateCurrentTimer]);
 
   const isRunning = state === 'running';
   /*
@@ -273,8 +379,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
   }, [widgetId]);
 
   const unlinkTask = useCallback(() => {
-    onConfigChange({
-      ...config,
+    updateCurrentTimer({
       linkedTaskId: undefined,
       linkedTaskName: undefined,
       state: 'idle',
@@ -286,7 +391,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
     if (linkedTaskId) {
       widgetBus.emit('timer:reset', { taskId: linkedTaskId });
     }
-  }, [config, workMinutes, linkedTaskId, onConfigChange]);
+  }, [workMinutes, linkedTaskId, updateCurrentTimer]);
 
   const cycleDots = useMemo(() => {
     const dots = [];
@@ -306,6 +411,16 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
   if (view === 'settings') {
     return (
       <div className="flex h-full flex-col">
+        <WidgetInternalTabs
+          tabs={rawTabs}
+          activeTabId={activeTabId}
+          onSelectTab={handleSelectTab}
+          onAddTab={handleAddTab}
+          onRenameTab={handleRenameTab}
+          onDeleteTab={handleDeleteTab}
+          maxTabs={3}
+          addLabel="Nuevo timer"
+        />
         <button
           type="button"
           onClick={goBack}
@@ -327,7 +442,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
               ];
             })().map((item) => (
               <div key={item.key} className="px-1">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-[#8B9BB0]">
                   {item.label}
                 </div>
                 {item.editable ? (
@@ -351,19 +466,19 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
                         }
                         if (e.key === 'Escape') setEditingField(null);
                       }}
-                      className="mt-0.5 w-full rounded-lg border border-white/10 bg-white/[0.05] px-2 py-1 text-sm text-gray-200 outline-none focus:border-p2/50 focus:bg-white/[0.08]"
+                      className="mt-0.5 w-full rounded-lg border border-[#232B3B] bg-[#1C2436] px-2 py-1 text-sm text-[#DCE4EC] outline-none focus:border-[#FFC20D]/60"
                     />
                   ) : (
                     <button
                       type="button"
                       onClick={() => setEditingField(item.key)}
-                      className="mt-0.5 flex w-full items-center justify-between rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5 text-sm text-gray-200 hover:bg-white/[0.08] transition-colors"
+                      className="mt-0.5 flex w-full items-center justify-between rounded-lg border border-[#232B3B] bg-[#1C2436] px-2 py-1.5 text-sm text-[#DCE4EC] hover:bg-[#232B3B] transition-colors"
                     >
                       <span>{item.value} {item.suffix}</span>
                     </button>
                   )
                 ) : (
-                  <div className="mt-0.5 flex w-full items-center justify-between rounded-lg border border-white/5 bg-white/[0.02] px-2 py-1.5 text-sm text-gray-400">
+                  <div className="mt-0.5 flex w-full items-center justify-between rounded-lg border border-[#232B3B] bg-[#182030] px-2 py-1.5 text-sm text-[#8B9BB0]">
                     <span>{item.value} {item.suffix}</span>
                   </div>
                 )}
@@ -371,7 +486,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
             ))}
 
             <div className="px-1">
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-[#8B9BB0]">
                 ALARM
               </div>
               <button
@@ -384,18 +499,18 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
                   }
                   setAlarmOpen((v) => !v);
                 }}
-                className={`mt-1 flex w-full items-center justify-between rounded bg-gray-800 px-2 py-1.5 text-sm text-gray-200 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-gray-500 ${
-                  alarmOpen ? 'ring-1 ring-gray-500' : ''
+                className={`mt-1 flex w-full items-center justify-between rounded-lg border border-[#232B3B] bg-[#1C2436] px-2 py-1.5 text-sm text-[#DCE4EC] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-[#FFC20D] ${
+                  alarmOpen ? 'ring-1 ring-[#FFC20D]/50' : ''
                 }`}
               >
                 <span>{alarmOptions.find((o) => o.key === alarmSound)?.label ?? alarmSound}</span>
-                <svg className={`h-4 w-4 text-gray-400 transition-transform ${alarmOpen ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+                <svg className={`h-4 w-4 text-[#8B9BB0] transition-transform ${alarmOpen ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
                 </svg>
               </button>
               {alarmOpen && alarmPos && createPortal(
                 <div
-                  className="z-50 rounded-xl border border-white/15 bg-gray-900/90 py-1 shadow-2xl backdrop-blur-xl"
+                  className="z-50 rounded-xl border border-[#232B3B] bg-[#141A26] py-1 shadow-2xl backdrop-blur-xl"
                   style={{ position: 'fixed', top: alarmPos.top, left: alarmPos.left, width: alarmPos.width }}
                 >
                   {alarmOptions.map((opt) => (
@@ -410,8 +525,8 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
                       }}
                       className={`flex w-full items-center px-2 py-1.5 text-left text-sm transition-colors ${
                         alarmSound === opt.key
-                          ? 'bg-p2/15 text-p2'
-                          : 'text-gray-200 hover:bg-white/5'
+                          ? 'bg-[#FFC20D]/15 text-[#FFC20D]'
+                          : 'text-[#DCE4EC] hover:bg-[#1C2436]'
                       }`}
                     >
                       {opt.label}
@@ -427,8 +542,19 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
   }
 
   return (
-    <div className="flex h-full flex-col items-center justify-center">
-      <div className="flex w-full items-center justify-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] p-1 backdrop-blur-md shadow-[inset_0_1px_1px_rgba(255,255,255,0.08),0_2px_8px_rgba(0,0,0,0.2)]">
+    <div className="flex h-full flex-col">
+      <WidgetInternalTabs
+        tabs={rawTabs}
+        activeTabId={activeTabId}
+        onSelectTab={handleSelectTab}
+        onAddTab={handleAddTab}
+        onRenameTab={handleRenameTab}
+        onDeleteTab={handleDeleteTab}
+        maxTabs={3}
+        addLabel="Nuevo timer"
+      />
+      <div className="flex flex-1 flex-col items-center justify-center min-h-0">
+      <div className="flex w-full items-center justify-center gap-1 rounded-lg border border-[#232B3B] bg-[#182030] p-1 shadow-inner">
         {TECHNIQUE_KEYS.map((tech) => {
           const isActive = !linkedTaskId && technique === tech;
           return (
@@ -438,8 +564,8 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
               onClick={() => selectTechnique(tech)}
               className={`min-w-0 flex-1 truncate rounded-md px-1.5 py-1 text-[11px] font-medium transition-all duration-150 ${
                 isActive
-                  ? 'border border-p2/40 bg-p2/20 text-p2 shadow-[0_2px_10px_rgba(217,164,65,0.25),inset_0_1px_0_rgba(255,255,255,0.2)] font-semibold'
-                  : 'border border-transparent text-white/50 hover:bg-white/[0.06] hover:text-white/80'
+                  ? 'border border-[#313D53] bg-[#1C2436] text-[#DCE4EC] font-semibold shadow-sm'
+                  : 'border border-transparent text-[#8B9BB0] hover:bg-[#1C2436]/60 hover:text-[#DCE4EC]'
               }`}
               title={tech === 'custom' ? 'Custom' : TECHNIQUES[tech].label}
             >
@@ -450,17 +576,11 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
       </div>
 
       {linkedTaskId ? (
-        /*
-         * `w-full` y no un tope fijo: el padre es un `items-center`, asi que sin
-         * ancho el div se ajusta al contenido y agrandar el widget no cambiaba
-         * nada. Con `w-full` el nombre usa todo el espacio disponible y aparece
-         * de a partes segun lo achiques o lo estes.
-         */
-        <div className="mt-2 w-full truncate text-center text-sm font-medium text-p2 tabular-nums">
+        <div className="mt-2 w-full truncate text-center text-sm font-medium text-[#FFC20D] tabular-nums">
           {linkedTaskName}
         </div>
       ) : (
-        <div className="mt-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+        <div className="mt-2 text-[10px] font-semibold uppercase tracking-wider text-[#8B9BB0]">
           {isCountup ? 'STOPWATCH' : phase === 'break' ? 'BREAK' : 'FOCUS'}
         </div>
       )}
@@ -468,16 +588,11 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
       <div className="relative my-2 flex items-center justify-center">
         {isCountup ? (
           <div className="flex h-[140px] w-[140px] flex-col items-center justify-center">
-            <span className="text-xl font-semibold tracking-wide text-white tabular-nums">
+            <span className="text-xl font-semibold tracking-wide text-[#DCE4EC] tabular-nums">
               {formatStopwatch(showMs)}
             </span>
-            {/*
-             * El objetivo va DEBAJO y no al lado: a `text-xl` el numero
-             * `00:04:12,34` ya llena los 140px de la caja. Arriba, con la misma
-             * barra de "/", se lee igual.
-             */}
             {budget > 0 && (
-              <span className="mt-1 text-xs tabular-nums text-gray-500">/ {formatTarget(budget)}</span>
+              <span className="mt-1 text-xs tabular-nums text-[#8B9BB0]">/ {formatTarget(budget)}</span>
             )}
           </div>
         ) : (
@@ -488,7 +603,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
                 cy={RING_SIZE / 2}
                 r={RING_RADIUS}
                 fill="none"
-                stroke="var(--color-gray-700)"
+                stroke="#232B3B"
                 strokeWidth="5"
               />
               <circle
@@ -504,7 +619,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
                 className="transition-[stroke-dashoffset] duration-1000 ease-linear"
               />
             </svg>
-            <span className="absolute text-xl font-semibold tracking-wide text-white tabular-nums">
+            <span className="absolute text-xl font-semibold tracking-wide text-[#DCE4EC] tabular-nums">
               {formatTimeShort(remainingSeconds)}
             </span>
           </>
@@ -517,7 +632,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
             <span
               key={i}
               className={`h-1.5 w-1.5 rounded-full transition-colors ${
-                filled ? 'bg-p2' : 'bg-gray-700'
+                filled ? 'bg-[#FFC20D]' : 'bg-[#232B3B]'
               }`}
             />
           ))}
@@ -528,27 +643,20 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
         <button
           type="button"
           onClick={linkedTaskId ? unlinkTask : openTaskPicker}
-          className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
+          className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors cursor-pointer ${
             linkedTaskId
-              ? 'bg-p2/15 text-p2 hover:bg-p2/25'
-              : 'bg-gray-700/60 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+              ? 'bg-[#FFC20D]/15 text-[#FFC20D] hover:bg-[#FFC20D]/25'
+              : 'bg-[#1C2436] text-[#8B9BB0] hover:bg-[#232B3B] hover:text-[#DCE4EC]'
           }`}
           title={linkedTaskId ? `Unlink: ${linkedTaskName}` : 'Link task'}
         >
-          {/*
-           * `FiCheckSquare`, el mismo icono con el que el registro identifica al
-           * widget de tareas. Antes era `FiClock`, que es el icono del pomodoro:
-           * dentro de un timer un reloj no dice "vincular", dice "timer" -- y el
-           * boton de al lado de play/pause ya se lee como parte del reloj. El
-           * check-square es el que comunica "esto va a una lista de tareas".
-           */}
           <FiCheckSquare size={16} />
         </button>
 
         <button
           type="button"
           onClick={reset}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-gray-400 transition-colors hover:bg-white/10 hover:text-gray-200"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-[#1C2436] text-[#8B9BB0] transition-colors hover:bg-[#232B3B] hover:text-[#DCE4EC] cursor-pointer"
           title="Reset"
         >
           <FiRotateCcw size={16} />
@@ -557,7 +665,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
         <button
           type="button"
           onClick={isRunning ? pause : start}
-          className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-gray-100 transition-colors hover:bg-white/15"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-[#FFC20D] text-[#0D111A] transition-transform hover:bg-[#E6AD05] active:scale-95 shadow-[0_2px_12px_rgba(255,194,13,0.35)] cursor-pointer font-semibold"
           title={isRunning ? 'Pause' : 'Start'}
         >
           {isRunning ? <FiPause size={18} /> : <FiPlay size={18} className="ml-0.5" />}
@@ -566,7 +674,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
         <button
           type="button"
           onClick={goSettings}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-gray-400 transition-colors hover:bg-white/10 hover:text-gray-200"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-[#1C2436] text-[#8B9BB0] transition-colors hover:bg-[#232B3B] hover:text-[#DCE4EC] cursor-pointer"
           title="Settings"
         >
           <FiSettings size={16} />
@@ -579,23 +687,23 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
             role="dialog"
             aria-modal="true"
             aria-label="Change technique"
-            className="w-full max-w-52 rounded-xl border border-white/15 bg-gray-900/90 p-3 shadow-2xl backdrop-blur-xl"
+            className="w-full max-w-52 rounded-xl border border-[#232B3B] bg-[#141A26] p-3 shadow-2xl backdrop-blur-xl"
           >
-            <p className="text-sm text-gray-200">
+            <p className="text-sm text-[#DCE4EC]">
               Change technique? Current timer will be reset.
             </p>
             <div className="mt-3 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setPendingTechnique(null)}
-                className="flex items-center gap-1 rounded bg-gray-600 px-2.5 py-1 text-xs text-white hover:bg-gray-500"
+                className="flex items-center gap-1 rounded bg-[#1C2436] px-2.5 py-1 text-xs text-[#8B9BB0] hover:bg-[#232B3B] hover:text-[#DCE4EC] cursor-pointer"
               >
                 <FiX size={12} /> Cancel
               </button>
               <button
                 type="button"
                 onClick={confirmTechniqueChange}
-                className="flex items-center gap-1 rounded bg-gray-700 px-2.5 py-1 text-xs text-white hover:bg-gray-600"
+                className="flex items-center gap-1 rounded bg-[#FFC20D] px-2.5 py-1 text-xs text-[#0D111A] font-semibold hover:bg-[#E6AD05] cursor-pointer"
               >
                 <FiCheck size={12} /> Change
               </button>
@@ -603,6 +711,7 @@ export const PomodoroWidget = memo(function PomodoroWidget({ config, onConfigCha
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 });

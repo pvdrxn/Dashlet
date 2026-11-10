@@ -95,7 +95,7 @@ export const HubHeader = memo(function HubHeader({
   ];
 
   return (
-    <header className="relative flex h-11 w-full shrink-0 items-center justify-between border-b border-white/[0.08] bg-[#16181D]/80 px-3 select-none backdrop-blur-xl z-[var(--z-sticky)] app-region-drag">
+    <header className="relative flex h-11 w-full shrink-0 items-center justify-between border-b border-[#232B3B] bg-[#141A26]/90 px-3 select-none backdrop-blur-xl z-[var(--z-sticky)] app-region-drag">
       {/* Left: Brand */}
       <div className="flex items-center gap-2 app-region-no-drag">
         <div
@@ -103,10 +103,10 @@ export const HubHeader = memo(function HubHeader({
           onClick={() => onSelectView('dashboard')}
           title="Dashlet"
         >
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-p2/40 bg-p2/20 text-p2 shadow-[0_0_10px_rgba(229,168,75,0.2)]">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#232B3B] bg-[#1C2436] text-[#FFC20D] shadow-[0_0_10px_rgba(255,194,13,0.15)]">
             <FiLayers size={14} />
           </div>
-          <span className="font-semibold text-xs tracking-wider text-[#F1F3F5] uppercase">
+          <span className="font-semibold text-xs tracking-wider text-[#DCE4EC] uppercase">
             Dashlet
           </span>
         </div>
@@ -116,7 +116,7 @@ export const HubHeader = memo(function HubHeader({
       <div className="absolute left-1/2 -translate-x-1/2 flex items-center app-region-no-drag pointer-events-auto">
         <div
           ref={containerRef}
-          className="relative flex items-center rounded-lg border border-white/[0.08] bg-[#0F1013]/60 p-0.5 shadow-inner"
+          className="relative flex items-center rounded-lg border border-[#232B3B] bg-[#0D111A]/80 p-0.5 shadow-inner"
         >
           {/* Animated sliding indicator pill */}
           <span
@@ -125,7 +125,7 @@ export const HubHeader = memo(function HubHeader({
               transform: `translateX(${indicator.left}px)`,
               width: `${indicator.width}px`,
             }}
-            className={`absolute top-0.5 bottom-0.5 left-0 rounded-md bg-p2 shadow-sm pointer-events-none z-0 ${
+            className={`absolute top-0.5 bottom-0.5 left-0 rounded-md bg-[#FFC20D] shadow-sm pointer-events-none z-0 ${
               indicator.ready ? 'opacity-100' : 'opacity-0'
             } ${animate ? 'transition-all duration-300 ease-[cubic-bezier(0.34,1.4,0.64,1)]' : ''}`}
           />
@@ -143,14 +143,14 @@ export const HubHeader = memo(function HubHeader({
                 onClick={() => onSelectView(item.id)}
                 className={`relative z-10 flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors duration-200 ${
                   isActive
-                    ? 'text-gray-950 font-semibold'
-                    : 'text-[#8E95A2] hover:text-[#F1F3F5] hover:bg-white/[0.04]'
+                    ? 'text-[#0D111A] font-semibold'
+                    : 'text-[#8B9BB0] hover:text-[#DCE4EC] hover:bg-[#1C2436]'
                 }`}
               >
                 <Icon
                   size={12}
                   className={`transition-colors duration-200 ${
-                    isActive ? 'text-gray-950' : 'text-[#8E95A2]'
+                    isActive ? 'text-[#0D111A]' : 'text-[#8B9BB0]'
                   }`}
                 />
                 <span>{item.label}</span>
@@ -168,8 +168,8 @@ export const HubHeader = memo(function HubHeader({
           onClick={onOpenTrash}
           className={`flex h-7 w-7 items-center justify-center rounded-lg border transition-all cursor-pointer ${
             trashOpen
-              ? 'border-p2/40 bg-p2/20 text-p2'
-              : 'border-white/[0.08] bg-white/[0.04] text-gray-400 hover:text-[#F1F3F5] hover:bg-white/[0.08]'
+              ? 'border-[#FFC20D]/40 bg-[#FFC20D]/15 text-[#FFC20D]'
+              : 'border-[#232B3B] bg-[#1C2436] text-[#8B9BB0] hover:text-[#DCE4EC] hover:bg-[#232B3B]'
           }`}
           title={t('trash.title', 'Papelera')}
           aria-label={t('trash.title', 'Papelera')}
@@ -181,7 +181,7 @@ export const HubHeader = memo(function HubHeader({
         <button
           type="button"
           onClick={onOpenSettings}
-          className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-gray-400 hover:text-[#F1F3F5] hover:bg-white/[0.08] transition-all cursor-pointer"
+          className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#232B3B] bg-[#1C2436] text-[#8B9BB0] hover:text-[#DCE4EC] hover:bg-[#232B3B] transition-all cursor-pointer"
           title={t('settings.title', 'Ajustes')}
           aria-label={t('settings.title', 'Ajustes')}
         >
@@ -189,11 +189,11 @@ export const HubHeader = memo(function HubHeader({
         </button>
 
         {/* Window Controls (Minimize, Maximize/Restore, Close) */}
-        <div className="flex items-center gap-0.5 ml-1.5 pl-2 border-l border-white/[0.08]">
+        <div className="flex items-center gap-0.5 ml-1.5 pl-2 border-l border-[#232B3B]">
           <button
             type="button"
             onClick={() => window.electronAPI?.minimize?.()}
-            className="flex h-7 w-7 items-center justify-center rounded text-gray-400 hover:text-[#F1F3F5] hover:bg-white/[0.08] transition-colors cursor-pointer"
+            className="flex h-7 w-7 items-center justify-center rounded text-[#8B9BB0] hover:text-[#DCE4EC] hover:bg-[#1C2436] transition-colors cursor-pointer"
             title={t('window.minimize', 'Minimizar')}
             aria-label={t('window.minimize', 'Minimizar')}
           >
@@ -202,7 +202,7 @@ export const HubHeader = memo(function HubHeader({
           <button
             type="button"
             onClick={() => window.electronAPI?.maximize?.()}
-            className="flex h-7 w-7 items-center justify-center rounded text-gray-400 hover:text-[#F1F3F5] hover:bg-white/[0.08] transition-colors cursor-pointer"
+            className="flex h-7 w-7 items-center justify-center rounded text-[#8B9BB0] hover:text-[#DCE4EC] hover:bg-[#1C2436] transition-colors cursor-pointer"
             title={isMaximized ? t('window.restore', 'Restaurar') : t('window.maximize', 'Maximizar')}
             aria-label={isMaximized ? t('window.restore', 'Restaurar') : t('window.maximize', 'Maximizar')}
           >
@@ -211,7 +211,7 @@ export const HubHeader = memo(function HubHeader({
           <button
             type="button"
             onClick={() => window.electronAPI?.close?.(true)}
-            className="flex h-7 w-7 items-center justify-center rounded text-gray-400 hover:text-white hover:bg-red-500/80 transition-colors cursor-pointer"
+            className="flex h-7 w-7 items-center justify-center rounded text-[#8B9BB0] hover:text-white hover:bg-red-500/80 transition-colors cursor-pointer"
             title={t('window.close', 'Cerrar')}
             aria-label={t('window.close', 'Cerrar')}
           >

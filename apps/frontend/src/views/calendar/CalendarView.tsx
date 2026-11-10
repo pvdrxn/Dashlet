@@ -522,14 +522,14 @@ export function CalendarView({ leading, onClose }: CalendarViewProps) {
   /* ---------------------------------------------------------------------- */
 
   return (
-    <div className="h-full w-full overflow-hidden flex flex-col bg-[#0F1013] text-[#F1F3F5]">
+    <div className="h-full w-full overflow-hidden flex flex-col bg-[#0D111A] text-[#DCE4EC]">
       {/* Header con navegación de mes y botón de volver */}
-      <header className="flex items-center justify-between border-b border-white/[0.08] px-4 py-2 shrink-0 bg-[#16181D]/60">
+      <header className="flex items-center justify-between border-b border-[#232B3B] px-4 py-2 shrink-0 bg-[#141A26]/80">
         <div className="flex items-center gap-2">
           {leading}
           <div className="flex items-center gap-2">
-            <FiCalendar size={15} className="text-p2 shrink-0" />
-            <h1 className="text-xs font-semibold text-white tracking-wide">
+            <FiCalendar size={15} className="text-[#FFC20D] shrink-0" />
+            <h1 className="text-xs font-semibold text-[#DCE4EC] tracking-wide">
               {formatMonthLabel(activeMonth)}
             </h1>
           </div>
@@ -581,21 +581,21 @@ export function CalendarView({ leading, onClose }: CalendarViewProps) {
       <div className="shrink-0 px-3 pt-3">
         <div className="flex flex-col sm:flex-row items-stretch gap-3">
           {/* Tarjeta 1: Tiempo en Agenda */}
-          <div className="w-full sm:w-60 md:w-64 shrink-0 rounded-xl border border-white/[0.08] bg-[#16181D]/80 p-3.5 shadow-sm flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs text-white/50 mb-1.5">
+          <div className="w-full sm:w-60 md:w-64 shrink-0 rounded-xl border border-[#232B3B] bg-[#141A26] p-3.5 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center justify-between text-xs text-[#8B9BB0] mb-1.5">
               <span className="font-mono text-[10px] uppercase tracking-wider">
                 {t('calendar.agendaTime', 'Tiempo en Agenda')}
               </span>
-              <div className="flex h-6 w-6 items-center justify-center rounded bg-blue-500/15 text-blue-400 border border-blue-500/30">
+              <div className="flex h-6 w-6 items-center justify-center rounded bg-[#1C2436] text-blue-400 border border-[#232B3B]">
                 <FiCalendar size={13} />
               </div>
             </div>
             <div>
-              <div className="text-2xl font-bold tracking-tight text-white font-mono">
+              <div className="text-2xl font-bold tracking-tight text-[#DCE4EC] font-mono">
                 {formatHoursMinutes(totalAgendaMinutes)}
               </div>
-              <p className="mt-1 text-[11px] text-[#868e9a] flex items-center gap-1.5 truncate">
-                <span className="text-white/80 font-medium">
+              <p className="mt-1 text-[11px] text-[#8B9BB0] flex items-center gap-1.5 truncate">
+                <span className="text-[#DCE4EC] font-medium">
                   {formatDayLabel(selectedDate)}
                 </span>
                 <span>·</span>
@@ -610,7 +610,7 @@ export function CalendarView({ leading, onClose }: CalendarViewProps) {
           </div>
 
           {/* Tarjeta 2: Distribución por Categorías (Ancho dinámico adaptable) */}
-          <div className="min-w-0 flex-1 rounded-xl border border-white/[0.08] bg-[#16181D]/80 p-3.5 shadow-sm flex flex-col justify-between overflow-hidden">
+          <div className="min-w-0 flex-1 rounded-xl border border-[#232B3B] bg-[#141A26] p-3.5 shadow-sm flex flex-col justify-between overflow-hidden">
             <div className="flex items-center justify-between text-xs text-white/50 mb-2">
               <span className="font-mono text-[10px] uppercase tracking-wider">
                 {t('calendar.categoryDistribution', 'Distribución por Categorías')}
@@ -669,8 +669,8 @@ export function CalendarView({ leading, onClose }: CalendarViewProps) {
       {/* Doble columna compacta: izquierda mini-mes + tags, derecha agenda diaria */}
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3 lg:flex-row">
         {/* Panel izquierdo: Mini-mes + Tag chips */}
-        <section className="flex min-h-0 w-full flex-col overflow-hidden rounded-xl border border-white/[0.08] bg-[#16181D]/80 lg:w-[350px] lg:flex-none">
-          <header className="flex items-center justify-between border-b border-white/[0.08] px-3.5 py-2 shrink-0 bg-[#0F1013]/40">
+        <section className="flex min-h-0 w-full flex-col overflow-hidden rounded-xl border border-[#232B3B] bg-[#141A26] lg:w-[350px] lg:flex-none">
+          <header className="flex items-center justify-between border-b border-[#232B3B] px-3.5 py-2 shrink-0 bg-[#0D111A]/80">
               <span className="text-xs font-medium text-gray-400">
                 {visibleEvents.length} {visibleEvents.length === 1 ? t('calendar.event', 'event') : t('calendar.events', 'events')}
               </span>
@@ -840,18 +840,18 @@ export function CalendarView({ leading, onClose }: CalendarViewProps) {
         {/* ---------------------------------------------------------------- */}
         {/* Panel del dia: bloques por hora                                  */}
         {/* ---------------------------------------------------------------- */}
-        <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-white/[0.08] bg-[#16181D]/80">
-          <header className="flex items-center justify-between border-b border-white/[0.08] px-4 py-2 shrink-0 bg-[#0F1013]/40">
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-[#232B3B] bg-[#141A26]">
+          <header className="flex items-center justify-between border-b border-[#232B3B] px-4 py-2 shrink-0 bg-[#0D111A]/80">
             <div className="flex items-baseline gap-2">
-              <h2 className="text-sm font-medium text-white">{formatDayLabel(selectedDate)}</h2>
-              <span className="text-xs text-gray-500">
+              <h2 className="text-sm font-semibold text-[#DCE4EC]">{formatDayLabel(selectedDate)}</h2>
+              <span className="text-xs text-[#8B9BB0]">
                 {dayEvents.length} {dayEvents.length === 1 ? t('calendar.block', 'block') : t('calendar.blocks', 'blocks')}
               </span>
             </div>
             <button
               type="button"
               onClick={() => startCreate(selectedDate, 9 * 60)}
-              className="flex items-center gap-1.5 rounded bg-p2/20 px-2.5 py-1 text-xs font-medium text-p2 transition-colors hover:bg-p2/30"
+              className="flex items-center gap-1.5 rounded bg-[#FFC20D]/15 border border-[#FFC20D]/30 px-2.5 py-1 text-xs font-semibold text-[#FFC20D] transition-colors hover:bg-[#FFC20D]/25 cursor-pointer"
               title={t('calendar.addEvent', 'Add event')}
               aria-label={t('calendar.addEvent', 'Add event')}
             >

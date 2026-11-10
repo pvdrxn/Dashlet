@@ -4,6 +4,7 @@ import {
   StatsOverviewResponseDto,
   StatsSummaryDto,
   DailyFocusDto,
+  DailyFocusSessionDto,
   HabitHeatmapCellDto,
   TagTimeDistributionDto,
   HabitStatDto,
@@ -138,12 +139,16 @@ export class StatsService {
       }))
       .sort((a, b) => b.totalMinutes - a.totalMinutes);
 
-    // 2. Widgets activos del usuario (opcionalmente filtrados por pestaña)
+    // 2. Widgets activos del usuario (opcionalmente filtrados por pestaña, ignorando pestañas en papelera)
     const widgets = await this.prisma.widget.findMany({
       where: {
         userId,
         deletedAt: null,
+        OR: [{ tabId: null }, { tab: { deletedAt: null } }],
         ...(tabId ? { tabId } : {}),
+      },
+      include: {
+        tab: true,
       },
     });
 
@@ -176,10 +181,32 @@ export class StatsService {
     let tasksCompleted = 0;
     let tasksPending = 0;
     const pomodoroMinutesByDate = new Map<string, number>();
+    const focusBreakdownByDate = new Map<string, Map<string, DailyFocusSessionDto>>();
     let activeHabitsCount = 0;
     const completionsPerDate = new Map<string, number>();
     const habitStreaks: number[] = [];
     const habitsList: HabitStatDto[] = [];
+
+    const addBreakdown = (
+      dateStr: string,
+      tabName: string,
+      mins: number,
+      targetTabId?: string,
+    ) => {
+      if (mins <= 0) return;
+      let dayMap = focusBreakdownByDate.get(dateStr);
+      if (!dayMap) {
+        dayMap = new Map();
+        focusBreakdownByDate.set(dateStr, dayMap);
+      }
+      const key = targetTabId || tabName;
+      const existing = dayMap.get(key);
+      if (existing) {
+        existing.minutes += mins;
+      } else {
+        dayMap.set(key, { tabId: targetTabId, tabName, minutes: mins });
+      }
+    };
 
     for (const w of widgets) {
       const config = safeJson(w.config);
@@ -187,20 +214,31 @@ export class StatsService {
 
       // Todo List: tareas completadas vs pendientes
       if (w.type === 'todo-list') {
-        if (Array.isArray(config.items)) {
-          for (const item of config.items) {
-            if (!item || typeof item !== 'object') continue;
-            if ((item as Record<string, unknown>).completed === true) {
-              tasksCompleted++;
-            } else {
-              tasksPending++;
+        const allItems: unknown[] = [];
+        if (Array.isArray(config.tabs) && config.tabs.length > 0) {
+          for (const tab of config.tabs) {
+            if (tab && typeof tab === 'object' && Array.isArray((tab as Record<string, unknown>).items)) {
+              allItems.push(...((tab as Record<string, unknown>).items as unknown[]));
             }
+          }
+        } else if (Array.isArray(config.items)) {
+          allItems.push(...config.items);
+        }
+
+        for (const item of allItems) {
+          if (!item || typeof item !== 'object') continue;
+          if ((item as Record<string, unknown>).completed === true) {
+            tasksCompleted++;
+          } else {
+            tasksPending++;
           }
         }
       }
 
       // Pomodoro: sesiones acumuladas o ciclos
       else if (w.type === 'pomodoro') {
+        const tabName = w.tab?.name || 'General';
+        const wTabId = w.tabId || undefined;
         const history = (config.history || config.sessions || config.logs) as unknown[];
         if (Array.isArray(history)) {
           for (const entry of history) {
@@ -233,6 +271,7 @@ export class StatsService {
                 dateStr,
                 (pomodoroMinutesByDate.get(dateStr) || 0) + mins,
               );
+              addBreakdown(dateStr, tabName, mins, wTabId);
             }
           }
         } else {
@@ -248,6 +287,7 @@ export class StatsService {
               updateDate,
               (pomodoroMinutesByDate.get(updateDate) || 0) + totalAccumulated,
             );
+            addBreakdown(updateDate, tabName, totalAccumulated, wTabId);
           }
         }
       }
@@ -346,15 +386,33 @@ export class StatsService {
 
     // 3. Consolidar series temporales
     const allDates = generateDateList(from, to);
-    const isGlobal = !tabId;
+    const includeCalendar = !tabId || widgets.some((w) => w.type === 'calendar');
 
     let totalFocusMinutes = 0;
     const dailyFocus: DailyFocusDto[] = allDates.map((date) => {
       const pomodoroMins = pomodoroMinutesByDate.get(date) || 0;
-      const calendarMins = isGlobal ? (calendarMinutesByDate.get(date) || 0) : 0;
+      const calendarMins = includeCalendar ? (calendarMinutesByDate.get(date) || 0) : 0;
       const mins = pomodoroMins + calendarMins;
       totalFocusMinutes += mins;
-      return { date, minutes: mins };
+
+      const dayBreakdownMap = focusBreakdownByDate.get(date);
+      const breakdown: DailyFocusSessionDto[] = [];
+      if (dayBreakdownMap) {
+        breakdown.push(...Array.from(dayBreakdownMap.values()));
+      }
+      if (includeCalendar && calendarMins > 0) {
+        breakdown.push({
+          tabName: 'Calendario',
+          minutes: calendarMins,
+        });
+      }
+      breakdown.sort((a, b) => b.minutes - a.minutes);
+
+      return {
+        date,
+        minutes: mins,
+        breakdown: breakdown.length > 0 ? breakdown : undefined,
+      };
     });
 
     // La matriz de hábitos siempre cubre como mínimo todo el año actual
@@ -394,7 +452,7 @@ export class StatsService {
       summary,
       dailyFocus,
       habitHeatmap,
-      tagDistribution: isGlobal ? tagDistribution : [],
+      tagDistribution: includeCalendar ? tagDistribution : [],
       habits: habitsList,
     };
   }

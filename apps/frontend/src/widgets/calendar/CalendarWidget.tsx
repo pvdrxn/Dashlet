@@ -63,7 +63,7 @@ const MAX_DOTS = 3;
 const NEUTRAL_DOT = 'var(--color-gray-500)';
 
 const HEADER_BUTTON =
-  'flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-400 transition-colors hover:bg-white/5 hover:text-gray-200';
+  'flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-400 transition-colors hover:bg-white/5 hover:text-gray-200 cursor-pointer';
 
 function nowMinutes(): number {
   const d = new Date();
@@ -108,6 +108,34 @@ export function CalendarWidget({ config, onConfigChange, widgetId }: CalendarWid
     configRef.current = { ...configRef.current, ...patch };
     onChangeRef.current(configRef.current);
   }, []);
+
+  const selectedTagId: string | null =
+    typeof config.selectedTagId === 'string'
+      ? config.selectedTagId
+      : Array.isArray(config.tabs) && typeof (config.tabs[0] as Record<string, unknown>)?.selectedTagId === 'string'
+        ? ((config.tabs[0] as Record<string, unknown>).selectedTagId as string)
+        : null;
+
+  const handleSetTag = useCallback(
+    (tagId: string | null) => {
+      patchConfig({ selectedTagId: tagId });
+    },
+    [patchConfig],
+  );
+
+  const [tagMenuOpen, setTagMenuOpen] = useState(false);
+  const tagMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!tagMenuOpen) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (tagMenuRef.current && !tagMenuRef.current.contains(e.target as Node)) {
+        setTagMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [tagMenuOpen]);
 
   const [selectedDate, setSelectedDate] = useState(today);
   const [cursorMonth, setCursorMonth] = useState(() => monthKey(new Date()));
@@ -228,16 +256,21 @@ export function CalendarWidget({ config, onConfigChange, widgetId }: CalendarWid
 
   const tagById = useMemo(() => new Map(tags.map((tag) => [tag.id, tag])), [tags]);
 
+  const filteredEvents = useMemo(() => {
+    if (!selectedTagId) return events;
+    return events.filter((e) => e.tagId === selectedTagId);
+  }, [events, selectedTagId]);
+
   const dayEvents = useMemo(
     () =>
-      events.filter((e) => e.date === selectedDate).sort((a, b) => a.startMin - b.startMin),
-    [events, selectedDate],
+      filteredEvents.filter((e) => e.date === selectedDate).sort((a, b) => a.startMin - b.startMin),
+    [filteredEvents, selectedDate],
   );
 
   /** Cuenta y puntos de color por dia, para la grilla. */
   const byDate = useMemo(() => {
     const map = new Map<string, { count: number; dots: string[] }>();
-    for (const e of events) {
+    for (const e of filteredEvents) {
       const hex =
         e.tagId ? tagColorHex(tagById.get(e.tagId)?.color ?? null) : null;
       const entry = map.get(e.date) ?? { count: 0, dots: [] };
@@ -246,7 +279,7 @@ export function CalendarWidget({ config, onConfigChange, widgetId }: CalendarWid
       map.set(e.date, entry);
     }
     return map;
-  }, [events, tagById]);
+  }, [filteredEvents, tagById]);
 
   const eventsLabel = (n: number) =>
     `${n} ${n === 1 ? t('calendar.event', 'event') : t('calendar.events', 'events')}`;
@@ -256,7 +289,12 @@ export function CalendarWidget({ config, onConfigChange, widgetId }: CalendarWid
   /* ---------------------------------------------------------------------- */
 
   const startCreate = () =>
-    setEditor({ mode: 'create', title: '', tagId: null, startMin: defaultStartMin(selectedDate) });
+    setEditor({
+      mode: 'create',
+      title: '',
+      tagId: selectedTagId && tagById.has(selectedTagId) ? selectedTagId : null,
+      startMin: defaultStartMin(selectedDate),
+    });
 
   const startEdit = (e: CalendarEventDto) =>
     setEditor({ mode: 'edit', id: e.id, title: e.title, tagId: e.tagId, startMin: e.startMin });
@@ -344,10 +382,92 @@ export function CalendarWidget({ config, onConfigChange, widgetId }: CalendarWid
      * o mas-- las pone lado a lado y la lista gana el alto entero.
      */
     <div className="@container relative flex h-full min-h-0 flex-col gap-2 text-gray-200">
-      <header className="flex h-6 shrink-0 items-center gap-0.5">
-        <h3 className="min-w-0 flex-1 truncate text-sm font-medium text-white" title={headerLabel}>
+      <header className="flex h-6 shrink-0 items-center gap-1">
+        <h3 className="min-w-0 flex-1 truncate text-sm font-medium text-[#DCE4EC]" title={headerLabel}>
           {headerLabel}
         </h3>
+
+        {tags.length > 0 && (
+          <div ref={tagMenuRef} className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setTagMenuOpen((o) => !o)}
+              title={t('calendar.filterCategory', 'Filtrar por categoría')}
+              className={`flex items-center gap-1.5 rounded border px-2 py-0.5 text-[11px] transition-colors cursor-pointer ${
+                selectedTagId && tagById.get(selectedTagId)
+                  ? 'border-[#313D53] bg-[#1C2436] text-[#DCE4EC] hover:border-[#FFC20D]/40'
+                  : 'border-[#232B3B] bg-[#182030] text-[#8B9BB0] hover:border-[#313D53] hover:text-[#DCE4EC]'
+              }`}
+            >
+              {selectedTagId && tagById.get(selectedTagId) ? (
+                <>
+                  <span
+                    className="h-2 w-2 rounded-full shrink-0"
+                    style={{ backgroundColor: tagColorHex(tagById.get(selectedTagId)?.color ?? null) ?? undefined }}
+                  />
+                  <span className="truncate max-w-[75px] font-medium">{tagById.get(selectedTagId)?.name}</span>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSetTag(null);
+                    }}
+                    className="ml-0.5 rounded p-0.5 text-[#8B9BB0] hover:bg-[#1C2436] hover:text-[#DCE4EC] transition-colors"
+                    title={t('calendar.clearFilter', 'Limpiar')}
+                  >
+                    <FiX size={10} />
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#8B9BB0]/50 shrink-0" />
+                  <span className="text-[#8B9BB0]">{t('calendar.allCategories', 'Todas')}</span>
+                </>
+              )}
+            </button>
+
+            {tagMenuOpen && (
+              <div className="absolute right-0 top-full mt-1.5 z-30 min-w-[140px] max-h-48 overflow-y-auto rounded-lg border border-[#232B3B] bg-[#141A26] p-1 shadow-2xl backdrop-blur-md">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleSetTag(null);
+                    setTagMenuOpen(false);
+                  }}
+                  className={`flex w-full items-center gap-2 rounded px-2 py-1 text-xs text-left cursor-pointer transition-colors ${
+                    selectedTagId === null ? 'bg-[#FFC20D]/15 text-[#FFC20D] font-medium' : 'text-[#8B9BB0] hover:bg-[#1C2436] hover:text-[#DCE4EC]'
+                  }`}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#8B9BB0]/50" />
+                  <span>{t('calendar.allCategories', 'Todas')}</span>
+                </button>
+                {tags.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => {
+                      handleSetTag(t.id);
+                      setTagMenuOpen(false);
+                    }}
+                    className={`flex w-full items-center gap-2 rounded px-2 py-1 text-xs text-left cursor-pointer transition-colors ${
+                      selectedTagId === t.id ? 'bg-[#FFC20D]/15 text-[#FFC20D] font-medium' : 'text-[#8B9BB0] hover:bg-[#1C2436] hover:text-[#DCE4EC]'
+                    }`}
+                  >
+                    <span
+                      className="h-2 w-2 rounded-full shrink-0"
+                      style={{ backgroundColor: tagColorHex(t.color) ?? undefined }}
+                    />
+                    <span className="truncate">{t.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="h-3.5 w-px bg-white/10 mx-0.5 shrink-0" />
+
         <button
           type="button"
           onClick={goPrev}
@@ -387,12 +507,12 @@ export function CalendarWidget({ config, onConfigChange, widgetId }: CalendarWid
         </button>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-2 @md:flex-row @md:gap-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 @sm:flex-row @sm:gap-2.5">
         {viewMode === 'month' && (
-          <div className="flex shrink-0 flex-col @md:w-56">
+          <div className="flex shrink-0 flex-col @sm:w-48 @lg:w-56">
             <div className="grid grid-cols-7" aria-hidden="true">
               {weekdayInitials().map((w, i) => (
-                <span key={i} className="h-4 text-center text-[10px] leading-4 text-gray-500">
+                <span key={i} className="h-4 text-center text-[10px] leading-4 text-[#8B9BB0]">
                   {w}
                 </span>
               ))}
@@ -416,23 +536,23 @@ export function CalendarWidget({ config, onConfigChange, widgetId }: CalendarWid
                     aria-current={isCurrent ? 'date' : undefined}
                     className={`relative flex h-[22px] items-center justify-center rounded transition-colors ${
                       isSelected
-                        ? 'bg-p2/25 ring-1 ring-p2/60 text-white'
+                        ? 'bg-[#FFC20D]/20 ring-1 ring-[#FFC20D]/60 text-[#DCE4EC]'
                         : info && info.count > 0
-                          ? 'bg-p2/15 font-medium text-p2 hover:bg-p2/25'
+                          ? 'bg-[#1C2436] font-medium text-[#FFC20D] hover:bg-[#232B3B]'
                           : cell.inMonth
-                            ? 'hover:bg-white/[0.04]'
-                            : 'hover:bg-white/[0.02]'
+                            ? 'hover:bg-[#1C2436]'
+                            : 'hover:bg-[#1C2436]/40'
                     }`}
                   >
                     <span
                       className={`flex h-4 w-4 items-center justify-center rounded-full text-[10px] tabular-nums ${
                         isCurrent
-                          ? 'bg-p2 font-medium text-gray-900'
+                          ? 'bg-[#FFC20D] font-semibold text-[#0D111A]'
                           : isSelected
-                            ? 'text-white'
+                            ? 'text-[#DCE4EC]'
                             : cell.inMonth
-                              ? 'text-gray-300'
-                              : 'text-gray-600'
+                              ? 'text-[#DCE4EC]'
+                              : 'text-[#313D53]'
                       }`}
                     >
                       {dayNumber(cell.key)}
@@ -718,17 +838,17 @@ function EventModal({ editor, tags, titleRef, onChange, onSubmit, onCancel, widg
             </div>
           )}
 
-          <div className="mt-2 flex items-center justify-end gap-2 border-t border-gray-700/60 pt-3">
+          <div className="mt-2 flex items-center justify-end gap-2 border-t border-[#232B3B] pt-3">
             <button
               type="button"
               onClick={onCancel}
-              className="rounded px-3 py-1.5 text-xs text-gray-400 transition-colors hover:bg-white/5 hover:text-gray-200"
+              className="rounded px-3 py-1.5 text-xs text-[#8B9BB0] transition-colors hover:bg-[#1C2436] hover:text-[#DCE4EC] cursor-pointer"
             >
               {t('calendar.cancel', 'Cancel')}
             </button>
             <button
               type="submit"
-              className="rounded bg-p2 px-4 py-1.5 text-xs font-medium text-gray-900 transition-colors hover:bg-p2/90"
+              className="rounded bg-[#FFC20D] px-4 py-1.5 text-xs font-semibold text-[#0D111A] transition-colors hover:bg-[#E6AD05] cursor-pointer"
             >
               {editor.mode === 'edit' ? t('calendar.save', 'Save') : t('calendar.add', 'Add')}
             </button>

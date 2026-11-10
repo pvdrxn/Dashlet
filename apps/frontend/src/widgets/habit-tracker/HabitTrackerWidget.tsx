@@ -181,7 +181,7 @@ const SortableHabit = memo(function SortableHabit({
       style={style}
       {...attributes}
       {...listeners}
-      className="group/item cursor-grab active:cursor-grabbing rounded px-0.5 py-1 hover:bg-gray-700/50"
+      className="group/item cursor-grab active:cursor-grabbing rounded px-0.5 py-1 hover:bg-[#1C2436]/60"
     >
       <div className="flex items-center gap-2">
         {habit.mode === 'quantitative' ? (
@@ -196,11 +196,11 @@ const SortableHabit = memo(function SortableHabit({
                 const val = e.target.value === '' ? 0 : Number(e.target.value);
                 logValue(habit.id, today, val);
               }}
-              className="w-8 rounded-none border-0 border-b border-white/20 bg-transparent px-1 py-0.5 text-xs text-gray-200 outline-none focus:border-p2 transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              className="w-8 rounded-none border-0 border-b border-[#232B3B] bg-transparent px-1 py-0.5 text-xs text-[#DCE4EC] outline-none focus:border-[#FFC20D] transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               aria-label={`Log value for "${habit.name}"`}
             />
             {habit.unit && (
-              <span className="text-xs text-gray-400">{habit.unit}</span>
+              <span className="text-xs text-[#8B9BB0]">{habit.unit}</span>
             )}
           </div>
         ) : (
@@ -208,7 +208,7 @@ const SortableHabit = memo(function SortableHabit({
             type="checkbox"
             checked={isCompletedToday}
             onChange={() => toggleToday(habit.id)}
-            className="ml-1 h-5 w-5 shrink-0 cursor-pointer appearance-none rounded border border-white/30 bg-white/[0.04] transition-all checked:border-p2 checked:bg-p2 checked:bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2016%2016%27%20fill=%27none%27%20stroke=%27%23121212%27%20stroke-width=%272.5%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%3E%3Cpath%20d=%27M3.5%208.5l3%203%206-7%27/%3E%3C/svg%3E')] checked:bg-center checked:bg-no-repeat checked:bg-[length:14px_14px] hover:border-white/60"
+            className="ml-1 h-5 w-5 shrink-0 cursor-pointer appearance-none rounded border border-[#313D53] bg-[#182030] transition-all checked:border-[#FFC20D] checked:bg-[#FFC20D] checked:bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2016%2016%27%20fill=%27none%27%20stroke=%27%230D111A%27%20stroke-width=%272.5%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%3E%3Cpath%20d=%27M3.5%208.5l3%203%206-7%27/%3E%3C/svg%3E')] checked:bg-center checked:bg-no-repeat checked:bg-[length:14px_14px] hover:border-[#8B9BB0]"
             aria-label={`Mark "${habit.name}" as completed`}
           />
         )}
@@ -233,7 +233,7 @@ const SortableHabit = memo(function SortableHabit({
                   setEditing(false);
                 }
               }}
-              className="flex-1 rounded-none border-0 border-b border-p2 bg-transparent px-1 py-0.5 text-sm text-gray-200 outline-none min-w-0 truncate"
+              className="flex-1 rounded-none border-0 border-b border-[#FFC20D] bg-transparent px-1 py-0.5 text-sm text-[#DCE4EC] outline-none min-w-0 truncate"
               aria-label="Edit habit name"
             />
           ) : (
@@ -250,13 +250,13 @@ const SortableHabit = memo(function SortableHabit({
                   setEditing(true);
                 }
               }}
-              className="flex-1 text-sm text-gray-300 cursor-text truncate bg-transparent border-none p-0 text-left"
+              className="flex-1 text-sm text-[#DCE4EC] cursor-text truncate bg-transparent border-none p-0 text-left"
             >
               {habit.name}
             </button>
           )}
           {streak >= 2 && (
-            <span className="shrink-0 text-sm font-bold text-p2 tabular-nums">
+            <span className="shrink-0 text-sm font-bold text-[#FFC20D] tabular-nums">
               &#x1F525;{streak}
             </span>
           )}
@@ -264,7 +264,7 @@ const SortableHabit = memo(function SortableHabit({
         <button
           type="button"
           onClick={() => removeHabit(habit.id)}
-          className="invisible group-hover/item:visible text-xs text-gray-400 hover:text-danger mr-1"
+          className="invisible group-hover/item:visible text-xs text-[#8B9BB0] hover:text-danger mr-1"
         >
           &#x2715;
         </button>
@@ -279,14 +279,14 @@ const SortableHabit = memo(function SortableHabit({
        */}
       <div className="flex items-center gap-1 pl-6 mt-1">
         {DAY_LABELS.map((l) => (
-          <span key={l} className="flex-1 min-w-0 max-w-5 text-center text-[9px] text-gray-600">
+          <span key={l} className="flex-1 min-w-0 max-w-5 text-center text-[9px] text-[#8B9BB0]">
             {l}
           </span>
         ))}
         <button
           type="button"
           onClick={() => setExpanded(!expanded)}
-          className="ml-1 text-xs text-gray-400 hover:text-gray-300"
+          className="ml-1 text-xs text-[#8B9BB0] hover:text-[#DCE4EC]"
         >
           {expanded ? '\u25B2' : '\u25BC'}
         </button>
@@ -317,11 +317,11 @@ const SortableHabit = memo(function SortableHabit({
                     }
                   }}
                   className={`flex flex-1 min-w-0 max-w-5 items-center justify-center h-5 rounded text-[10px] cursor-pointer select-none ${
-                    cell.date === today ? 'ring-1 ring-p2' : ''
+                    cell.date === today ? 'ring-1 ring-[#FFC20D]' : ''
                   } ${
                     completed
-                      ? 'bg-p2 text-gray-900 hover:bg-p2/85'
-                      : 'border border-white/10 bg-white/[0.04] text-gray-400 hover:bg-white/[0.08] hover:text-white'
+                      ? 'bg-[#FFC20D] text-[#0D111A] hover:bg-[#E6AD05] font-semibold'
+                      : 'border border-[#232B3B] bg-[#182030] text-[#8B9BB0] hover:bg-[#1C2436] hover:text-[#DCE4EC]'
                   }`}
                   title={cell.date}
                   aria-label={`${cell.date} - ${completed ? 'completed' : 'not completed'}`}
@@ -529,23 +529,23 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({
           e.preventDefault();
           addHabit();
         }}
-        className="border-t border-white/10 pt-1.5 flex items-center gap-1.5"
+        className="border-t border-[#232B3B] pt-1.5 flex items-center gap-1.5"
       >
         <input
           value={newName}
           spellCheck={false}
           onChange={(e) => setNewName(e.target.value)}
           placeholder="Add a habit..."
-          className="flex-1 min-w-0 rounded-none border-0 border-b border-white/20 bg-transparent px-1 py-1 text-xs text-gray-200 outline-none focus:border-p2 placeholder-white/30 transition-colors"
+          className="flex-1 min-w-0 rounded-none border-0 border-b border-[#232B3B] bg-transparent px-1 py-1 text-xs text-[#DCE4EC] outline-none focus:border-[#FFC20D] placeholder-[#8B9BB0]/40 transition-colors"
           aria-label="New habit name"
         />
         <button
           type="button"
           onClick={() => setNewMode(newMode === 'binary' ? 'quantitative' : 'binary')}
-          className={`shrink-0 rounded-md border border-white/10 px-1.5 py-1 text-[10px] font-medium transition-colors ${
+          className={`shrink-0 rounded-md px-1.5 py-1 text-[10px] font-medium transition-colors cursor-pointer ${
             newMode === 'quantitative'
-              ? 'bg-p2/20 text-p2 border-p2/30 font-semibold'
-              : 'bg-white/[0.04] text-white/50 hover:bg-white/[0.08] hover:text-white/80'
+              ? 'bg-[#FFC20D]/15 text-[#FFC20D] border border-[#FFC20D]/30 font-semibold'
+              : 'border border-[#232B3B] bg-[#182030] text-[#8B9BB0] hover:bg-[#1C2436] hover:text-[#DCE4EC]'
           }`}
         >
           {newMode === 'binary' ? 'Bin' : 'Num'}
@@ -558,7 +558,7 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({
               step={1}
               value={newTarget}
               onChange={(e) => setNewTarget(Number(e.target.value) || 1)}
-              className="w-10 shrink-0 rounded-none border-0 border-b border-white/20 bg-transparent px-1 py-1 text-[10px] text-gray-200 outline-none focus:border-p2 transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              className="w-10 shrink-0 rounded-none border-0 border-b border-[#232B3B] bg-transparent px-1 py-1 text-[10px] text-[#DCE4EC] outline-none focus:border-[#FFC20D] transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               aria-label="Target value"
             />
             <input
@@ -566,7 +566,7 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({
               spellCheck={false}
               onChange={(e) => setNewUnit(e.target.value)}
               placeholder="unit"
-              className="w-12 shrink-0 rounded-none border-0 border-b border-white/20 bg-transparent px-1 py-1 text-[10px] text-gray-200 outline-none focus:border-p2 placeholder-white/30 transition-colors"
+              className="w-12 shrink-0 rounded-none border-0 border-b border-[#232B3B] bg-transparent px-1 py-1 text-[10px] text-[#DCE4EC] outline-none focus:border-[#FFC20D] placeholder-[#8B9BB0]/40 transition-colors"
               aria-label="Unit"
             />
           </>
@@ -574,7 +574,7 @@ export const HabitTrackerWidget = memo(function HabitTrackerWidget({
         <button
           type="submit"
           title="Add habit"
-          className="shrink-0 rounded bg-gray-600 p-1 text-white hover:bg-gray-500 disabled:opacity-50"
+          className="shrink-0 rounded border border-[#232B3B] bg-[#1C2436] p-1 text-[#8B9BB0] hover:text-[#DCE4EC] hover:bg-[#232B3B] disabled:opacity-30 cursor-pointer"
           disabled={!newName.trim()}
           aria-label="Add habit"
         >

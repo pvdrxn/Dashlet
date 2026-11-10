@@ -1202,7 +1202,7 @@ export function WidgetGrid({
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] text-p2 mb-4 shadow-xl">
             <FiGrid size={28} />
           </div>
-          <h3 className="text-base font-semibold text-[#F1F3F5] mb-1">
+          <h3 className="text-base font-semibold text-[#DCE4EC] mb-1">
             {t('dashboard.emptyTitle', 'Sin widgets en esta pestaña')}
           </h3>
           <p className="text-xs text-[#8E95A2] max-w-sm mb-5">
@@ -1219,7 +1219,7 @@ export function WidgetGrid({
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-6 right-6 z-[var(--z-overlay)] flex items-center gap-3 rounded-xl border border-white/10 bg-[#16181D]/95 px-4 py-3 shadow-2xl backdrop-blur-xl animate-view-fade-in"
+          className="fixed bottom-6 right-6 z-[var(--z-overlay)] flex items-center gap-3 rounded-xl border border-[#232B3B] bg-[#141A26]/95 px-4 py-3 shadow-2xl backdrop-blur-xl animate-view-fade-in"
         >
           <div className="relative flex h-5 w-5 items-center justify-center text-p2">
             <svg className="h-5 w-5 -rotate-90" viewBox="0 0 36 36">
@@ -1246,10 +1246,10 @@ export function WidgetGrid({
                 className="text-p2"
               />
             </svg>
-            <FiTrash2 size={10} className="absolute text-[#F1F3F5]" />
+            <FiTrash2 size={10} className="absolute text-[#DCE4EC]" />
           </div>
 
-          <span className="text-xs font-medium text-[#F1F3F5]">
+          <span className="text-xs font-medium text-[#DCE4EC]">
             {t('dashboard.widgetDeleted', 'Widget eliminado')}
           </span>
 

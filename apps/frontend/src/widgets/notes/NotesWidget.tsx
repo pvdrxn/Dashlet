@@ -704,7 +704,7 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
 
   return (
     <div className="relative flex h-full flex-col gap-1 w-full max-w-full min-w-0">
-      <div ref={toolbarRef} className="relative flex shrink-0 items-center justify-start flex-nowrap">
+      <div ref={toolbarRef} className="relative flex shrink-0 items-center justify-start flex-nowrap w-full">
         {/* Encabezados */}
         <div className="relative shrink-0">
           <button
@@ -906,11 +906,14 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
         </div>
       )}
 
-      <div ref={editorContainerRef} className="relative flex-1 min-h-[140px] max-h-[380px] w-full max-w-full min-w-0 overflow-y-auto overflow-x-hidden">
+      <div
+        ref={editorContainerRef}
+        className="-mx-2 px-2 relative flex-1 min-h-[140px] w-[calc(100%+1rem)] min-w-0 overflow-y-auto overflow-x-hidden"
+      >
         {searchOpen && searchQuery.trim() && (
           <div
             ref={highlightOverlayRef}
-            className="pointer-events-none absolute inset-0 p-2 text-sm leading-[1.4] text-transparent whitespace-pre-wrap break-words [overflow-wrap:anywhere] [word-break:break-word] w-full max-w-full [font-family:inherit] [&_mark]:visible [&_mark]:bg-p2/30 [&_mark]:text-white [&_mark]:rounded"
+            className="pointer-events-none absolute inset-0 px-1 py-1.5 text-sm leading-[1.4] text-transparent whitespace-pre-wrap break-words [overflow-wrap:anywhere] [word-break:break-word] w-full [font-family:inherit] [&_mark]:visible [&_mark]:bg-p2/30 [&_mark]:text-white [&_mark]:rounded"
             aria-hidden="true"
           />
         )}
@@ -936,7 +939,7 @@ export const NotesWidget = memo(function NotesWidget({ config, onConfigChange }:
           }}
           spellCheck={false}
           data-placeholder="Write your notes here..."
-          className="relative z-[1] min-h-[140px] w-full max-w-full p-2 text-sm leading-[1.4] text-gray-200 whitespace-pre-wrap break-words [overflow-wrap:anywhere] [word-break:break-word] focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-500/40 [font-family:inherit] [&_h1]:my-1 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-gray-100 [&_h2]:my-1 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-gray-100 [&_h3]:my-0.5 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-gray-100 [&_a]:text-gray-100 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul.dash-list]:list-none [&_ul.dash-list_li]:relative [&_ul.dash-list_li]:pl-4 [&_ul.dash-list_li:before]:absolute [&_ul.dash-list_li:before]:left-0 [&_ul.dash-list_li:before]:content-['-'] [&:empty:before]:pointer-events-none [&:empty:before]:absolute [&:empty:before]:content-[attr(data-placeholder)] [&:empty:before]:text-gray-500"
+          className="relative z-[1] min-h-[140px] w-full px-1 py-1.5 text-sm leading-[1.4] text-gray-200 whitespace-pre-wrap break-words [overflow-wrap:anywhere] [word-break:break-word] focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-500/40 [font-family:inherit] [&_h1]:my-1 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-gray-100 [&_h2]:my-1 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-gray-100 [&_h3]:my-0.5 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-gray-100 [&_a]:text-gray-100 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul.dash-list]:list-none [&_ul.dash-list_li]:relative [&_ul.dash-list_li]:pl-4 [&_ul.dash-list_li:before]:absolute [&_ul.dash-list_li:before]:left-0 [&_ul.dash-list_li:before]:content-['-'] [&:empty:before]:pointer-events-none [&:empty:before]:absolute [&:empty:before]:content-[attr(data-placeholder)] [&:empty:before]:text-gray-500"
           aria-label="Note content"
         />
       </div>

@@ -786,9 +786,16 @@ export interface StatsSummaryDto {
   longestStreak: number;
 }
 
+export interface DailyFocusSessionDto {
+  tabId?: string;
+  tabName: string;
+  minutes: number;
+}
+
 export interface DailyFocusDto {
   date: string; // YYYY-MM-DD
   minutes: number;
+  breakdown?: DailyFocusSessionDto[];
 }
 
 export interface HabitHeatmapCellDto {

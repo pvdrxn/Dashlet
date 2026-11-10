@@ -45,26 +45,26 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-lg rounded-2xl border border-white/10 bg-[#16181D] shadow-2xl overflow-hidden flex flex-col"
+        className="relative w-full max-w-lg rounded-2xl border border-[#232B3B] bg-[#141A26] shadow-2xl overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
         style={{
-          boxShadow: '0 24px 60px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.08)',
+          boxShadow: '0 24px 60px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.05)',
         }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.08] bg-[#0F1013]/60">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#232B3B] bg-[#0D111A]/80">
           <div>
-            <h2 className="text-sm font-semibold text-[#F1F3F5] tracking-wide">
+            <h2 className="text-sm font-semibold text-[#DCE4EC] tracking-wide">
               {t('settings.title', 'Ajustes y Preferencias')}
             </h2>
-            <p className="text-xs text-[#8E95A2] mt-0.5">
+            <p className="text-xs text-[#8B9BB0] mt-0.5">
               Configura el entorno de trabajo de Dashlet
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 text-gray-400 hover:text-white hover:bg-white/[0.06] transition-colors"
+            className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#232B3B] bg-[#1C2436] text-[#8B9BB0] hover:text-[#DCE4EC] hover:bg-[#232B3B] transition-colors cursor-pointer"
             title="Cerrar"
           >
             <FiX size={15} />
@@ -74,28 +74,28 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         {/* Content */}
         <div className="p-5 flex flex-col gap-5 max-h-[70vh] overflow-y-auto">
           {/* Theme Section */}
-          <div className="rounded-xl border border-white/[0.08] bg-[#0F1013]/40 p-4">
+          <div className="rounded-xl border border-[#232B3B] bg-[#0D111A]/50 p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-p2/30 bg-p2/15 text-p2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#232B3B] bg-[#1C2436] text-[#FFC20D]">
                   {theme === 'dark' ? <FiMoon size={16} /> : <FiSun size={16} />}
                 </span>
                 <div>
-                  <h3 className="text-xs font-medium text-[#F1F3F5]">Tema de Interfaz</h3>
-                  <p className="text-[11px] text-[#8E95A2]">
+                  <h3 className="text-xs font-medium text-[#DCE4EC]">Tema de Interfaz</h3>
+                  <p className="text-[11px] text-[#8B9BB0]">
                     Alterna entre modo oscuro técnico y claro
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center rounded-lg border border-white/10 p-0.5 bg-[#16181D]">
+              <div className="flex items-center rounded-lg border border-[#232B3B] p-0.5 bg-[#182030]">
                 <button
                   type="button"
                   onClick={() => toggleTheme('dark')}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors cursor-pointer ${
                     theme === 'dark'
-                      ? 'bg-p2 text-gray-950 font-medium shadow-sm'
-                      : 'text-gray-400 hover:text-gray-200'
+                      ? 'bg-[#FFC20D] text-[#0D111A] font-medium shadow-sm'
+                      : 'text-[#8B9BB0] hover:text-[#DCE4EC]'
                   }`}
                 >
                   <FiMoon size={12} />
@@ -104,10 +104,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <button
                   type="button"
                   onClick={() => toggleTheme('light')}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors cursor-pointer ${
                     theme === 'light'
-                      ? 'bg-p2 text-gray-950 font-medium shadow-sm'
-                      : 'text-gray-400 hover:text-gray-200'
+                      ? 'bg-[#FFC20D] text-[#0D111A] font-medium shadow-sm'
+                      : 'text-[#8B9BB0] hover:text-[#DCE4EC]'
                   }`}
                 >
                   <FiSun size={12} />
@@ -118,16 +118,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </div>
 
           {/* Language Section */}
-          <div className="rounded-xl border border-white/[0.08] bg-[#0F1013]/40 p-4 space-y-3">
+          <div className="rounded-xl border border-[#232B3B] bg-[#0D111A]/50 p-4 space-y-3">
             <div className="flex items-center gap-3">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-gray-300">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#232B3B] bg-[#1C2436] text-[#8B9BB0]">
                 <FiGlobe size={16} />
               </span>
               <div>
-                <h3 className="text-xs font-medium text-[#F1F3F5]">
+                <h3 className="text-xs font-medium text-[#DCE4EC]">
                   {t('settings.preferencesTab.language.title', 'Idioma')}
                 </h3>
-                <p className="text-[11px] text-[#8E95A2]">
+                <p className="text-[11px] text-[#8B9BB0]">
                   {t('settings.preferencesTab.language.selectLanguageDesc', 'Selecciona el idioma del espacio de trabajo')}
                 </p>
               </div>
@@ -141,17 +141,17 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     key={lang.code}
                     type="button"
                     onClick={() => changeLanguage(lang.code as SupportedLanguage)}
-                    className={`flex items-center justify-between p-2.5 rounded-lg border text-left transition-all ${
+                    className={`flex items-center justify-between p-2.5 rounded-lg border text-left transition-all cursor-pointer ${
                       isSelected
-                        ? 'border-p2/40 bg-p2/15 text-[#F1F3F5]'
-                        : 'border-white/[0.08] bg-[#16181D] text-gray-400 hover:border-white/15 hover:text-gray-200'
+                        ? 'border-[#FFC20D]/40 bg-[#FFC20D]/15 text-[#DCE4EC]'
+                        : 'border-[#232B3B] bg-[#1C2436] text-[#8B9BB0] hover:border-[#313D53] hover:text-[#DCE4EC]'
                     }`}
                   >
                     <div className="flex flex-col">
                       <span className="text-xs font-medium">{lang.nativeName}</span>
-                      <span className="text-[10px] text-gray-500">{lang.name}</span>
+                      <span className="text-[10px] text-[#8B9BB0]/70">{lang.name}</span>
                     </div>
-                    {isSelected && <FiCheck className="text-p2" size={14} />}
+                    {isSelected && <FiCheck className="text-[#FFC20D]" size={14} />}
                   </button>
                 );
               })}
@@ -159,16 +159,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </div>
 
           {/* Keyboard Shortcuts Reference */}
-          <div className="rounded-xl border border-white/[0.08] bg-[#0F1013]/40 p-4 space-y-2.5">
-            <div className="flex items-center gap-2 text-xs font-medium text-[#F1F3F5]">
-              <FiCommand size={14} className="text-p2" />
+          <div className="rounded-xl border border-[#232B3B] bg-[#0D111A]/50 p-4 space-y-2.5">
+            <div className="flex items-center gap-2 text-xs font-medium text-[#DCE4EC]">
+              <FiCommand size={14} className="text-[#FFC20D]" />
               <span>Atajos de teclado</span>
             </div>
 
             <div className="space-y-1.5 text-xs">
               <div className="flex items-center justify-between py-1">
-                <span className="text-[#8E95A2]">Cerrar ventana / Ajustes</span>
-                <kbd className="px-1.5 py-0.5 rounded text-[10px] bg-white/[0.06] border border-white/[0.08] text-gray-300 font-mono">
+                <span className="text-[#8B9BB0]">Cerrar ventana / Ajustes</span>
+                <kbd className="px-1.5 py-0.5 rounded text-[10px] bg-[#1C2436] border border-[#232B3B] text-[#DCE4EC] font-mono">
                   Esc
                 </kbd>
               </div>

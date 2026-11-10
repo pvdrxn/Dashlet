@@ -12,6 +12,7 @@ import {
 } from 'react';
 import { FiChevronDown, FiChevronRight, FiCornerDownRight, FiPlus, FiTrash2, FiClock } from 'react-icons/fi';
 import { widgetBus } from '../widget-bus';
+import { WidgetInternalTabs } from '../../components/WidgetInternalTabs';
 import { linkedTaskIds } from '../pomodoro/timer';
 import {
   DndContext,
@@ -58,9 +59,17 @@ interface TaskRowProps {
   toggleCollapse: (id: string) => void;
 }
 
+export interface TodoTab {
+  id: string;
+  name: string;
+  items: TodoItem[];
+}
+
 interface TodoListConfig {
   title?: string;
   items?: TodoItem[];
+  tabs?: TodoTab[];
+  activeTabId?: string;
   activeTaskId?: string;
 }
 
@@ -293,7 +302,7 @@ const TaskRowContent = memo(function TaskRowContent({
         type="checkbox"
         checked={item.completed}
         onChange={() => toggleItem(item.id)}
-        className="h-4 w-4 shrink-0 cursor-pointer appearance-none rounded border border-white/30 bg-white/[0.04] transition-all checked:border-p2 checked:bg-p2 checked:bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2016%2016%27%20fill=%27none%27%20stroke=%27%23121212%27%20stroke-width=%272.5%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%3E%3Cpath%20d=%27M3.5%208.5l3%203%206-7%27/%3E%3C/svg%3E')] checked:bg-center checked:bg-no-repeat checked:bg-[length:12px_12px] hover:border-white/60"
+        className="h-4 w-4 shrink-0 cursor-pointer appearance-none rounded border border-[#313D53] bg-[#182030] transition-all checked:border-[#FFC20D] checked:bg-[#FFC20D] checked:bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2016%2016%27%20fill=%27none%27%20stroke=%27%230D111A%27%20stroke-width=%272.5%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%3E%3Cpath%20d=%27M3.5%208.5l3%203%206-7%27/%3E%3C/svg%3E')] checked:bg-center checked:bg-no-repeat checked:bg-[length:12px_12px] hover:border-[#8B9BB0]"
         aria-label={`Mark "${item.text}" as completed`}
       />
       {editing ? (
@@ -322,7 +331,7 @@ const TaskRowContent = memo(function TaskRowContent({
                 onEditingChange(false);
               }
             }}
-            className="rounded-none border-0 border-b border-p2 bg-transparent px-1 py-0.5 text-sm text-gray-200 outline-none"
+            className="rounded-none border-0 border-b border-[#FFC20D] bg-transparent px-1 py-0.5 text-sm text-[#DCE4EC] outline-none"
             aria-label="Edit task text"
           />
         </>
@@ -342,7 +351,7 @@ const TaskRowContent = memo(function TaskRowContent({
               }
             }}
             className={`min-w-0 flex-1 cursor-text break-words bg-transparent p-0 text-left text-sm ${
-              item.completed ? 'text-gray-400 line-through' : 'text-gray-300'
+              item.completed ? 'text-[#8B9BB0] line-through' : 'text-[#DCE4EC]'
             }`}
           >
             {item.text}
@@ -556,7 +565,29 @@ const StaticItemRow = memo(function StaticItemRow({
 });
 
 export const TodoListWidget = memo(function TodoListWidget({ config, onConfigChange }: TodoListWidgetProps) {
-  const { items: rawItems = [], activeTaskId } = (config ?? {}) as TodoListConfig;
+  const cfg = (config ?? {}) as TodoListConfig;
+  const rawTabs: TodoTab[] = useMemo(() => {
+    if (Array.isArray(cfg.tabs) && cfg.tabs.length > 0) {
+      return cfg.tabs;
+    }
+    return [
+      {
+        id: 'default',
+        name: 'General',
+        items: Array.isArray(cfg.items) ? cfg.items : [],
+      },
+    ];
+  }, [cfg.tabs, cfg.items]);
+
+  const activeTabId =
+    cfg.activeTabId && rawTabs.some((t) => t.id === cfg.activeTabId)
+      ? cfg.activeTabId
+      : rawTabs[0]?.id ?? 'default';
+
+  const currentTab = rawTabs.find((t) => t.id === activeTabId) ?? rawTabs[0];
+  const rawItems = currentTab?.items ?? [];
+  const activeTaskId = cfg.activeTaskId;
+
   const [newText, setNewText] = useState('');
   const [newUrgency, setNewUrgency] = useState<'' | '1' | '2' | '3'>('');
   const [newTimeInput, setNewTimeInput] = useState('');
@@ -584,6 +615,74 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
   configRef.current = config;
   onConfigChangeRef.current = onConfigChange;
 
+  const saveItems = useCallback(
+    (nextItems: TodoItem[], extraPatch?: Record<string, unknown>) => {
+      const nextTabs = rawTabs.map((t) =>
+        t.id === activeTabId ? { ...t, items: nextItems } : t,
+      );
+      onConfigChange({
+        ...config,
+        ...extraPatch,
+        tabs: nextTabs,
+        activeTabId,
+        items: nextItems,
+      });
+    },
+    [rawTabs, activeTabId, config, onConfigChange],
+  );
+
+  const handleSelectTab = useCallback(
+    (id: string) => {
+      const selected = rawTabs.find((t) => t.id === id);
+      onConfigChange({
+        ...config,
+        tabs: rawTabs,
+        activeTabId: id,
+        items: selected?.items ?? [],
+      });
+    },
+    [config, rawTabs, onConfigChange],
+  );
+
+  const handleAddTab = useCallback(() => {
+    const newId = genId('tab');
+    const newName = `Lista ${rawTabs.length + 1}`;
+    const nextTabs = [...rawTabs, { id: newId, name: newName, items: [] }];
+    onConfigChange({
+      ...config,
+      tabs: nextTabs,
+      activeTabId: newId,
+      items: [],
+    });
+  }, [config, rawTabs, onConfigChange]);
+
+  const handleRenameTab = useCallback(
+    (id: string, newName: string) => {
+      const nextTabs = rawTabs.map((t) => (t.id === id ? { ...t, name: newName } : t));
+      onConfigChange({
+        ...config,
+        tabs: nextTabs,
+      });
+    },
+    [config, rawTabs, onConfigChange],
+  );
+
+  const handleDeleteTab = useCallback(
+    (id: string) => {
+      if (rawTabs.length <= 1) return;
+      const nextTabs = rawTabs.filter((t) => t.id !== id);
+      const nextActiveId = activeTabId === id ? nextTabs[0].id : activeTabId;
+      const nextItems = nextTabs.find((t) => t.id === nextActiveId)?.items ?? [];
+      onConfigChange({
+        ...config,
+        tabs: nextTabs,
+        activeTabId: nextActiveId,
+        items: nextItems,
+      });
+    },
+    [rawTabs, activeTabId, config, onConfigChange],
+  );
+
   const activeItem = activeId ? items.find((i) => i.id === activeId) ?? null : null;
   const activeChildren = activeItem ? (childrenMap.get(activeItem.id) ?? []) : [];
 
@@ -602,9 +701,9 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
 
   useEffect(() => {
     if (items !== rawItems) {
-      onConfigChange({ ...config, items });
+      saveItems(items);
     }
-  }, [items, rawItems, config, onConfigChange]);
+  }, [items, rawItems, saveItems]);
 
   useEffect(() => {
     const offStart = widgetBus.on('timer:start', (data) => {
@@ -648,14 +747,11 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
       newItem.estimatedTimeUnit = newTimeUnit;
     }
 
-    onConfigChange({
-      ...config,
-      items: [...items, newItem],
-    });
+    saveItems([...items, newItem]);
     setNewText('');
     setNewUrgency('');
     setNewTimeInput('');
-  }, [newText, newUrgency, newTimeInput, newTimeUnit, config, items, onConfigChange]);
+  }, [newText, newUrgency, newTimeInput, newTimeUnit, items, saveItems]);
 
   const toggleItem = useCallback((id: string) => {
     const item = items.find((i) => i.id === id);
@@ -699,23 +795,22 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
       }
     }
 
-    onConfigChange({ ...config, items: toggled });
-  }, [config, items, childrenMap, onConfigChange]);
+    saveItems(toggled);
+  }, [items, childrenMap, saveItems]);
 
   const editItem = useCallback((id: string, text: string) => {
-    onConfigChange({
-      ...config,
-      items: items.map((item) =>
+    saveItems(
+      items.map((item) =>
         item.id === id ? { ...item, text } : item,
       ),
-    });
+    );
     /*
      * Se avisa del renombre. El pomodoro guarda una COPIA del nombre en
      * `linkedTaskName`, asi que sin esto seguia mostrando el texto viejo para
      * siempre. Solo se emite al confirmar (blur o Enter), no por tecla.
      */
     widgetBus.emit('task:rename', { taskId: id, taskName: text });
-  }, [config, items, onConfigChange]);
+  }, [items, saveItems]);
 
   const deleteNow = useCallback((id: string) => {
     /*
@@ -723,13 +818,12 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
      * no en una segunda llamada: dos escrituras con el mismo `config` viejo, la
      * segunda traeria los items de antes y dejaria la tarea sin borrar.
      */
-    onConfigChange({
-      ...config,
-      items: items
+    saveItems(
+      items
         .filter((item) => item.id !== id)
         .map((item) => (item.parentId === id ? { ...item, parentId: undefined } : item)),
-      ...(config.activeTaskId === id ? { activeTaskId: undefined } : {}),
-    });
+      config.activeTaskId === id ? { activeTaskId: undefined } : undefined,
+    );
     /*
      * El enlace con el pomodoro vive en el config del POMODORO y esta referencia al
      * reves: borrar la tarea no lo deshace sola. Sin este aviso el reloj seguia
@@ -737,7 +831,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
      * no existe en ninguna parte.
      */
     widgetBus.emit('task:deleted', { taskId: id });
-  }, [config, items, onConfigChange]);
+  }, [config.activeTaskId, items, saveItems]);
 
   const removeItem = useCallback(
     (id: string) => {
@@ -764,17 +858,16 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
     const wasActive = typeof activeId === 'string' && removedIds.has(activeId);
     /* Una sola escritura, igual que en `deleteNow`: `activeTaskId` va en el mismo
      * objeto que los items. */
-    onConfigChange({
-      ...config,
-      items: items
+    saveItems(
+      items
         .filter((item) => !removedIds.has(item.id))
         .map((item) =>
           item.parentId && removedIds.has(item.parentId)
             ? { ...item, parentId: undefined }
             : item,
         ),
-      ...(wasActive ? { activeTaskId: undefined } : {}),
-    });
+      wasActive ? { activeTaskId: undefined } : undefined,
+    );
     /*
      * Aca NO hay modal aunque alguna de las borradas tenga un timer: el dialogo que
      * ya se abrio pregunta por N tareas, y preguntar otra vez seria una confirmacion
@@ -785,19 +878,18 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
       if (linkedTaskIds().has(id)) widgetBus.emit('task:deleted', { taskId: id });
     }
     setConfirmClear(false);
-  }, [config, items, onConfigChange]);
+  }, [config.activeTaskId, items, saveItems]);
 
   const toggleIndent = useCallback((id: string) => {
     const index = items.findIndex((i) => i.id === id);
     if (index === -1) return;
 
     if (items[index].parentId) {
-      onConfigChange({
-        ...config,
-        items: items.map((item) =>
+      saveItems(
+        items.map((item) =>
           item.id === id ? { ...item, parentId: undefined } : item,
         ),
-      });
+      );
       return;
     }
 
@@ -807,45 +899,41 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
       .reverse()
       .find((item) => !item.parentId && !excludedIds.has(item.id));
     if (!previousRoot) return;
-    onConfigChange({
-      ...config,
-      items: items.map((item) =>
+    saveItems(
+      items.map((item) =>
         item.id === id || item.parentId === id
           ? { ...item, parentId: previousRoot.id }
           : item,
       ),
-    });
-  }, [items, childrenMap, config, onConfigChange]);
+    );
+  }, [items, childrenMap, saveItems]);
 
   const toggleCollapse = useCallback((id: string) => {
-    onConfigChange({
-      ...config,
-      items: items.map((item) =>
+    saveItems(
+      items.map((item) =>
         item.id === id ? { ...item, collapsed: !item.collapsed } : item,
       ),
-    });
-  }, [config, items, onConfigChange]);
+    );
+  }, [items, saveItems]);
 
   const onEditUrgency = useCallback((id: string) => {
-    onConfigChange({
-      ...config,
-      items: items.map((item) => {
+    saveItems(
+      items.map((item) => {
         if (item.id !== id) return item;
         const next = item.urgency == null ? 1 : item.urgency >= 3 ? undefined : (item.urgency + 1) as 1 | 2 | 3;
         return { ...item, urgency: next };
       }),
-    });
-  }, [config, items, onConfigChange]);
+    );
+  }, [items, saveItems]);
 
   const onEditEstimatedTime = useCallback((id: string, time: number | undefined, unit: 'min' | 'hr' | undefined) => {
-    onConfigChange({
-      ...config,
-      items: items.map((item) => {
+    saveItems(
+      items.map((item) => {
         if (item.id !== id) return item;
         return { ...item, estimatedTime: time, estimatedTimeUnit: unit };
       }),
-    });
-  }, [config, items, onConfigChange]);
+    );
+  }, [items, saveItems]);
 
   const onLinkTask = useCallback((id: string, text: string, estimatedTime?: number, estimatedTimeUnit?: 'min' | 'hr') => {
     const estimatedMinutes = estimatedTime != null
@@ -897,8 +985,8 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
       );
     }
 
-    onConfigChange({ ...config, items: toTreeOrder([...result, ...completedItems]) });
-  }, [items, childrenMap, config, onConfigChange]);
+    saveItems(toTreeOrder([...result, ...completedItems]));
+  }, [items, childrenMap, saveItems]);
 
   const view = useMemo(() => {
     const ids = new Set(items.map((i) => i.id));
@@ -979,6 +1067,16 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
 
   return (
     <div className="relative flex h-full flex-col gap-2">
+      <WidgetInternalTabs
+        tabs={rawTabs}
+        activeTabId={activeTabId}
+        onSelectTab={handleSelectTab}
+        onAddTab={handleAddTab}
+        onRenameTab={handleRenameTab}
+        onDeleteTab={handleDeleteTab}
+        maxTabs={3}
+        addLabel="Nueva lista"
+      />
 
       <DndContext
         sensors={sensors}
@@ -1081,14 +1179,14 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
 
       <form
         onSubmit={(e) => { e.preventDefault(); addItem(); }}
-        className="flex items-center gap-1.5 border-t border-white/10 pt-1.5"
+        className="flex items-center gap-1.5 border-t border-[#232B3B] pt-1.5"
       >
         <AutoGrowInput
           expand
           value={newText}
           placeholder="Add a task..."
           onChange={(e) => setNewText(e.target.value)}
-          className="rounded-none border-0 border-b border-white/20 bg-transparent px-1 py-1 text-xs text-gray-200 outline-none placeholder-white/30 focus:border-p2 transition-colors"
+          className="rounded-none border-0 border-b border-[#232B3B] bg-transparent px-1 py-1 text-xs text-[#DCE4EC] outline-none placeholder-[#8B9BB0]/50 focus:border-[#FFC20D] transition-colors"
           aria-label="New task text"
         />
         <div className="relative flex w-[4.5rem] shrink-0 items-center">
@@ -1104,25 +1202,25 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
                 addItem();
               }
             }}
-            className="no-spinner w-full rounded-none border-0 border-b border-white/20 bg-transparent px-1 py-1 pr-8 text-xs text-gray-200 outline-none placeholder-white/30 focus:border-p2 transition-colors"
+            className="no-spinner w-full rounded-none border-0 border-b border-[#232B3B] bg-transparent px-1 py-1 pr-8 text-xs text-[#DCE4EC] outline-none placeholder-[#8B9BB0]/50 focus:border-[#FFC20D] transition-colors"
             aria-label="Estimated time"
           />
           <button
             type="button"
             onClick={() => setNewTimeUnit((u) => (u === 'min' ? 'hr' : 'min'))}
-            className="absolute right-0.5 rounded px-1 text-[10px] font-medium text-white/40 hover:text-white/80 transition-colors"
+            className="absolute right-0.5 rounded px-1 text-[10px] font-medium text-[#8B9BB0] hover:text-[#DCE4EC] transition-colors"
             aria-label="Toggle time unit"
           >
             {newTimeUnit}
           </button>
         </div>
-        <div className="flex items-center rounded-md border border-white/10 bg-white/[0.04] p-0.5 text-xs">
+        <div className="flex items-center rounded-md border border-[#232B3B] bg-[#182030] p-0.5 text-xs">
           {(['1', '2', '3'] as const).map((val) => {
             const labels = { '1': 'Low', '2': 'Med', '3': 'High' };
             const colors = {
-              '1': 'text-p1',
-              '2': 'text-p2',
-              '3': 'text-p3',
+              '1': 'text-[#8B9BB0]',
+              '2': 'text-[#FFC20D]',
+              '3': 'text-[#e2703f]',
             };
             const active = newUrgency === val;
             return (
@@ -1132,8 +1230,8 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
                 onClick={() => setNewUrgency(active ? '' : val)}
                 className={`rounded px-2 py-0.5 text-[11px] font-medium transition-all ${
                   active
-                    ? `bg-white/15 ${colors[val]} shadow-sm border border-white/20 font-semibold`
-                    : 'text-white/40 hover:text-white/80 hover:bg-white/[0.04]'
+                    ? `bg-[#1C2436] ${colors[val]} shadow-sm border border-[#313D53] font-semibold`
+                    : 'text-[#8B9BB0] hover:text-[#DCE4EC] hover:bg-[#1C2436]'
                 }`}
               >
                 {labels[val]}
@@ -1144,7 +1242,7 @@ export const TodoListWidget = memo(function TodoListWidget({ config, onConfigCha
         <button
           type="submit"
           title="Add task"
-          className="flex h-7 w-7 items-center justify-center rounded-lg border border-p2/40 bg-p2/20 text-p2 hover:bg-p2/30 transition-all disabled:opacity-30"
+          className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#232B3B] bg-[#1C2436] text-[#8B9BB0] hover:text-[#DCE4EC] hover:bg-[#232B3B] transition-all disabled:opacity-30 cursor-pointer"
           disabled={!newText.trim()}
           aria-label="Add task"
         >

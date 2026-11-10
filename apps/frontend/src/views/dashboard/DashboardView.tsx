@@ -7,7 +7,6 @@ import {
   FiMaximize2,
 } from 'react-icons/fi';
 import { LuListChecks } from 'react-icons/lu';
-import { TabBar } from '../../components/TabBar';
 import { TaskPickerModal } from '../../components/TaskPickerModal';
 import { LocalNotesModule } from '../../components/notes/LocalNotesModule';
 import { TodoListWidget } from '../../widgets/todo-list/TodoListWidget';
@@ -15,12 +14,8 @@ import { PomodoroWidget } from '../../widgets/pomodoro/PomodoroWidget';
 import { HabitTrackerWidget } from '../../widgets/habit-tracker/HabitTrackerWidget';
 import { CalendarWidget, openCalendarView } from '../../widgets/calendar/CalendarWidget';
 import { widgetBus } from '../../widgets/widget-bus';
-import * as tabsApi from '../../api/tabs';
 import * as widgetsApi from '../../api/widgets';
-import type { TabDto } from '@widget-master/shared';
 import type { WidgetData } from '../../widgets/types';
-
-const ACTIVE_TAB_KEY = 'dashlet-active-tab';
 
 export interface DashboardViewProps {
   onOpenCalendar?: () => void;
@@ -46,15 +41,7 @@ const DEFAULT_CONFIGS: Record<string, Record<string, unknown>> = {
 export function DashboardView({ onOpenCalendar }: DashboardViewProps) {
   const { t } = useTranslation();
 
-  // Estados de pestañas / espacios de trabajo
-  const [tabs, setTabs] = useState<TabDto[]>([]);
-  const [tabsLoaded, setTabsLoaded] = useState(false);
-  const [activeTabId, setActiveTabId] = useState<string | null>(() =>
-    localStorage.getItem(ACTIVE_TAB_KEY),
-  );
-  const [editingTabId, setEditingTabId] = useState<string | null>(null);
-
-  // Estados de widgets para la pestaña activa
+  // Estados de widgets modulares para la pantalla única
   const [widgetsMap, setWidgetsMap] = useState<Record<string, WidgetData>>({});
   const [loadingWidgets, setLoadingWidgets] = useState(true);
 
@@ -64,50 +51,14 @@ export function DashboardView({ onOpenCalendar }: DashboardViewProps) {
 
   const updateTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
-  // Cargar pestañas al montar
+  // Cargar y asegurar los 4 widgets modulares de la pantalla única
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadTabs() {
-      try {
-        const data = await tabsApi.fetchTabs();
-        if (cancelled) return;
-        setTabs(data);
-        setTabsLoaded(true);
-        setActiveTabId((prev) => {
-          if (prev && data.some((t) => t.id === prev)) return prev;
-          return data[0]?.id ?? null;
-        });
-      } catch {
-        if (!cancelled) setTimeout(loadTabs, 1200);
-      }
-    }
-
-    void loadTabs();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Recordar pestaña activa
-  useEffect(() => {
-    if (activeTabId) {
-      localStorage.setItem(ACTIVE_TAB_KEY, activeTabId);
-    } else {
-      localStorage.removeItem(ACTIVE_TAB_KEY);
-    }
-  }, [activeTabId]);
-
-  // Cargar y asegurar los 4 widgets modulares de la pestaña activa
-  useEffect(() => {
-    if (!activeTabId) return;
-
     let cancelled = false;
     setLoadingWidgets(true);
 
-    async function syncTabWidgets() {
+    async function syncWidgets() {
       try {
-        const existingList = await widgetsApi.fetchWidgets(activeTabId!);
+        const existingList = await widgetsApi.fetchWidgets();
         if (cancelled) return;
 
         const map: Record<string, WidgetData> = {};
@@ -120,7 +71,6 @@ export function DashboardView({ onOpenCalendar }: DashboardViewProps) {
               type,
               DEFAULT_CONFIGS[type],
               { x: 0, y: 0, w: 1, h: 1 },
-              activeTabId!,
             );
           }
           if (found) {
@@ -139,11 +89,11 @@ export function DashboardView({ onOpenCalendar }: DashboardViewProps) {
       }
     }
 
-    void syncTabWidgets();
+    void syncWidgets();
     return () => {
       cancelled = true;
     };
-  }, [activeTabId]);
+  }, []);
 
   // Listener para enlazar tareas con Pomodoro
   useEffect(() => {
@@ -196,97 +146,33 @@ export function DashboardView({ onOpenCalendar }: DashboardViewProps) {
     [],
   );
 
-  // Operaciones de Pestañas
-  const handleSelectTab = useCallback((id: string) => {
-    setActiveTabId(id);
-  }, []);
-
-  const handleCreateTab = useCallback(async () => {
-    try {
-      const newTab = await tabsApi.createTab('Nuevo espacio');
-      setTabs((prev) => [...prev, newTab]);
-      setActiveTabId(newTab.id);
-      setEditingTabId(newTab.id);
-    } catch {}
-  }, []);
-
-  const handleRenameTab = useCallback(async (id: string, name: string) => {
-    try {
-      await tabsApi.renameTab(id, name);
-      setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, name } : t)));
-    } catch {}
-  }, []);
-
-  const handleDeleteTab = useCallback(
-    async (id: string) => {
-      try {
-        await tabsApi.deleteTab(id);
-        setTabs((prev) => {
-          const next = prev.filter((t) => t.id !== id);
-          if (activeTabId === id) {
-            setActiveTabId(next[0]?.id ?? null);
-          }
-          return next;
-        });
-      } catch {}
-    },
-    [activeTabId],
-  );
-
-  const handleReorderTabs = useCallback(async (orderedIds: string[]) => {
-    setTabs((prev) => {
-      const tabMap = new Map(prev.map((t) => [t.id, t]));
-      return orderedIds.map((id) => tabMap.get(id)!).filter(Boolean);
-    });
-    try {
-      await tabsApi.reorderTabs(orderedIds);
-    } catch {}
-  }, []);
-
   const todoWidget = widgetsMap['todo-list'];
   const pomodoroWidget = widgetsMap['pomodoro'];
   const habitWidget = widgetsMap['habit-tracker'];
   const calendarWidget = widgetsMap['calendar'];
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-[#0F1013] text-[#F1F3F5] font-sans">
-      {/* 1. Cabecera de Espacios de Trabajo / Pestañas */}
-      <header className="relative flex items-end justify-between px-6 pt-3 pb-0 bg-[#0F1013] shrink-0 border-b border-white/[0.08] select-none">
-        <div className="flex-1 min-w-0 overflow-hidden">
-          <TabBar
-            tabs={tabs}
-            activeTabId={activeTabId}
-            onSelectTab={handleSelectTab}
-            onCreateTab={handleCreateTab}
-            onRenameTab={handleRenameTab}
-            onDeleteTab={handleDeleteTab}
-            onReorderTabs={handleReorderTabs}
-            editingTabId={editingTabId}
-            onEditingTabIdChange={setEditingTabId}
-          />
-        </div>
-      </header>
-
-      {/* 2. Cuadrícula Modular de 5 Herramientas */}
+    <div className="flex h-full w-full flex-col overflow-hidden bg-[#0D111A] text-[#DCE4EC] font-sans">
+      {/* Cuadrícula Modular de 5 Herramientas */}
       <main className="flex-1 min-h-0 overflow-y-auto p-6">
-          {loadingWidgets || !tabsLoaded ? (
-            <div className="flex h-64 w-full items-center justify-center">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-p2/20 border-t-p2" />
-            </div>
-          ) : (
-            <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {loadingWidgets ? (
+          <div className="flex h-64 w-full items-center justify-center">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#FFC20D]/20 border-t-[#FFC20D]" />
+          </div>
+        ) : (
+          <div className="w-full max-w-[1920px] mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 min-[1440px]:grid-cols-4 gap-5">
             {/* Tarjeta 1: To-Do List */}
-            <div className="flex flex-col h-[480px] rounded-xl border border-[#262930] bg-[#16181D] shadow-sm overflow-hidden">
-              <div className="flex h-11 shrink-0 items-center justify-between border-b border-[#262930] bg-[#121418]/80 px-4 select-none">
+            <div className="flex flex-col h-[480px] rounded-xl border border-[#232B3B] bg-[#141A26] shadow-sm overflow-hidden">
+              <div className="flex h-11 shrink-0 items-center justify-between border-b border-[#232B3B] bg-[#0D111A]/80 px-4 select-none">
                 <div className="flex items-center gap-2">
-                  <div className="flex h-6 w-6 items-center justify-center rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                  <div className="flex h-6 w-6 items-center justify-center rounded bg-[#1C2436] text-emerald-400 border border-[#232B3B]">
                     <FiCheckSquare size={13} />
                   </div>
-                  <h2 className="text-xs font-semibold text-white tracking-wide">
+                  <h2 className="text-xs font-semibold text-[#DCE4EC] tracking-wide">
                     {t('widgets.todo.title', 'To-Do List')}
                   </h2>
                 </div>
-                <span className="text-[10px] font-mono text-white/40 uppercase">
+                <span className="text-[10px] font-mono text-[#8B9BB0] uppercase">
                   Checklist & Prioridad
                 </span>
               </div>
@@ -303,17 +189,17 @@ export function DashboardView({ onOpenCalendar }: DashboardViewProps) {
             </div>
 
             {/* Tarjeta 2: Timer & Pomodoro */}
-            <div className="flex flex-col h-[480px] rounded-xl border border-[#262930] bg-[#16181D] shadow-sm overflow-hidden">
-              <div className="flex h-11 shrink-0 items-center justify-between border-b border-[#262930] bg-[#121418]/80 px-4 select-none">
+            <div className="flex flex-col h-[480px] rounded-xl border border-[#232B3B] bg-[#141A26] shadow-sm overflow-hidden">
+              <div className="flex h-11 shrink-0 items-center justify-between border-b border-[#232B3B] bg-[#0D111A]/80 px-4 select-none">
                 <div className="flex items-center gap-2">
-                  <div className="flex h-6 w-6 items-center justify-center rounded bg-p2/15 text-p2 border border-p2/30">
+                  <div className="flex h-6 w-6 items-center justify-center rounded bg-[#1C2436] text-[#FFC20D] border border-[#232B3B]">
                     <FiClock size={13} />
                   </div>
-                  <h2 className="text-xs font-semibold text-white tracking-wide">
+                  <h2 className="text-xs font-semibold text-[#DCE4EC] tracking-wide">
                     {t('widgets.pomodoro.title', 'Timer & Pomodoro')}
                   </h2>
                 </div>
-                <span className="text-[10px] font-mono text-p2 uppercase font-medium">
+                <span className="text-[10px] font-mono text-[#8B9BB0] uppercase font-medium">
                   Sesiones de Foco
                 </span>
               </div>
@@ -331,17 +217,17 @@ export function DashboardView({ onOpenCalendar }: DashboardViewProps) {
             </div>
 
             {/* Tarjeta 3: Habit Tracker */}
-            <div className="flex flex-col h-[480px] rounded-xl border border-[#262930] bg-[#16181D] shadow-sm overflow-hidden">
-              <div className="flex h-11 shrink-0 items-center justify-between border-b border-[#262930] bg-[#121418]/80 px-4 select-none">
+            <div className="flex flex-col h-[480px] rounded-xl border border-[#232B3B] bg-[#141A26] shadow-sm overflow-hidden">
+              <div className="flex h-11 shrink-0 items-center justify-between border-b border-[#232B3B] bg-[#0D111A]/80 px-4 select-none">
                 <div className="flex items-center gap-2">
-                  <div className="flex h-6 w-6 items-center justify-center rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                  <div className="flex h-6 w-6 items-center justify-center rounded bg-[#1C2436] text-amber-400 border border-[#232B3B]">
                     <LuListChecks size={13} />
                   </div>
-                  <h2 className="text-xs font-semibold text-white tracking-wide">
+                  <h2 className="text-xs font-semibold text-[#DCE4EC] tracking-wide">
                     {t('widgets.habits.title', 'Habit Tracker')}
                   </h2>
                 </div>
-                <span className="text-[10px] font-mono text-white/40 uppercase">
+                <span className="text-[10px] font-mono text-[#8B9BB0] uppercase">
                   Consistencia Diaria
                 </span>
               </div>
@@ -358,13 +244,13 @@ export function DashboardView({ onOpenCalendar }: DashboardViewProps) {
             </div>
 
             {/* Tarjeta 4: Mini-Calendar */}
-            <div className="flex flex-col h-[480px] rounded-xl border border-[#262930] bg-[#16181D] shadow-sm overflow-hidden">
-              <div className="flex h-11 shrink-0 items-center justify-between border-b border-[#262930] bg-[#121418]/80 px-4 select-none">
+            <div className="flex flex-col h-[480px] rounded-xl border border-[#232B3B] bg-[#141A26] shadow-sm overflow-hidden">
+              <div className="flex h-11 shrink-0 items-center justify-between border-b border-[#232B3B] bg-[#0D111A]/80 px-4 select-none">
                 <div className="flex items-center gap-2">
-                  <div className="flex h-6 w-6 items-center justify-center rounded bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                  <div className="flex h-6 w-6 items-center justify-center rounded bg-[#1C2436] text-blue-400 border border-[#232B3B]">
                     <FiCalendar size={13} />
                   </div>
-                  <h2 className="text-xs font-semibold text-white tracking-wide">
+                  <h2 className="text-xs font-semibold text-[#DCE4EC] tracking-wide">
                     {t('widgets.calendar.title', 'Agenda & Calendario')}
                   </h2>
                 </div>
@@ -374,7 +260,7 @@ export function DashboardView({ onOpenCalendar }: DashboardViewProps) {
                     if (onOpenCalendar) onOpenCalendar();
                     else openCalendarView();
                   }}
-                  className="flex items-center gap-1.5 rounded border border-[#262930] bg-[#16181D] px-2 py-1 text-[11px] text-white/70 hover:text-white hover:border-white/20 transition-colors cursor-pointer"
+                  className="flex items-center gap-1.5 rounded border border-[#232B3B] bg-[#1C2436] px-2 py-1 text-[11px] text-[#8B9BB0] hover:text-[#DCE4EC] hover:border-[#313D53] transition-colors cursor-pointer"
                   title="Abrir vista de agenda completa"
                 >
                   <FiMaximize2 size={11} />
@@ -394,8 +280,8 @@ export function DashboardView({ onOpenCalendar }: DashboardViewProps) {
               </div>
             </div>
 
-            {/* Tarjeta 5: Notas & Diario (Ancho doble) */}
-            <div className="col-span-1 md:col-span-2 lg:col-span-2 h-[480px]">
+            {/* Tarjeta 5: Notas & Diario (Ancho adaptativo) */}
+            <div className="col-span-1 md:col-span-2 lg:col-span-2 min-[1440px]:col-span-4 h-[480px]">
               <LocalNotesModule className="h-full" />
             </div>
           </div>

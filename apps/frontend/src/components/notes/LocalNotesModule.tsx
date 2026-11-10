@@ -177,21 +177,21 @@ export function LocalNotesModule({ className = '' }: LocalNotesModuleProps) {
 
   return (
     <div
-      className={`flex h-full w-full rounded-lg border border-[#262930] bg-[#16181D] overflow-hidden shadow-sm ${className}`}
+      className={`flex h-full w-full rounded-lg border border-[#232B3B] bg-[#141A26] overflow-hidden shadow-sm ${className}`}
     >
       {/* Panel Izquierdo: Lista de Notas */}
-      <div className="flex w-56 sm:w-64 shrink-0 flex-col border-r border-[#262930] bg-[#121418]">
+      <div className="flex w-56 sm:w-64 shrink-0 flex-col border-r border-[#232B3B] bg-[#0D111A]">
         {/* Cabecera del panel lateral */}
-        <div className="flex h-11 items-center justify-between border-b border-[#262930] px-3.5">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-white">
-            <FiFileText className="text-p2" size={14} />
+        <div className="flex h-11 items-center justify-between border-b border-[#232B3B] px-3.5">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-[#DCE4EC]">
+            <FiFileText className="text-[#FFC20D]" size={14} />
             <span>Notas & Diario</span>
           </div>
           <button
             type="button"
             onClick={handleCreateNote}
             title="Nueva nota"
-            className="flex h-6 w-6 items-center justify-center rounded border border-[#262930] bg-[#16181D] text-white/70 hover:text-p2 hover:border-p2/40 transition-colors cursor-pointer"
+            className="flex h-6 w-6 items-center justify-center rounded border border-[#232B3B] bg-[#1C2436] text-[#8B9BB0] hover:text-[#FFC20D] hover:border-[#FFC20D]/40 transition-colors cursor-pointer"
           >
             <FiPlus size={13} />
           </button>
@@ -200,14 +200,14 @@ export function LocalNotesModule({ className = '' }: LocalNotesModuleProps) {
         {/* Lista scrolleable de notas */}
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {loading && notes.length === 0 ? (
-            <div className="py-6 text-center text-xs text-white/40">Cargando...</div>
+            <div className="py-6 text-center text-xs text-[#8B9BB0]">Cargando...</div>
           ) : notes.length === 0 ? (
-            <div className="py-8 text-center text-xs text-white/40">
+            <div className="py-8 text-center text-xs text-[#8B9BB0]">
               <p>Sin notas aún</p>
               <button
                 type="button"
                 onClick={handleCreateNote}
-                className="mt-2 text-[11px] text-p2 hover:underline cursor-pointer"
+                className="mt-2 text-[11px] text-[#FFC20D] hover:underline cursor-pointer"
               >
                 + Crear primera nota
               </button>
@@ -228,15 +228,15 @@ export function LocalNotesModule({ className = '' }: LocalNotesModuleProps) {
                   onClick={() => void handleSelectNote(note.filename)}
                   className={`group flex items-center justify-between rounded px-2.5 py-2 text-xs transition-colors cursor-pointer ${
                     isSelected
-                      ? 'bg-p2/15 text-p2 font-medium border border-p2/30'
-                      : 'text-white/70 hover:bg-white/[0.04] hover:text-white border border-transparent'
+                      ? 'bg-[#FFC20D]/15 text-[#FFC20D] font-medium border border-[#FFC20D]/30'
+                      : 'text-[#8B9BB0] hover:bg-[#1C2436] hover:text-[#DCE4EC] border border-transparent'
                   }`}
                 >
                   <div className="min-w-0 flex-1 pr-1.5">
                     <p className="truncate font-medium leading-snug">
                       {note.title || note.filename}
                     </p>
-                    <span className="flex items-center gap-1 text-[10px] text-white/40 font-mono mt-0.5">
+                    <span className="flex items-center gap-1 text-[10px] text-[#8B9BB0] font-mono mt-0.5">
                       <FiClock size={10} />
                       {dateStr}
                     </span>
@@ -245,7 +245,7 @@ export function LocalNotesModule({ className = '' }: LocalNotesModuleProps) {
                     type="button"
                     title="Eliminar nota"
                     onClick={(e) => void handleDeleteNote(e, note.filename)}
-                    className="opacity-0 group-hover:opacity-100 p-1 text-white/40 hover:text-red-400 transition-opacity"
+                    className="opacity-0 group-hover:opacity-100 p-1 text-[#8B9BB0] hover:text-red-400 transition-opacity cursor-pointer"
                   >
                     <FiTrash2 size={12} />
                   </button>
@@ -257,34 +257,34 @@ export function LocalNotesModule({ className = '' }: LocalNotesModuleProps) {
       </div>
 
       {/* Panel Derecho: Editor Activo */}
-      <div className="flex flex-1 min-w-0 flex-col bg-[#16181D]">
+      <div className="flex flex-1 min-w-0 flex-col bg-[#141A26]">
         {activeFilename ? (
           <>
             {/* Header del editor con título editable y estado de guardado */}
-            <div className="flex h-11 items-center justify-between border-b border-[#262930] px-4">
+            <div className="flex h-11 items-center justify-between border-b border-[#232B3B] px-4">
               <div className="flex items-center gap-2 flex-1 min-w-0 mr-3">
-                <FiEdit3 className="text-white/40 shrink-0" size={13} />
+                <FiEdit3 className="text-[#8B9BB0] shrink-0" size={13} />
                 <input
                   type="text"
                   value={titleDraft}
                   onChange={handleTitleChange}
                   placeholder="Título de la nota..."
-                  className="w-full bg-transparent text-xs font-semibold text-white placeholder-white/30 outline-none focus:ring-1 focus:ring-p2/40 rounded px-1.5 py-0.5"
+                  className="w-full bg-transparent text-xs font-semibold text-[#DCE4EC] placeholder-[#8B9BB0]/40 outline-none focus:ring-1 focus:ring-[#FFC20D]/40 rounded px-1.5 py-0.5"
                 />
               </div>
 
               {/* Indicador de guardado */}
-              <div className="flex items-center gap-1.5 text-[11px] font-mono text-white/40 shrink-0">
+              <div className="flex items-center gap-1.5 text-[11px] font-mono text-[#8B9BB0] shrink-0">
                 {savingStatus === 'saving' && (
-                  <span className="text-amber-400/90 animate-pulse">Guardando...</span>
+                  <span className="text-[#FFC20D] animate-pulse">Guardando...</span>
                 )}
                 {savingStatus === 'saved' && (
-                  <span className="flex items-center gap-1 text-emerald-400/90">
+                  <span className="flex items-center gap-1 text-emerald-400">
                     <FiCheck size={12} /> Guardado
                   </span>
                 )}
                 {savingStatus === 'idle' && (
-                  <span className="text-white/30 text-[10px] truncate max-w-[120px]">
+                  <span className="text-[#8B9BB0]/60 text-[10px] truncate max-w-[120px]">
                     {activeFilename}
                   </span>
                 )}
@@ -297,13 +297,13 @@ export function LocalNotesModule({ className = '' }: LocalNotesModuleProps) {
                 value={contentDraft}
                 onChange={handleContentChange}
                 placeholder="Escribe tus notas, reflexiones o diario aquí (formato markdown admitido)..."
-                className="h-full w-full resize-none bg-transparent font-sans text-xs leading-relaxed text-[#F1F3F5] placeholder-white/20 outline-none select-text"
+                className="h-full w-full resize-none bg-transparent font-sans text-xs leading-relaxed text-[#DCE4EC] placeholder-[#8B9BB0]/40 outline-none select-text"
               />
             </div>
           </>
         ) : (
-          <div className="flex h-full flex-col items-center justify-center text-xs text-white/40 p-6 text-center">
-            <FiFileText size={28} className="text-white/20 mb-2" />
+          <div className="flex h-full flex-col items-center justify-center text-xs text-[#8B9BB0] p-6 text-center">
+            <FiFileText size={28} className="text-[#8B9BB0]/30 mb-2" />
             <p>Selecciona una nota para editar o crea una nueva.</p>
           </div>
         )}

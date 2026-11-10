@@ -154,7 +154,7 @@ function Dashboard({ initialOpenSettings = false }: DashboardProps) {
     }
 
     return (
-      <div className="flex-1 min-h-0 h-full w-full overflow-hidden bg-[#0F1013]">
+      <div className="flex-1 min-h-0 h-full w-full overflow-hidden bg-[#0D111A]">
         {viewId === 'calendar' ? (
           <CalendarView onClose={() => handleSelectView('dashboard')} />
         ) : viewId === 'table' ? (
@@ -175,7 +175,7 @@ function Dashboard({ initialOpenSettings = false }: DashboardProps) {
   };
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#0F1013] text-[#F1F3F5] select-none font-sans">
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#0D111A] text-[#DCE4EC] select-none font-sans">
       <HubHeader
         activeView={activeView}
         onSelectView={handleSelectView}

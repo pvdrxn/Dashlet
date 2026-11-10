@@ -393,15 +393,15 @@ export function TableView({ leading, onClose }: TableViewProps) {
    */
 
   return (
-    <div className="h-full w-full overflow-hidden flex flex-col bg-[#0F1013] text-[#F1F3F5]">
+    <div className="h-full w-full overflow-hidden flex flex-col bg-[#0D111A] text-[#DCE4EC]">
       {/*
        * Barra superior: selector de tablas, nombre y acciones.
        */}
-      <header className="flex shrink-0 items-center justify-between border-b border-white/[0.08] px-4 py-2 bg-[#16181D]/60">
+      <header className="flex shrink-0 items-center justify-between border-b border-[#232B3B] px-4 py-2 bg-[#141A26]/80">
           <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
             {leading}
             <div className="flex items-center gap-2 shrink-0">
-              <FiTable size={17} className="text-p2 shrink-0" />
+              <FiTable size={17} className="text-[#FFC20D] shrink-0" />
             </div>
 
             {loading ? (
@@ -543,7 +543,7 @@ export function TableView({ leading, onClose }: TableViewProps) {
         )}
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
-          <main className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-white/[0.08] bg-[#16181D]/80 p-3">
+          <main className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[#232B3B] bg-[#141A26] p-3">
             {loading ? (
               <div className="skeleton h-full w-full rounded-lg" />
             ) : table ? (
