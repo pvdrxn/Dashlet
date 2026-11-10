@@ -8,6 +8,8 @@ import {
   HabitHeatmapCellDto,
   TagTimeDistributionDto,
   HabitStatDto,
+  TaskTabStatDto,
+  TimerTabStatDto,
 } from '@widget-master/shared';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -175,11 +177,15 @@ export class StatsService {
         habitHeatmap: heatmapDates.map((date) => ({ date, count: 0, level: 0 })),
         tagDistribution: [],
         habits: [],
+        taskTabs: [],
+        timerTabs: [],
       };
     }
 
     let tasksCompleted = 0;
     let tasksPending = 0;
+    const taskTabsList: TaskTabStatDto[] = [];
+    const timerTabsList: TimerTabStatDto[] = [];
     const pomodoroMinutesByDate = new Map<string, number>();
     const focusBreakdownByDate = new Map<string, Map<string, DailyFocusSessionDto>>();
     let activeHabitsCount = 0;
@@ -212,84 +218,144 @@ export class StatsService {
       const config = safeJson(w.config);
       if (!config) continue;
 
-      // Todo List: tareas completadas vs pendientes
+      // Todo List: tareas completadas vs pendientes por pestaña interna
       if (w.type === 'todo-list') {
-        const allItems: unknown[] = [];
         if (Array.isArray(config.tabs) && config.tabs.length > 0) {
           for (const tab of config.tabs) {
-            if (tab && typeof tab === 'object' && Array.isArray((tab as Record<string, unknown>).items)) {
-              allItems.push(...((tab as Record<string, unknown>).items as unknown[]));
+            if (!tab || typeof tab !== 'object') continue;
+            const tObj = tab as Record<string, unknown>;
+            const tabId = typeof tObj.id === 'string' ? tObj.id : `tab-${taskTabsList.length + 1}`;
+            const tabName =
+              typeof tObj.name === 'string' && tObj.name.trim()
+                ? tObj.name.trim()
+                : `Lista ${taskTabsList.length + 1}`;
+            let tabComp = 0;
+            let tabPend = 0;
+            if (Array.isArray(tObj.items)) {
+              for (const item of tObj.items) {
+                if (!item || typeof item !== 'object') continue;
+                if ((item as Record<string, unknown>).completed === true) {
+                  tabComp++;
+                } else {
+                  tabPend++;
+                }
+              }
             }
+            const tabTotal = tabComp + tabPend;
+            taskTabsList.push({
+              id: tabId,
+              name: tabName,
+              tasksCompleted: tabComp,
+              tasksPending: tabPend,
+              completionRate: tabTotal > 0 ? Math.round((tabComp / tabTotal) * 100) : 0,
+            });
+            tasksCompleted += tabComp;
+            tasksPending += tabPend;
           }
         } else if (Array.isArray(config.items)) {
-          allItems.push(...config.items);
-        }
-
-        for (const item of allItems) {
-          if (!item || typeof item !== 'object') continue;
-          if ((item as Record<string, unknown>).completed === true) {
-            tasksCompleted++;
-          } else {
-            tasksPending++;
+          let tabComp = 0;
+          let tabPend = 0;
+          for (const item of config.items) {
+            if (!item || typeof item !== 'object') continue;
+            if ((item as Record<string, unknown>).completed === true) {
+              tabComp++;
+            } else {
+              tabPend++;
+            }
           }
+          const tabTotal = tabComp + tabPend;
+          taskTabsList.push({
+            id: 'default',
+            name: typeof config.title === 'string' && config.title.trim() ? config.title.trim() : 'General',
+            tasksCompleted: tabComp,
+            tasksPending: tabPend,
+            completionRate: tabTotal > 0 ? Math.round((tabComp / tabTotal) * 100) : 0,
+          });
+          tasksCompleted += tabComp;
+          tasksPending += tabPend;
         }
       }
 
-      // Pomodoro: sesiones acumuladas o ciclos
+      // Pomodoro: sesiones acumuladas o ciclos por pestaña interna
       else if (w.type === 'pomodoro') {
-        const tabName = w.tab?.name || 'General';
-        const wTabId = w.tabId || undefined;
-        const history = (config.history || config.sessions || config.logs) as unknown[];
-        if (Array.isArray(history)) {
-          for (const entry of history) {
-            if (!entry || typeof entry !== 'object') continue;
-            const e = entry as Record<string, unknown>;
-            let dateStr: string | null = null;
-            if (typeof e.date === 'string' && DATE_RE.test(e.date)) {
-              dateStr = e.date;
-            } else if (typeof e.completedAt === 'string' || typeof e.completedAt === 'number') {
-              const d = new Date(e.completedAt);
-              if (!isNaN(d.getTime())) {
-                const pad = (n: number) => String(n).padStart(2, '0');
-                dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        const rawTabs =
+          Array.isArray(config.tabs) && config.tabs.length > 0
+            ? (config.tabs as Record<string, unknown>[])
+            : [config];
+
+        rawTabs.forEach((timerTab, idx) => {
+          if (!timerTab || typeof timerTab !== 'object') return;
+          const timerId =
+            typeof timerTab.id === 'string' ? timerTab.id : `timer-${idx + 1}`;
+          const timerName =
+            typeof timerTab.name === 'string' && timerTab.name.trim()
+              ? timerTab.name.trim()
+              : typeof timerTab.title === 'string' && timerTab.title.trim()
+                ? timerTab.title.trim()
+                : `Temporizador ${idx + 1}`;
+
+          let timerTotalMinutes = 0;
+          const history = (timerTab.history || timerTab.sessions || timerTab.logs) as unknown[];
+
+          if (Array.isArray(history)) {
+            for (const entry of history) {
+              if (!entry || typeof entry !== 'object') continue;
+              const e = entry as Record<string, unknown>;
+              let dateStr: string | null = null;
+              if (typeof e.date === 'string' && DATE_RE.test(e.date)) {
+                dateStr = e.date;
+              } else if (typeof e.completedAt === 'string' || typeof e.completedAt === 'number') {
+                const d = new Date(e.completedAt);
+                if (!isNaN(d.getTime())) {
+                  const pad = (n: number) => String(n).padStart(2, '0');
+                  dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+                }
+              }
+
+              const mins =
+                typeof e.minutes === 'number'
+                  ? e.minutes
+                  : typeof e.duration === 'number'
+                    ? Math.round(e.duration / 60)
+                    : typeof e.seconds === 'number'
+                      ? Math.round(e.seconds / 60)
+                      : typeof timerTab.workMinutes === 'number'
+                        ? timerTab.workMinutes
+                        : 25;
+
+              timerTotalMinutes += mins;
+              if (dateStr) {
+                pomodoroMinutesByDate.set(
+                  dateStr,
+                  (pomodoroMinutesByDate.get(dateStr) || 0) + mins,
+                );
+                addBreakdown(dateStr, timerName, mins, timerId);
               }
             }
-
-            const mins =
-              typeof e.minutes === 'number'
-                ? e.minutes
-                : typeof e.duration === 'number'
-                  ? Math.round(e.duration / 60)
-                  : typeof e.seconds === 'number'
-                    ? Math.round(e.seconds / 60)
-                    : typeof config.workMinutes === 'number'
-                      ? config.workMinutes
-                      : 25;
-
-            if (dateStr) {
+          } else {
+            const cycles = typeof timerTab.cycleCount === 'number' ? timerTab.cycleCount : 0;
+            const workMins = typeof timerTab.workMinutes === 'number' ? timerTab.workMinutes : 25;
+            const totalAccumulated = cycles * workMins;
+            timerTotalMinutes += totalAccumulated;
+            if (totalAccumulated > 0) {
+              const pad = (n: number) => String(n).padStart(2, '0');
+              const updateDate = w.updatedAt
+                ? `${w.updatedAt.getFullYear()}-${pad(w.updatedAt.getMonth() + 1)}-${pad(w.updatedAt.getDate())}`
+                : to;
               pomodoroMinutesByDate.set(
-                dateStr,
-                (pomodoroMinutesByDate.get(dateStr) || 0) + mins,
+                updateDate,
+                (pomodoroMinutesByDate.get(updateDate) || 0) + totalAccumulated,
               );
-              addBreakdown(dateStr, tabName, mins, wTabId);
+              addBreakdown(updateDate, timerName, totalAccumulated, timerId);
             }
           }
-        } else {
-          const cycles = typeof config.cycleCount === 'number' ? config.cycleCount : 0;
-          const workMins = typeof config.workMinutes === 'number' ? config.workMinutes : 25;
-          const totalAccumulated = cycles * workMins;
-          if (totalAccumulated > 0) {
-            const pad = (n: number) => String(n).padStart(2, '0');
-            const updateDate = w.updatedAt
-              ? `${w.updatedAt.getFullYear()}-${pad(w.updatedAt.getMonth() + 1)}-${pad(w.updatedAt.getDate())}`
-              : to;
-            pomodoroMinutesByDate.set(
-              updateDate,
-              (pomodoroMinutesByDate.get(updateDate) || 0) + totalAccumulated,
-            );
-            addBreakdown(updateDate, tabName, totalAccumulated, wTabId);
-          }
-        }
+
+          timerTabsList.push({
+            id: timerId,
+            name: timerName,
+            totalMinutes: timerTotalMinutes,
+          });
+        });
       }
 
       // Habit Tracker: hábitos activos, heatmap y rachas
@@ -391,20 +457,13 @@ export class StatsService {
     let totalFocusMinutes = 0;
     const dailyFocus: DailyFocusDto[] = allDates.map((date) => {
       const pomodoroMins = pomodoroMinutesByDate.get(date) || 0;
-      const calendarMins = includeCalendar ? (calendarMinutesByDate.get(date) || 0) : 0;
-      const mins = pomodoroMins + calendarMins;
+      const mins = pomodoroMins;
       totalFocusMinutes += mins;
 
       const dayBreakdownMap = focusBreakdownByDate.get(date);
       const breakdown: DailyFocusSessionDto[] = [];
       if (dayBreakdownMap) {
         breakdown.push(...Array.from(dayBreakdownMap.values()));
-      }
-      if (includeCalendar && calendarMins > 0) {
-        breakdown.push({
-          tabName: 'Calendario',
-          minutes: calendarMins,
-        });
       }
       breakdown.sort((a, b) => b.minutes - a.minutes);
 
@@ -454,6 +513,8 @@ export class StatsService {
       habitHeatmap,
       tagDistribution: includeCalendar ? tagDistribution : [],
       habits: habitsList,
+      taskTabs: taskTabsList,
+      timerTabs: timerTabsList,
     };
   }
 }

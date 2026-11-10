@@ -5,24 +5,21 @@ import {
   FiCheckCircle,
   FiBarChart2,
   FiRefreshCw,
-  FiX,
   FiInfo,
 } from 'react-icons/fi';
 import { LuFlame } from 'react-icons/lu';
 import { fetchStatsOverview } from '../../api/stats';
-import * as tabsApi from '../../api/tabs';
 import type {
   StatsOverviewResponseDto,
   DailyFocusSessionDto,
   HabitHeatmapCellDto,
-  TabDto,
 } from '@widget-master/shared';
 
 export interface InsightsViewProps {
   onClose?: () => void;
 }
 
-type TimeRangeKey = '30d' | '90d' | 'year';
+type TimeRangeKey = '30d' | '90d' | '180d' | 'year';
 
 export function getHabitLevel(count: number, target: number): 0 | 1 | 2 | 3 | 4 {
   if (count <= 0) return 0;
@@ -82,35 +79,12 @@ const MONTH_NAMES = [
   'Dic',
 ];
 
-export function InsightsView({ onClose }: InsightsViewProps) {
+export function InsightsView({ onClose: _onClose }: InsightsViewProps) {
   const { t } = useTranslation();
   const [range, setRange] = useState<TimeRangeKey>('30d');
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<StatsOverviewResponseDto | null>(null);
-
-  // Estados para filtro por pestaña (contexto)
-  const [tabs, setTabs] = useState<TabDto[]>([]);
-  const [selectedTabId, setSelectedTabId] = useState<string | null>(null);
-
-  // Cargar pestañas del usuario al montar
-  useEffect(() => {
-    let cancelled = false;
-    async function loadTabs() {
-      try {
-        const list = await tabsApi.fetchTabs();
-        if (!cancelled) {
-          setTabs(list);
-        }
-      } catch (err) {
-        console.error('Error al cargar pestañas para estadísticas:', err);
-      }
-    }
-    void loadTabs();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // Tooltip flotante para el gráfico o heatmap
   const [hoveredDay, setHoveredDay] = useState<{
@@ -130,6 +104,8 @@ export function InsightsView({ onClose }: InsightsViewProps) {
       fromDate.setDate(today.getDate() - 30);
     } else if (range === '90d') {
       fromDate.setDate(today.getDate() - 90);
+    } else if (range === '180d') {
+      fromDate.setDate(today.getDate() - 180);
     } else if (range === 'year') {
       fromDate = new Date(today.getFullYear(), 0, 1);
     }
@@ -141,14 +117,14 @@ export function InsightsView({ onClose }: InsightsViewProps) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchStatsOverview(from, to, selectedTabId ?? undefined);
+      const res = await fetchStatsOverview(from, to);
       setData(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar estadísticas');
     } finally {
       setLoading(false);
     }
-  }, [from, to, selectedTabId]);
+  }, [from, to]);
 
   useEffect(() => {
     void loadStats();
@@ -158,18 +134,69 @@ export function InsightsView({ onClose }: InsightsViewProps) {
   const dailyFocus = data?.dailyFocus ?? [];
   const habitHeatmap = data?.habitHeatmap ?? [];
   const habits = data?.habits ?? [];
+  const taskTabs = data?.taskTabs ?? [];
+  const timerTabs = data?.timerTabs ?? [];
 
   const [selectedHabitId, setSelectedHabitId] = useState<string>('all');
+  const [selectedTaskTabId, setSelectedTaskTabId] = useState<string>('all');
+  const [selectedTimerTabId, setSelectedTimerTabId] = useState<string>('all');
+
   const selectedHabit = useMemo(
     () => habits.find((h) => h.id === selectedHabitId) || null,
     [habits, selectedHabitId],
   );
 
+  const activeTaskTab = useMemo(
+    () => taskTabs.find((t) => t.id === selectedTaskTabId) || null,
+    [taskTabs, selectedTaskTabId],
+  );
+
+  const activeTimerTab = useMemo(
+    () => timerTabs.find((t) => t.id === selectedTimerTabId) || null,
+    [timerTabs, selectedTimerTabId],
+  );
+
+  // Métricas de foco filtradas por pestaña de temporizador
+  const displayFocusMinutes = useMemo(() => {
+    if (activeTimerTab) return activeTimerTab.totalMinutes;
+    return summary?.totalFocusMinutes ?? 0;
+  }, [activeTimerTab, summary]);
+
+  // Métricas de tareas filtradas por pestaña de To-Do list
+  const displayTasksCompleted = useMemo(() => {
+    if (activeTaskTab) return activeTaskTab.tasksCompleted;
+    return summary?.tasksCompleted ?? 0;
+  }, [activeTaskTab, summary]);
+
+  const displayTasksPending = useMemo(() => {
+    if (activeTaskTab) return activeTaskTab.tasksPending;
+    return summary?.tasksPending ?? 0;
+  }, [activeTaskTab, summary]);
+
+  const displayCompletionRate = useMemo(() => {
+    if (activeTaskTab) return activeTaskTab.completionRate;
+    return summary?.completionRate ?? 0;
+  }, [activeTaskTab, summary]);
+
+  // Serie diaria de foco filtrada según la pestaña de temporizador activa
+  const filteredDailyFocus = useMemo(() => {
+    if (selectedTimerTabId === 'all') return dailyFocus;
+    return dailyFocus.map((df) => {
+      const match = df.breakdown?.find(
+        (b) => b.tabId === selectedTimerTabId || b.tabName === activeTimerTab?.name,
+      );
+      return {
+        ...df,
+        minutes: match ? match.minutes : 0,
+      };
+    });
+  }, [dailyFocus, selectedTimerTabId, activeTimerTab]);
+
   const averageDailyMinutes = useMemo(() => {
-    if (!dailyFocus.length) return 0;
-    const total = dailyFocus.reduce((acc, curr) => acc + curr.minutes, 0);
-    return Math.round(total / dailyFocus.length);
-  }, [dailyFocus]);
+    if (!filteredDailyFocus.length) return 0;
+    const total = filteredDailyFocus.reduce((acc, curr) => acc + curr.minutes, 0);
+    return Math.round(total / filteredDailyFocus.length);
+  }, [filteredDailyFocus]);
 
   // Cuadrícula semanal para el Heatmap de Hábitos (siempre cubre todo el año actual)
   const { weeks, monthLabels } = useMemo(() => {
@@ -327,8 +354,8 @@ export function InsightsView({ onClose }: InsightsViewProps) {
 
   // Cálculo de dimensiones y escala para el gráfico de barras SVG
   const chartMetrics = useMemo(() => {
-    if (!dailyFocus.length) return null;
-    const maxVal = Math.max(60, ...dailyFocus.map((d) => d.minutes));
+    if (!filteredDailyFocus.length) return null;
+    const maxVal = Math.max(60, ...filteredDailyFocus.map((d) => d.minutes));
     // Redondear techo al múltiplo de 60 superior
     const maxScale = Math.ceil(maxVal / 60) * 60;
 
@@ -341,126 +368,67 @@ export function InsightsView({ onClose }: InsightsViewProps) {
         maxScale,
       ],
     };
-  }, [dailyFocus]);
+  }, [filteredDailyFocus]);
 
   return (
     <div className="flex h-full w-full flex-col overflow-y-auto bg-[#0D111A] text-[#DCE4EC] select-none font-sans">
-      {/* Header técnico de la vista */}
-      <header className="relative flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[#232B3B] bg-[#141A26]/90 px-6 py-2.5 backdrop-blur-xl">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#232B3B] bg-[#1C2436] text-[#FFC20D] shadow-[0_0_12px_rgba(255,194,13,0.2)]">
-            <FiBarChart2 size={16} />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm font-semibold tracking-wide text-[#DCE4EC]">
-                {t('sidebar.stats.label', 'Estadísticas')}
-              </h1>
-              <span className="rounded bg-[#1C2436] border border-[#232B3B] px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wider text-[#8B9BB0]">
-                {selectedTabId
-                  ? (tabs.find((t) => t.id === selectedTabId)?.name ?? 'Panel')
-                  : 'Global'}
-              </span>
+      {/* Contenido principal */}
+      <main className="flex-1 p-6 max-w-7xl w-full mx-auto space-y-6">
+        {/* Barra superior minimalista integrada directamente sobre los KPIs */}
+        <div className="flex flex-col gap-3 sm:grid sm:grid-cols-3 sm:items-center select-none">
+          {/* Izquierda: Título */}
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#232B3B] bg-[#1C2436] text-[#FFC20D]">
+              <FiBarChart2 size={15} />
             </div>
-            <p className="text-[11px] text-[#8B9BB0]">
-              {t(
-                'sidebar.stats.desc',
-                'Métricas de productividad, consistencia de hábitos y tiempo de foco',
-              )}
-            </p>
+            <h1 className="text-sm font-semibold tracking-wide text-[#DCE4EC]">
+              {t('sidebar.stats.label', 'Estadísticas')}
+            </h1>
           </div>
-        </div>
 
-        {/* Controles: Selector de Contexto / Pestaña, Selector de Rango & Botón Volver */}
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Selector de Contexto por Pestaña */}
-          {tabs.length > 0 && (
-            <div className="flex items-center rounded-md border border-[#232B3B] bg-[#0D111A]/80 p-0.5 shadow-inner max-w-xs sm:max-w-sm overflow-x-auto">
-              <button
-                type="button"
-                onClick={() => setSelectedTabId(null)}
-                title="Métricas globales de todos los paneles"
-                className={`rounded px-2.5 py-1 text-xs font-medium transition-all duration-150 cursor-pointer whitespace-nowrap border ${
-                  selectedTabId === null
-                    ? 'bg-[#FFC20D]/15 text-[#FFC20D] border-[#FFC20D]/30 font-semibold shadow-sm'
-                    : 'border-transparent text-[#8B9BB0] hover:text-[#DCE4EC] hover:bg-[#1C2436]'
-                }`}
-              >
-                Todos los paneles
-              </button>
-              {tabs.map((tab) => {
-                const active = selectedTabId === tab.id;
+          {/* Centro: Selector de Rango Temporal */}
+          <div className="flex justify-center">
+            <div className="flex items-center rounded-md border border-[#232B3B] bg-[#0D111A]/80 p-0.5 shadow-inner">
+              {(
+                [
+                  { id: '30d', label: '30 días' },
+                  { id: '90d', label: '90 días' },
+                  { id: '180d', label: '6 meses' },
+                  { id: 'year', label: 'Este año' },
+                ] as const
+              ).map((item) => {
+                const active = range === item.id;
                 return (
                   <button
-                    key={tab.id}
+                    key={item.id}
                     type="button"
-                    onClick={() => setSelectedTabId(tab.id)}
-                    title={`Filtrar por panel: ${tab.name}`}
-                    className={`rounded px-2.5 py-1 text-xs font-medium transition-all duration-150 cursor-pointer whitespace-nowrap border ${
+                    onClick={() => setRange(item.id)}
+                    className={`rounded px-3 py-1 text-xs font-medium transition-all duration-150 cursor-pointer border ${
                       active
                         ? 'bg-[#FFC20D]/15 text-[#FFC20D] border-[#FFC20D]/30 font-semibold shadow-sm'
                         : 'border-transparent text-[#8B9BB0] hover:text-[#DCE4EC] hover:bg-[#1C2436]'
                     }`}
                   >
-                    {tab.name}
+                    {item.label}
                   </button>
                 );
               })}
             </div>
-          )}
-
-          {/* Selector de Rango Temporal */}
-          <div className="flex items-center rounded-md border border-[#232B3B] bg-[#0D111A]/80 p-0.5 shadow-inner">
-            {(
-              [
-                { id: '30d', label: '30 días' },
-                { id: '90d', label: '90 días' },
-                { id: 'year', label: 'Este año' },
-              ] as const
-            ).map((item) => {
-              const active = range === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setRange(item.id)}
-                  className={`rounded px-3 py-1 text-xs font-medium transition-all duration-150 cursor-pointer border ${
-                    active
-                      ? 'bg-[#FFC20D]/15 text-[#FFC20D] border-[#FFC20D]/30 font-semibold shadow-sm'
-                      : 'border-transparent text-[#8B9BB0] hover:text-[#DCE4EC] hover:bg-[#1C2436]'
-                  }`}
-                >
-                  {item.label}
-                </button>
-              );
-            })}
           </div>
 
-          <button
-            type="button"
-            onClick={() => void loadStats()}
-            title="Recargar datos"
-            className="flex h-8 w-8 items-center justify-center rounded border border-[#232B3B] bg-[#1C2436] text-[#8B9BB0] hover:text-[#DCE4EC] hover:border-[#313D53] transition-colors cursor-pointer"
-          >
-            <FiRefreshCw size={13} className={loading ? 'animate-spin text-[#FFC20D]' : ''} />
-          </button>
-
-          {onClose && (
+          {/* Derecha: Botón Recargar */}
+          <div className="flex justify-end">
             <button
               type="button"
-              onClick={onClose}
-              title="Volver a los widgets"
-              className="flex h-8 items-center gap-1.5 rounded border border-[#232B3B] bg-[#1C2436] px-2.5 text-xs text-[#8B9BB0] hover:text-[#DCE4EC] hover:border-[#313D53] transition-colors cursor-pointer"
+              onClick={() => void loadStats()}
+              title="Recargar datos"
+              aria-label="Recargar datos"
+              className="flex h-8 w-8 items-center justify-center rounded border border-[#232B3B] bg-[#1C2436] text-[#8B9BB0] hover:text-[#DCE4EC] hover:border-[#313D53] transition-colors cursor-pointer"
             >
-              <FiX size={14} />
-              <span className="hidden sm:inline">Volver</span>
+              <FiRefreshCw size={13} className={loading ? 'animate-spin text-[#FFC20D]' : ''} />
             </button>
-          )}
+          </div>
         </div>
-      </header>
-
-      {/* Contenido principal con scroll */}
-      <main className="flex-1 p-6 max-w-7xl w-full mx-auto space-y-6">
         {error && (
           <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-xs text-red-400">
             <FiInfo size={16} />
@@ -473,56 +441,123 @@ export function InsightsView({ onClose }: InsightsViewProps) {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {/* KPI 1: Horas de Foco */}
             <div className="relative flex flex-col justify-between rounded-lg border border-[#232B3B] bg-[#141A26] p-5 shadow-sm transition-all hover:border-[#313D53]">
-              <div className="flex items-center justify-between text-xs text-[#8B9BB0] mb-3">
-                <span className="font-mono text-[11px] uppercase tracking-wider">
-                  Horas de Foco
-                </span>
-                <div className="flex h-7 w-7 items-center justify-center rounded bg-[#1C2436] text-[#FFC20D] border border-[#232B3B]">
-                  <FiClock size={14} />
+              <div>
+                <div className="flex items-center justify-between text-xs text-[#8B9BB0] mb-2">
+                  <span className="font-mono text-[11px] uppercase tracking-wider">
+                    Horas de Foco
+                  </span>
+                  <div className="flex h-7 w-7 items-center justify-center rounded bg-[#1C2436] text-[#FFC20D] border border-[#232B3B]">
+                    <FiClock size={14} />
+                  </div>
                 </div>
+
+                {/* Sub-tabs de temporizadores */}
+                {timerTabs.length > 1 && (
+                  <div className="flex items-center gap-1 overflow-x-auto pb-2 mb-2 border-b border-[#232B3B]/60 select-none">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTimerTabId('all')}
+                      className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors cursor-pointer whitespace-nowrap border ${
+                        selectedTimerTabId === 'all'
+                          ? 'bg-[#FFC20D]/15 text-[#FFC20D] border-[#FFC20D]/30 font-semibold shadow-sm'
+                          : 'border-transparent text-[#8B9BB0] hover:text-[#DCE4EC] hover:bg-[#1C2436]'
+                      }`}
+                    >
+                      Todos
+                    </button>
+                    {timerTabs.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setSelectedTimerTabId(t.id)}
+                        className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors cursor-pointer whitespace-nowrap border ${
+                          selectedTimerTabId === t.id
+                            ? 'bg-[#FFC20D]/15 text-[#FFC20D] border-[#FFC20D]/30 font-semibold shadow-sm'
+                            : 'border-transparent text-[#8B9BB0] hover:text-[#DCE4EC] hover:bg-[#1C2436]'
+                        }`}
+                      >
+                        {t.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
+
               <div>
                 <div className="text-2xl font-bold tracking-tight text-[#DCE4EC]">
-                  {summary ? formatHoursMinutes(summary.totalFocusMinutes) : '—'}
+                  {formatHoursMinutes(displayFocusMinutes)}
                 </div>
                 <p className="mt-1 text-[11px] text-[#8B9BB0]">
-                  {selectedTabId
-                    ? 'Sesiones de Pomodoro en este panel'
-                    : 'Sesiones de Pomodoro acumuladas'}
+                  {activeTimerTab
+                    ? `Foco acumulado en ${activeTimerTab.name}`
+                    : 'Sesiones de temporizador acumuladas'}
                 </p>
               </div>
             </div>
 
             {/* KPI 2: Tasa de Tareas */}
             <div className="relative flex flex-col justify-between rounded-lg border border-[#232B3B] bg-[#141A26] p-5 shadow-sm transition-all hover:border-[#313D53]">
-              <div className="flex items-center justify-between text-xs text-[#8B9BB0] mb-3">
-                <span className="font-mono text-[11px] uppercase tracking-wider">
-                  Finalización de Tareas
-                </span>
-                <div className="flex h-7 w-7 items-center justify-center rounded bg-[#1C2436] text-emerald-400 border border-[#232B3B]">
-                  <FiCheckCircle size={14} />
+              <div>
+                <div className="flex items-center justify-between text-xs text-[#8B9BB0] mb-2">
+                  <span className="font-mono text-[11px] uppercase tracking-wider">
+                    Finalización de Tareas
+                  </span>
+                  <div className="flex h-7 w-7 items-center justify-center rounded bg-[#1C2436] text-emerald-400 border border-[#232B3B]">
+                    <FiCheckCircle size={14} />
+                  </div>
                 </div>
+
+                {/* Sub-tabs de listas de tareas */}
+                {taskTabs.length > 1 && (
+                  <div className="flex items-center gap-1 overflow-x-auto pb-2 mb-2 border-b border-[#232B3B]/60 select-none">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTaskTabId('all')}
+                      className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors cursor-pointer whitespace-nowrap border ${
+                        selectedTaskTabId === 'all'
+                          ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30 font-semibold shadow-sm'
+                          : 'border-transparent text-[#8B9BB0] hover:text-[#DCE4EC] hover:bg-[#1C2436]'
+                      }`}
+                    >
+                      Todas
+                    </button>
+                    {taskTabs.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setSelectedTaskTabId(t.id)}
+                        className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors cursor-pointer whitespace-nowrap border ${
+                          selectedTaskTabId === t.id
+                            ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30 font-semibold shadow-sm'
+                            : 'border-transparent text-[#8B9BB0] hover:text-[#DCE4EC] hover:bg-[#1C2436]'
+                        }`}
+                      >
+                        {t.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
+
               <div>
                 <div className="flex items-baseline gap-2">
                   <span className="text-2xl font-bold tracking-tight text-[#DCE4EC]">
-                    {summary ? `${summary.completionRate}%` : '—'}
+                    {displayCompletionRate}%
                   </span>
-                  {summary && (
-                    <span className="text-xs text-emerald-400 font-mono">
-                      {summary.tasksCompleted}/{summary.tasksCompleted + summary.tasksPending}
-                    </span>
-                  )}
+                  <span className="text-xs text-emerald-400 font-mono">
+                    {displayTasksCompleted}/{displayTasksCompleted + displayTasksPending}
+                  </span>
                 </div>
                 {/* Mini barra de progreso */}
                 <div className="mt-2.5 h-1.5 w-full rounded-full bg-[#1C2436] overflow-hidden">
                   <div
                     className="h-full rounded-full bg-emerald-500 transition-all duration-500"
-                    style={{ width: `${summary?.completionRate ?? 0}%` }}
+                    style={{ width: `${displayCompletionRate}%` }}
                   />
                 </div>
                 <p className="mt-2 text-[11px] text-[#8B9BB0]">
-                  {summary ? `${summary.tasksCompleted} completadas · ${summary.tasksPending} pendientes` : '—'}
+                  {displayTasksCompleted} completadas · {displayTasksPending} pendientes
+                  {activeTaskTab ? ` (en ${activeTaskTab.name})` : ''}
                 </p>
               </div>
             </div>
@@ -560,9 +595,7 @@ export function InsightsView({ onClose }: InsightsViewProps) {
                 Foco Diario
               </h2>
               <p className="text-xs text-[#8B9BB0] mt-0.5">
-                {selectedTabId
-                  ? 'Minutos acumulados en sesiones de Pomodoro de este panel'
-                  : 'Minutos acumulados en sesiones de Pomodoro y bloques con hora'}
+                Minutos acumulados en sesiones de Pomodoro y bloques con hora
               </p>
             </div>
             <div className="flex items-center gap-4 text-xs font-mono text-[#868e9a]">
@@ -575,7 +608,7 @@ export function InsightsView({ onClose }: InsightsViewProps) {
               <span>
                 Total:{' '}
                 <strong className="text-p2 font-medium">
-                  {formatHoursMinutes(summary?.totalFocusMinutes ?? 0)}
+                  {formatHoursMinutes(displayFocusMinutes)}
                 </strong>
               </span>
             </div>
@@ -583,7 +616,7 @@ export function InsightsView({ onClose }: InsightsViewProps) {
 
           {/* Gráfico de barras SVG responsivo */}
           <div className="relative w-full h-56 pt-2 select-none">
-            {chartMetrics && dailyFocus.length > 0 ? (
+            {chartMetrics && filteredDailyFocus.length > 0 ? (
               <svg
                 viewBox="0 0 1000 200"
                 className="w-full h-full overflow-visible"
@@ -618,8 +651,8 @@ export function InsightsView({ onClose }: InsightsViewProps) {
                 })}
 
                 {/* Barras de cada día */}
-                {dailyFocus.map((d, idx) => {
-                  const totalBars = dailyFocus.length;
+                {filteredDailyFocus.map((d, idx) => {
+                  const totalBars = filteredDailyFocus.length;
                   const availableWidth = 960;
                   const barSlot = availableWidth / totalBars;
                   const barWidth = Math.max(3, Math.min(20, barSlot * 0.72));
@@ -666,12 +699,12 @@ export function InsightsView({ onClose }: InsightsViewProps) {
                 })}
 
                 {/* Etiquetas de fechas en eje X (muestreo regular) */}
-                {dailyFocus.map((d, idx) => {
+                {filteredDailyFocus.map((d, idx) => {
                   const step =
-                    dailyFocus.length > 60 ? 14 : dailyFocus.length > 25 ? 5 : 2;
-                  if (idx % step !== 0 && idx !== dailyFocus.length - 1) return null;
+                    filteredDailyFocus.length > 60 ? 14 : filteredDailyFocus.length > 25 ? 5 : 2;
+                  if (idx % step !== 0 && idx !== filteredDailyFocus.length - 1) return null;
 
-                  const totalBars = dailyFocus.length;
+                  const totalBars = filteredDailyFocus.length;
                   const availableWidth = 960;
                   const barSlot = availableWidth / totalBars;
                   const x = 35 + idx * barSlot + barSlot / 2;
@@ -882,10 +915,10 @@ export function InsightsView({ onClose }: InsightsViewProps) {
           style={{ left: `${hoveredDay.x}px`, top: `${hoveredDay.y}px` }}
         >
           <div className="font-semibold text-[#DCE4EC]">{hoveredDay.text}</div>
-          {selectedTabId === null && hoveredDay.breakdown && hoveredDay.breakdown.length > 0 && (
+          {hoveredDay.breakdown && hoveredDay.breakdown.length > 0 && (
             <div className="mt-1.5 pt-1.5 border-t border-[#232B3B] space-y-1">
               <span className="text-[10px] text-[#8B9BB0] uppercase tracking-wider block font-sans">
-                Sesiones por panel:
+                Sesiones:
               </span>
               {hoveredDay.breakdown.map((item, i) => (
                 <div key={i} className="flex items-center justify-between gap-3 text-[11px]">

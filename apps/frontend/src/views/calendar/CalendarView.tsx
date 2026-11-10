@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { FiPlus, FiTrash2, FiChevronLeft, FiChevronRight, FiX, FiCalendar, FiGrid } from 'react-icons/fi';
+import { FiPlus, FiTrash2, FiChevronLeft, FiChevronRight, FiX, FiCalendar } from 'react-icons/fi';
 import { TagPicker } from './TagPicker';
 import { TagFilterChips } from './TagFilterChips';
 import * as api from '../../api/calendar';
@@ -113,7 +113,7 @@ export interface CalendarViewProps {
   onClose?: () => void;
 }
 
-export function CalendarView({ leading, onClose }: CalendarViewProps) {
+export function CalendarView(_props: CalendarViewProps = {}) {
   const { t } = useTranslation();
   const today = dateKey(new Date());
   const anchorMonth = monthKey(new Date());
@@ -523,60 +523,6 @@ export function CalendarView({ leading, onClose }: CalendarViewProps) {
 
   return (
     <div className="h-full w-full overflow-hidden flex flex-col bg-[#0D111A] text-[#DCE4EC]">
-      {/* Header con navegación de mes y botón de volver */}
-      <header className="flex items-center justify-between border-b border-[#232B3B] px-4 py-2 shrink-0 bg-[#141A26]/80">
-        <div className="flex items-center gap-2">
-          {leading}
-          <div className="flex items-center gap-2">
-            <FiCalendar size={15} className="text-[#FFC20D] shrink-0" />
-            <h1 className="text-xs font-semibold text-[#DCE4EC] tracking-wide">
-              {formatMonthLabel(activeMonth)}
-            </h1>
-          </div>
-          <div className="flex items-center gap-1 ml-2">
-            <button
-              type="button"
-              onClick={() => setActiveMonth((m) => addMonths(m, -1))}
-              aria-label={t('calendar.prevMonth', 'Previous month')}
-              className="flex h-6 w-6 items-center justify-center rounded text-gray-400 transition-colors hover:bg-white/5 hover:text-gray-200"
-            >
-              <FiChevronLeft size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveMonth((m) => addMonths(m, 1))}
-              aria-label={t('calendar.nextMonth', 'Next month')}
-              className="flex h-6 w-6 items-center justify-center rounded text-gray-400 transition-colors hover:bg-white/5 hover:text-gray-200"
-            >
-              <FiChevronRight size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveMonth(anchorMonth);
-                setSelectedDate(today);
-              }}
-              className="ml-1 rounded bg-white/5 px-2 py-0.5 text-[11px] text-gray-400 transition-colors hover:bg-white/10 hover:text-gray-200"
-            >
-              {t('calendar.today', 'Today')}
-            </button>
-          </div>
-        </div>
-
-        {onClose && (
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-xs font-medium text-gray-300 transition-all hover:bg-white/[0.08] hover:text-white"
-            title={t('calendar.backToWidgets', 'Back to widgets')}
-            aria-label={t('calendar.backToWidgets', 'Back to widgets')}
-          >
-            <FiGrid size={12} className="text-p2" />
-            <span>{t('calendar.backToWidgets', 'Back to widgets')}</span>
-          </button>
-        )}
-      </header>
-
       {/* Analítica de Agenda: Tiempo en agenda y Distribución por categorías (Lado a lado con ancho dinámico) */}
       <div className="shrink-0 px-3 pt-3">
         <div className="flex flex-col sm:flex-row items-stretch gap-3">
@@ -670,11 +616,29 @@ export function CalendarView({ leading, onClose }: CalendarViewProps) {
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3 lg:flex-row">
         {/* Panel izquierdo: Mini-mes + Tag chips */}
         <section className="flex min-h-0 w-full flex-col overflow-hidden rounded-xl border border-[#232B3B] bg-[#141A26] lg:w-[350px] lg:flex-none">
-          <header className="flex items-center justify-between border-b border-[#232B3B] px-3.5 py-2 shrink-0 bg-[#0D111A]/80">
-              <span className="text-xs font-medium text-gray-400">
-                {visibleEvents.length} {visibleEvents.length === 1 ? t('calendar.event', 'event') : t('calendar.events', 'events')}
-              </span>
-            </header>
+          <header className="flex items-center justify-center border-b border-[#232B3B] px-3.5 py-2 shrink-0 bg-[#0D111A]/80">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveMonth((m) => addMonths(m, -1))}
+                aria-label={t('calendar.prevMonth', 'Previous month')}
+                className="flex h-6 w-6 items-center justify-center rounded text-[#8B9BB0] transition-colors hover:bg-[#1C2436] hover:text-[#DCE4EC] cursor-pointer"
+              >
+                <FiChevronLeft size={14} />
+              </button>
+              <h2 className="text-xs font-semibold text-[#DCE4EC] tracking-wide capitalize px-1">
+                {formatMonthLabel(activeMonth)}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setActiveMonth((m) => addMonths(m, 1))}
+                aria-label={t('calendar.nextMonth', 'Next month')}
+                className="flex h-6 w-6 items-center justify-center rounded text-[#8B9BB0] transition-colors hover:bg-[#1C2436] hover:text-[#DCE4EC] cursor-pointer"
+              >
+                <FiChevronRight size={14} />
+              </button>
+            </div>
+          </header>
 
             <div className="grid grid-cols-7 border-b border-gray-800/80">
               {weekdayInitials().map((w, i) => (

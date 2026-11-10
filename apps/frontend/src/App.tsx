@@ -2,10 +2,16 @@ import { useCallback, useState, useRef, useEffect, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { OPEN_TABLE_EVENT } from './widgets/data-table/DataTableWidget';
 import { OPEN_CALENDAR_EVENT } from './widgets/calendar/open-calendar';
-import { HubHeader } from './components/HubHeader';
+import { FloatingSidebar } from './components/FloatingSidebar';
 import { TrashWindow } from './components/TrashWindow';
 import { TaskPickerModal } from './components/TaskPickerModal';
 import { SettingsModal } from './components/SettingsModal';
+import {
+  VscChromeMinimize,
+  VscChromeMaximize,
+  VscChromeRestore,
+  VscChromeClose,
+} from 'react-icons/vsc';
 import {
   DashboardView,
   CalendarView,
@@ -40,6 +46,18 @@ function Dashboard({ initialOpenSettings = false }: DashboardProps) {
   const [trashOpen, setTrashOpen] = useState(false);
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(initialOpenSettings);
+  const [isMaximized, setIsMaximized] = useState(() => {
+    return window.electronAPI?.isMaximized?.() ?? false;
+  });
+
+  useEffect(() => {
+    const unsub = window.electronAPI?.onMaximizeChanged?.((max) => {
+      setIsMaximized(max);
+    });
+    return () => {
+      unsub?.();
+    };
+  }, []);
 
   const [activeView, setActiveView] = useState<ViewId>(readStoredView);
   const [exitingView, setExitingView] = useState<ViewId | null>(null);
@@ -175,17 +193,53 @@ function Dashboard({ initialOpenSettings = false }: DashboardProps) {
   };
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#0D111A] text-[#DCE4EC] select-none font-sans">
-      <HubHeader
-        activeView={activeView}
+    <div className="relative flex h-screen w-screen overflow-hidden bg-[#0D111A] text-[#DCE4EC] select-none font-sans">
+      {/* Floating Capsule Navigation Sidebar */}
+      <FloatingSidebar
+        activeViewId={activeView}
         onSelectView={handleSelectView}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenTrash={() => setTrashOpen(true)}
         trashOpen={trashOpen}
       />
 
-      {/* Vistas persistentes en el DOM con animación */}
-      <div className="flex flex-1 flex-col min-w-0 h-full overflow-hidden relative">
+      {/* Electron Desktop Window Drag Area & Controls */}
+      {window.electronAPI && (
+        <div className="absolute top-0 right-0 left-24 h-8 z-50 flex items-center justify-end px-3 app-region-drag pointer-events-none">
+          <div className="flex items-center gap-1 rounded-md bg-[#141A26]/80 border border-[#232B3B] px-1.5 py-0.5 backdrop-blur-md app-region-no-drag pointer-events-auto shadow-sm">
+            <button
+              type="button"
+              onClick={() => window.electronAPI?.minimize?.()}
+              className="flex h-5 w-5 items-center justify-center rounded text-[#8B9BB0] hover:text-[#DCE4EC] hover:bg-[#1C2436] transition-colors cursor-pointer"
+              title="Minimizar"
+              aria-label="Minimizar"
+            >
+              <VscChromeMinimize size={11} />
+            </button>
+            <button
+              type="button"
+              onClick={() => window.electronAPI?.maximize?.()}
+              className="flex h-5 w-5 items-center justify-center rounded text-[#8B9BB0] hover:text-[#DCE4EC] hover:bg-[#1C2436] transition-colors cursor-pointer"
+              title={isMaximized ? 'Restaurar' : 'Maximizar'}
+              aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
+            >
+              {isMaximized ? <VscChromeRestore size={10} /> : <VscChromeMaximize size={10} />}
+            </button>
+            <button
+              type="button"
+              onClick={() => window.electronAPI?.close?.(true)}
+              className="flex h-5 w-5 items-center justify-center rounded text-[#8B9BB0] hover:text-white hover:bg-red-500/80 transition-colors cursor-pointer"
+              title="Cerrar"
+              aria-label="Cerrar"
+            >
+              <VscChromeClose size={11} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Vistas persistentes en el DOM con desplazamiento para la cápsula flotante */}
+      <main className="flex flex-1 flex-col min-w-0 h-full overflow-hidden relative pl-24">
         <div className="relative h-full w-full overflow-hidden">
           {(['dashboard', 'calendar', 'table', 'stats'] as const).map((viewId) => {
             const isActive =
@@ -235,7 +289,7 @@ function Dashboard({ initialOpenSettings = false }: DashboardProps) {
             );
           })}
         </div>
-      </div>
+      </main>
 
       {trashOpen && (
         <TrashWindow

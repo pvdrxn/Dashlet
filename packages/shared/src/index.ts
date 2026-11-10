@@ -822,6 +822,20 @@ export interface HabitStatDto {
   completedDates: string[];
 }
 
+export interface TaskTabStatDto {
+  id: string;
+  name: string;
+  tasksCompleted: number;
+  tasksPending: number;
+  completionRate: number;
+}
+
+export interface TimerTabStatDto {
+  id: string;
+  name: string;
+  totalMinutes: number;
+}
+
 export interface StatsOverviewResponseDto {
   tabId?: string;
   summary: StatsSummaryDto;
@@ -829,6 +843,8 @@ export interface StatsOverviewResponseDto {
   habitHeatmap: HabitHeatmapCellDto[];
   tagDistribution: TagTimeDistributionDto[];
   habits?: HabitStatDto[];
+  taskTabs?: TaskTabStatDto[];
+  timerTabs?: TimerTabStatDto[];
 }
 
 /* -------------------------------------------------------------------------- */
